@@ -145,7 +145,7 @@ services:
       risk-svc:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -155,7 +155,7 @@ services:
     image: prom/prometheus:v3.4.0
     container_name: 24alert-prometheus-agent
     command:
-      - "--enable-feature=agent"
+      - "--agent"
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.agent.path=/prometheus"
     ports:
