@@ -2,9 +2,9 @@
 
 # T-Invest API configuration
 tinvest:
-  # For production: invest-public-api.tbank.ru:443
-  # For sandbox: sandbox-invest-public-api.tbank.ru:443
-  endpoint: "sandbox-invest-public-api.tbank.ru:443"
+  # Determined by TINVEST_SANDBOX env var (true → sandbox, false → production)
+  # Do NOT hardcode here; the code selects the correct endpoint automatically.
+  endpoint: ""
   
   # Token from environment variable: TINVEST_TOKEN
   # token set via env var (DO NOT commit real token!)

@@ -130,9 +130,9 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	if IsSandbox() && cfg.TInvest.Endpoint == "" {
+	if IsSandbox() {
 		cfg.TInvest.Endpoint = "sandbox-invest-public-api.tbank.ru:443"
-	} else if !IsSandbox() && cfg.TInvest.Endpoint == "" {
+	} else {
 		cfg.TInvest.Endpoint = "invest-public-api.tbank.ru:443"
 	}
 
