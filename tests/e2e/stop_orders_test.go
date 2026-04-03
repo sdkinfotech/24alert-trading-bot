@@ -32,7 +32,8 @@ func TestStopLoss(t *testing.T) {
 
 	// Sandbox may not support stop orders (error 30043)
 	if code != 201 || r.Error != "" {
-		t.Skipf("Stop-loss not available (sandbox limitation): %d — %s", code, r.Error)
+		// Error 30043 = T-Invest API limitation (stop orders not supported for this instrument/account)
+		t.Skipf("Stop-loss not available (T-Invest API limitation - error 30043): %d — %s", code, r.Error)
 	}
 
 	result := unmarshal[StopOrderResult](t, r)
@@ -164,7 +165,8 @@ func TestStopOrdersCRUD(t *testing.T) {
 		"stop_price":      currentPrice * 0.95,
 	})
 	if slCode != 201 || sl.Error != "" {
-		t.Skipf("Stop orders not available (sandbox limitation): %d — %s", slCode, sl.Error)
+		// Error 30043 = T-Invest API limitation (stop orders not supported for this instrument/account)
+		t.Skipf("Stop orders not available (T-Invest API limitation - error 30043): %d — %s", slCode, sl.Error)
 	}
 	slResult := unmarshal[StopOrderResult](t, sl)
 
