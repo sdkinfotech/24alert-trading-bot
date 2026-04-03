@@ -7,8 +7,8 @@ COPY . .
 ARG SERVICE_NAME=gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/service ./cmd/${SERVICE_NAME}
 
-FROM alpine:3.19
-RUN apk --no-cache add ca-certificates
+FROM alpine:3.21
+RUN apk --no-cache add ca-certificates && update-ca-certificates
 WORKDIR /app
 COPY --from=builder /app/bin/service .
 COPY config/ ./config/
