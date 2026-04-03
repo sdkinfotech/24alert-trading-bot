@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package github.com.24alert.trading.common.v1;
+
+option go_package = "github.com/24alert/trading-bot/gen/go/common/v1";
+
+// Quotation represents a price with units and fractional nano parts
+message Quotation {
+  int64 units = 1;      // целая часть
+  int32 nano = 2;       // дробная часть (10^-9)
+}
+
+// MoneyValue represents an amount with currency
+message MoneyValue {
+  string currency = 1;
+  Quotation value = 2;
+}
+
+// OrderDirection defines buy/sell intent
+enum OrderDirection {
+  ORDER_DIRECTION_UNSPECIFIED = 0;
+  ORDER_DIRECTION_BUY = 1;
+  ORDER_DIRECTION_SELL = 2;
+}
+
+// OrderType defines order execution method
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_LIMIT = 1;
+  ORDER_TYPE_MARKET = 2;
+  ORDER_TYPE_BESTPRICE = 3;
+}
+
+// OrderExecutionType defines sync/async execution
+enum OrderExecutionType {
+  ORDER_EXECUTION_TYPE_UNSPECIFIED = 0;
+  ORDER_EXECUTION_TYPE_SYNC = 1;
+  ORDER_EXECUTION_TYPE_ASYNC = 2;
+}
+
+// StopOrderType defines stop order trigger condition
+enum StopOrderType {
+  STOP_ORDER_TYPE_UNSPECIFIED = 0;
+  STOP_ORDER_TYPE_STOP_LOSS = 1;
+  STOP_ORDER_TYPE_TAKE_PROFIT = 2;
+}
+
+// OrderStatus enum
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING_NEW = 1;
+  ORDER_STATUS_EXECUTED = 2;
+  ORDER_STATUS_CANCELLED = 3;
+  ORDER_STATUS_FILLED = 4;
+  ORDER_STATUS_PARTIALLY_FILLED = 5;
+  ORDER_STATUS_FAILED = 6;
+}
+
+// Signal represents a trading signal from strategy
+message Signal {
+  string instrument_uid = 1;
+  OrderDirection direction = 2;
+  OrderType order_type = 3;
+  int64 quantity = 4;
+  Quotation price = 5;              // for LIMIT orders
+  Quotation stop_price = 6;         // for stop orders
+  string reason = 7;                // strategy reasoning
+  int64 timestamp_us = 8;           // microseconds since epoch
+}
+
+// OrderIntent combines signal with risk verdict
+message OrderIntent {
+  Signal signal = 1;
+  bool risk_approved = 2;
+  string risk_reason = 3;
+  string account_id = 4;
+  string client_order_id = 5;       // idempotency key (UUID, max 36 chars)
+}
+
+// ExecutionEvent represents order state change
+message ExecutionEvent {
+  string order_id = 1;
+  OrderStatus status = 2;
+  int64 filled_qty = 3;
+  Quotation avg_price = 4;
+  int64 timestamp_us = 5;
+  string execution_id = 6;
+}
+
+// InstrumentShort is a summary of instrument metadata
+message InstrumentShort {
+  string uid = 1;
+  string figi = 2;
+  string ticker = 3;
+  string class_code = 4;
+  string name = 5;
+  int32 lot_size = 6;
+  string instrument_type = 7;       // stock, future, option, etc
+}
+
+// RiskVerdict from risk service
+message RiskVerdict {
+  bool approved = 1;
+  string reason = 2;
+  int64 evaluated_at_us = 3;
+}
+
+// StrategyConfig for strategy initialization
+message StrategyConfig {
+  string name = 1;
+  string version = 2;
+  map<string, string> parameters = 3;
+}
+
+// StrategyInfo metadata
+message StrategyInfo {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+  repeated string supported_instruments = 4;
+}
+
+// MarketState for strategy evaluation input
+message MarketState {
+  repeated Quotation last_prices = 1;
+  repeated int64 volumes = 2;
+  int64 timestamp_us = 3;
+}

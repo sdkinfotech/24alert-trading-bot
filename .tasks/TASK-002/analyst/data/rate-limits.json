@@ -1,0 +1,259 @@
+{
+  "title": "T-Invest API Rate Limits Reference",
+  "version": "1.0",
+  "last_updated": "2026-04-03",
+  "source": "https://russianinvestments.github.io/investAPI/limits/",
+  "unary_methods": [
+    {
+      "method": "PostOrder",
+      "service": "OrderService",
+      "requests_per_minute": 900,
+      "requests_per_second": 15,
+      "bottleneck": true,
+      "notes": "Synchronous orders. CRITICAL BOTTLENECK. Use postOrderAsync for high-frequency trading."
+    },
+    {
+      "method": "PostOrderAsync",
+      "service": "OrderService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Asynchronous order submission for high-frequency strategies."
+    },
+    {
+      "method": "CancelOrder",
+      "service": "OrderService",
+      "requests_per_minute": 100,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Cancelling open orders."
+    },
+    {
+      "method": "ReplaceOrder",
+      "service": "OrderService",
+      "requests_per_minute": 100,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Replacing existing orders (atomic cancel+post)."
+    },
+    {
+      "method": "GetOrders",
+      "service": "OrderService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Fetching list of active orders."
+    },
+    {
+      "method": "GetOrderState",
+      "service": "OrderService",
+      "requests_per_minute": 100,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Query single order status."
+    },
+    {
+      "method": "PostStopOrder",
+      "service": "OrderService",
+      "requests_per_minute": 50,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Stop-loss and take-profit orders."
+    },
+    {
+      "method": "CancelStopOrder",
+      "service": "OrderService",
+      "requests_per_minute": 50,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Cancelling stop orders."
+    },
+    {
+      "method": "GetStopOrders",
+      "service": "OrderService",
+      "requests_per_minute": 60,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Fetching list of active stop orders."
+    },
+    {
+      "method": "GetCandles",
+      "service": "MarketDataService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Candlestick data for various intervals (1m, 5m, 15m, 1h, 4h, 1d, 1w, 1M)."
+    },
+    {
+      "method": "GetOrderbook",
+      "service": "MarketDataService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Order book snapshot (depth 1-50)."
+    },
+    {
+      "method": "GetLastPrices",
+      "service": "MarketDataService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Last traded prices for instruments."
+    },
+    {
+      "method": "GetClosePrices",
+      "service": "MarketDataService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "End-of-day closing prices."
+    },
+    {
+      "method": "GetHistory",
+      "service": "MarketDataService",
+      "requests_per_minute": 30,
+      "requests_per_second": null,
+      "bottleneck": true,
+      "notes": "Historical data export (ZIP format). CRITICAL BOTTLENECK. Returns large data chunks."
+    },
+    {
+      "method": "GetTradingStatus",
+      "service": "MarketDataService",
+      "requests_per_minute": 600,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Trading session status (open/closed/break)."
+    },
+    {
+      "method": "GetPositions",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Current portfolio positions."
+    },
+    {
+      "method": "GetPortfolio",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Full portfolio summary."
+    },
+    {
+      "method": "GetWithdrawLimits",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Withdrawal limits (available funds)."
+    },
+    {
+      "method": "GetOperations",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Operation history (cursor-based pagination)."
+    },
+    {
+      "method": "GetAccounts",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "List of available trading accounts."
+    },
+    {
+      "method": "GetMarginAttributes",
+      "service": "PortfolioService",
+      "requests_per_minute": 200,
+      "requests_per_second": null,
+      "bottleneck": false,
+      "notes": "Margin requirements and status."
+    }
+  ],
+  "streaming_methods": [
+    {
+      "method": "MarketDataStream",
+      "service": "MarketDataService",
+      "max_concurrent_connections": 32,
+      "max_subscriptions_per_connection": 300,
+      "subscription_types": [
+        "candles",
+        "orderbook",
+        "trades",
+        "last_price",
+        "info (trading status)"
+      ],
+      "notes": "Bidirectional streaming. One connection can multiplex up to 300 subscriptions."
+    },
+    {
+      "method": "OrderStateStream",
+      "service": "OrderService",
+      "max_concurrent_connections": 16,
+      "max_subscriptions_per_connection": null,
+      "subscription_types": [
+        "order state changes"
+      ],
+      "notes": "Server-side streaming. Max 16 concurrent streams per subscription type."
+    },
+    {
+      "method": "TradesStream",
+      "service": "OrderService",
+      "max_concurrent_connections": 16,
+      "max_subscriptions_per_connection": null,
+      "subscription_types": [
+        "trade events"
+      ],
+      "notes": "Server-side streaming. Max 16 concurrent streams."
+    },
+    {
+      "method": "PortfolioStream",
+      "service": "PortfolioService",
+      "max_concurrent_connections": 11,
+      "max_subscriptions_per_connection": null,
+      "subscription_types": [
+        "portfolio changes"
+      ],
+      "notes": "Server-side streaming. Max 11 concurrent streams."
+    },
+    {
+      "method": "PositionsStream",
+      "service": "PortfolioService",
+      "max_concurrent_connections": 11,
+      "max_subscriptions_per_connection": null,
+      "subscription_types": [
+        "position updates"
+      ],
+      "notes": "Server-side streaming. Max 11 concurrent streams."
+    }
+  ],
+  "global_limits": {
+    "description": "Per IP/account limits",
+    "max_total_requests_per_second": 50,
+    "ip_ban_threshold_per_minute": 1000,
+    "notes": "If you exceed 1000 req/min per IP, you may face temporary IP ban or account suspension."
+  },
+  "backoff_strategy": {
+    "error_code": "ResourceExhausted",
+    "grpc_status_code": 8,
+    "sdk_behavior": "Automatic exponential backoff with max retries (configurable)",
+    "recommended_client_strategy": [
+      "1. Use SDK's built-in retry mechanism (DisableResourceExhaustedRetry=false)",
+      "2. Implement per-method rate limiters (token bucket pattern)",
+      "3. Monitor x-ratelimit-remaining headers in responses",
+      "4. Implement circuit breaker for cascading failures"
+    ]
+  },
+  "best_practices": [
+    "Use token bucket rate limiters per method to stay within limits",
+    "Multiplex MarketDataStream subscriptions to avoid connection limit exhaustion",
+    "Use postOrderAsync for high-frequency strategies (600/min vs 15/sec for sync)",
+    "Cache instrument metadata to reduce API calls",
+    "Use streaming APIs instead of polling when possible",
+    "Implement correlation IDs for request tracing",
+    "Monitor rate limit headers and adjust request rate dynamically",
+    "Never send more than 50 requests per second total (hard global limit)"
+  ]
+}

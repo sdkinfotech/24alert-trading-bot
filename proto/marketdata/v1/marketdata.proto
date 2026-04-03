@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+package github.com.24alert.trading.marketdata.v1;
+
+option go_package = "github.com/24alert/trading-bot/gen/go/marketdata/v1";
+
+import "common/v1/types.proto";
+
+service MarketDataService {
+  rpc GetCandles(GetCandlesRequest) returns (GetCandlesResponse);
+  rpc GetOrderbook(GetOrderbookRequest) returns (OrderBook);
+  rpc GetLastPrices(GetLastPricesRequest) returns (GetLastPricesResponse);
+  rpc GetClosePrices(GetClosePricesRequest) returns (GetClosePricesResponse);
+  rpc GetHistory(GetHistoryRequest) returns (stream HistoryEvent);
+  rpc GetTradingStatus(GetTradingStatusRequest) returns (TradingStatus);
+  rpc Subscribe(SubscribeRequest) returns (stream MarketDataEvent);
+}
+
+enum CandleInterval {
+  CANDLE_INTERVAL_UNSPECIFIED = 0;
+  CANDLE_INTERVAL_1MIN = 1;
+  CANDLE_INTERVAL_5MIN = 2;
+  CANDLE_INTERVAL_15MIN = 3;
+  CANDLE_INTERVAL_1H = 4;
+  CANDLE_INTERVAL_4H = 5;
+  CANDLE_INTERVAL_1D = 6;
+  CANDLE_INTERVAL_1W = 7;
+  CANDLE_INTERVAL_1M = 8;
+}
+
+enum SubscriptionType {
+  SUBSCRIPTION_TYPE_UNSPECIFIED = 0;
+  SUBSCRIPTION_TYPE_CANDLES = 1;
+  SUBSCRIPTION_TYPE_ORDERBOOK = 2;
+  SUBSCRIPTION_TYPE_TRADES = 3;
+  SUBSCRIPTION_TYPE_LAST_PRICE = 4;
+  SUBSCRIPTION_TYPE_INFO = 5;
+}
+
+message GetCandlesRequest {
+  string instrument_uid = 1;
+  int64 from_us = 2;        // microseconds since epoch
+  int64 to_us = 3;
+  CandleInterval interval = 4;
+}
+
+message Candle {
+  int64 time_us = 1;
+  github.com.24alert.trading.common.v1.Quotation open = 2;
+  github.com.24alert.trading.common.v1.Quotation high = 3;
+  github.com.24alert.trading.common.v1.Quotation low = 4;
+  github.com.24alert.trading.common.v1.Quotation close = 5;
+  int64 volume = 6;
+}
+
+message GetCandlesResponse {
+  repeated Candle candles = 1;
+}
+
+message GetOrderbookRequest {
+  string instrument_uid = 1;
+  int32 depth = 2;  // 1-50
+}
+
+message OrderBook {
+  string instrument_uid = 1;
+  repeated PriceLevel bids = 2;
+  repeated PriceLevel asks = 3;
+  int64 time_us = 4;
+}
+
+message PriceLevel {
+  github.com.24alert.trading.common.v1.Quotation price = 1;
+  int64 quantity = 2;
+}
+
+message GetLastPricesRequest {
+  repeated string instrument_uids = 1;
+}
+
+message GetLastPricesResponse {
+  repeated LastPrice last_prices = 1;
+}
+
+message LastPrice {
+  string instrument_uid = 1;
+  github.com.24alert.trading.common.v1.Quotation price = 2;
+  int64 time_us = 3;
+}
+
+message GetClosePricesRequest {
+  repeated string instrument_uids = 1;
+}
+
+message GetClosePricesResponse {
+  repeated ClosePrice close_prices = 1;
+}
+
+message ClosePrice {
+  string instrument_uid = 1;
+  github.com.24alert.trading.common.v1.Quotation price = 2;
+  int64 time_us = 3;
+}
+
+message GetHistoryRequest {
+  string instrument_uid = 1;
+  int64 from_us = 2;
+  int64 to_us = 3;
+}
+
+message HistoryEvent {
+  bytes chunk = 1;  // streamed ZIP archive
+}
+
+message GetTradingStatusRequest {
+  string instrument_uid = 1;
+}
+
+message TradingStatus {
+  string instrument_uid = 1;
+  TradingStatusEnum status = 2;
+  bool is_trading_enabled = 3;
+  int64 time_us = 4;
+}
+
+enum TradingStatusEnum {
+  TRADING_STATUS_UNSPECIFIED = 0;
+  TRADING_STATUS_OPEN = 1;
+  TRADING_STATUS_CLOSED = 2;
+  TRADING_STATUS_BREAK = 3;
+}
+
+message SubscribeRequest {
+  repeated MarketDataSubscription subscriptions = 1;
+}
+
+message MarketDataSubscription {
+  string instrument_uid = 1;
+  SubscriptionType subscription_type = 2;
+  CandleInterval interval = 3;  // for candles only
+}
+
+message MarketDataEvent {
+  oneof update {
+    Candle candle = 1;
+    OrderBook orderbook = 2;
+    Trade trade = 3;
+    LastPrice last_price = 4;
+    TradingStatus trading_status = 5;
+  }
+  int64 subscription_id = 6;
+}
+
+message Trade {
+  string instrument_uid = 1;
+  github.com.24alert.trading.common.v1.Quotation price = 2;
+  int64 quantity = 3;
+  github.com.24alert.trading.common.v1.OrderDirection direction = 4;
+  int64 time_us = 5;
+  string trade_id = 6;
+}

@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package github.com.24alert.trading.portfolio.v1;
+
+option go_package = "github.com/24alert/trading-bot/gen/go/portfolio/v1";
+
+import "common/v1/types.proto";
+
+service PortfolioService {
+  rpc GetPositions(GetPositionsRequest) returns (GetPositionsResponse);
+  rpc GetPortfolio(GetPortfolioRequest) returns (Portfolio);
+  rpc GetWithdrawLimits(GetWithdrawLimitsRequest) returns (WithdrawLimits);
+  rpc GetOperations(GetOperationsRequest) returns (GetOperationsResponse);
+  rpc GetAccounts(GetAccountsRequest) returns (GetAccountsResponse);
+  rpc GetMarginAttributes(GetMarginAttributesRequest) returns (MarginAttributes);
+  rpc StreamPortfolio(StreamPortfolioRequest) returns (stream PortfolioEvent);
+  rpc StreamPositions(StreamPositionsRequest) returns (stream PositionsEvent);
+}
+
+message GetPositionsRequest {
+  string account_id = 1;
+}
+
+message GetPositionsResponse {
+  repeated Position positions = 1;
+}
+
+message Position {
+  string instrument_uid = 1;
+  int64 quantity = 2;
+  bool available_for_sale = 3;
+  github.com.24alert.trading.common.v1.Quotation current_price = 4;
+  github.com.24alert.trading.common.v1.MoneyValue pnl = 5;
+  github.com.24alert.trading.common.v1.MoneyValue pnl_percent = 6;
+  github.com.24alert.trading.common.v1.MoneyValue blocked_quantity = 7;
+  github.com.24alert.trading.common.v1.MoneyValue expected_yield = 8;
+  int64 last_update_us = 9;
+}
+
+message GetPortfolioRequest {
+  string account_id = 1;
+}
+
+message Portfolio {
+  string account_id = 1;
+  repeated Position positions = 2;
+  repeated Balance balances = 3;
+  github.com.24alert.trading.common.v1.MoneyValue total_amount_portfolio = 4;
+  int64 timestamp_us = 5;
+}
+
+message Balance {
+  string currency = 1;
+  github.com.24alert.trading.common.v1.Quotation balance = 2;
+  github.com.24alert.trading.common.v1.Quotation blocked = 3;
+  github.com.24alert.trading.common.v1.Quotation free = 4;
+}
+
+message GetWithdrawLimitsRequest {
+  string account_id = 1;
+}
+
+message WithdrawLimits {
+  string account_id = 1;
+  map<string, OperationLimit> money = 2;  // currency -> limit
+  repeated InstrumentPositionLimit securities = 3;
+}
+
+message OperationLimit {
+  github.com.24alert.trading.common.v1.MoneyValue current_limit = 1;
+  github.com.24alert.trading.common.v1.MoneyValue max_limit = 2;
+  int64 updated_at_us = 3;
+}
+
+message InstrumentPositionLimit {
+  string instrument_uid = 1;
+  int64 blocked_lot = 2;
+  int64 blocked_by_order_lot = 3;
+}
+
+message GetOperationsRequest {
+  string account_id = 1;
+  string instrument_uid = 2;  // filter by instrument
+  int64 from_us = 3;
+  int64 to_us = 4;
+  string cursor = 5;           // for pagination
+  int32 limit = 6;
+}
+
+message GetOperationsResponse {
+  repeated Operation operations = 1;
+  string next_cursor = 2;
+}
+
+message Operation {
+  string id = 1;
+  string account_id = 2;
+  string instrument_uid = 3;
+  OperationType operation_type = 4;
+  int64 quantity = 5;
+  github.com.24alert.trading.common.v1.MoneyValue price = 6;
+  github.com.24alert.trading.common.v1.MoneyValue total_amount = 7;
+  int64 executed_at_us = 8;
+  string status = 9;
+}
+
+enum OperationType {
+  OPERATION_TYPE_UNSPECIFIED = 0;
+  OPERATION_TYPE_BUY = 1;
+  OPERATION_TYPE_SELL = 2;
+  OPERATION_TYPE_BUY_CARD = 3;
+  OPERATION_TYPE_REPLENISHMENT = 4;
+  OPERATION_TYPE_WITHDRAWAL = 5;
+  OPERATION_TYPE_COMMISSION = 6;
+  OPERATION_TYPE_COMMISSION_CORRECTION = 7;
+  OPERATION_TYPE_DIVIDEND = 8;
+  OPERATION_TYPE_ACCRUED_INTEREST = 9;
+  OPERATION_TYPE_TAX = 10;
+}
+
+message GetAccountsRequest {
+}
+
+message GetAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message Account {
+  string id = 1;
+  string name = 2;
+  enum AccountType {
+    ACCOUNT_TYPE_UNSPECIFIED = 0;
+    ACCOUNT_TYPE_TINKOFF = 1;
+    ACCOUNT_TYPE_TINKOFF_IIS = 2;
+    ACCOUNT_TYPE_INVEST_BOX = 3;
+  }
+  AccountType account_type = 3;
+  bool access_level = 4;
+}
+
+message GetMarginAttributesRequest {
+  string account_id = 1;
+}
+
+message MarginAttributes {
+  string account_id = 1;
+  github.com.24alert.trading.common.v1.MoneyValue liquid_portfolio = 2;
+  github.com.24alert.trading.common.v1.MoneyValue starting_margin_req = 3;
+  github.com.24alert.trading.common.v1.MoneyValue minimal_margin_req = 4;
+  github.com.24alert.trading.common.v1.MoneyValue funds_sufficiency_level = 5;
+  bool amount_call = 6;
+  int64 timestamp_us = 7;
+}
+
+message StreamPortfolioRequest {
+  string account_id = 1;
+}
+
+message PortfolioEvent {
+  Portfolio portfolio = 1;
+  int64 subscription_id = 2;
+}
+
+message StreamPositionsRequest {
+  string account_id = 1;
+}
+
+message PositionsEvent {
+  GetPositionsResponse positions = 1;
+  int64 subscription_id = 2;
+}

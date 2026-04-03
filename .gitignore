@@ -1,0 +1,58 @@
+# Go
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+bin/
+dist/
+build/
+*.test
+*.out
+*.prof
+go.sum
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Generated code
+gen/
+*.pb.go
+*.pb.gw.go
+
+# Binaries
+cmd/*/main
+24alert
+order-svc
+marketdata-svc
+portfolio-svc
+risk-svc
+gateway
+
+# Config & secrets
+config/*.local.yaml
+.env
+.env.local
+deployments/.env
+sandbox_*.txt
+
+# Docs
+docs/swagger.json
+docs/swagger.yaml
+
+# Logs
+*.log
+logs/
+
+# Temporary
+.tasks/.tmp/
+tmp/
+temp/

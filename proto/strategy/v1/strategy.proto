@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package github.com.24alert.trading.strategy.v1;
+
+option go_package = "github.com/24alert/trading-bot/gen/go/strategy/v1";
+
+import "common/v1/types.proto";
+
+// StrategyService defines the interface for external strategy plugins
+// This is a contract definition only; implementation is provided by external gRPC server
+service StrategyService {
+  rpc Evaluate(github.com.24alert.trading.common.v1.MarketState) returns (github.com.24alert.trading.common.v1.Signal);
+  rpc Configure(github.com.24alert.trading.common.v1.StrategyConfig) returns (ConfigResponse);
+  rpc GetInfo(GetStrategyInfoRequest) returns (github.com.24alert.trading.common.v1.StrategyInfo);
+}
+
+message GetStrategyInfoRequest {
+}
+
+message ConfigResponse {
+  bool success = 1;
+  string message = 2;
+  map<string, string> applied_parameters = 3;
+}

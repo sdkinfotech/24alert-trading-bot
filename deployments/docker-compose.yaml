@@ -1,0 +1,165 @@
+services:
+  order-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: order-svc
+    container_name: 24alert-order-svc
+    ports:
+      - "9001:9001"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9001 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  marketdata-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: marketdata-svc
+    container_name: 24alert-marketdata-svc
+    ports:
+      - "9002:9002"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9002 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  portfolio-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: portfolio-svc
+    container_name: 24alert-portfolio-svc
+    ports:
+      - "9003:9003"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9003 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  risk-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: risk-svc
+    container_name: 24alert-risk-svc
+    ports:
+      - "9004:9004"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    depends_on:
+      portfolio-svc:
+        condition: service_healthy
+      marketdata-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9004 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: gateway
+    container_name: 24alert-gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    depends_on:
+      order-svc:
+        condition: service_healthy
+      marketdata-svc:
+        condition: service_healthy
+      portfolio-svc:
+        condition: service_healthy
+      risk-svc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: 24alert-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+networks:
+  trading-bot-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:

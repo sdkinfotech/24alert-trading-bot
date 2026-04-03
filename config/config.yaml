@@ -1,0 +1,139 @@
+# 24Alert Trading Bot Configuration
+
+# T-Invest API configuration
+tinvest:
+  # For production: invest-public-api.tbank.ru:443
+  # For sandbox: sandbox-invest-public-api.tbank.ru:443
+  endpoint: "sandbox-invest-public-api.tbank.ru:443"
+  
+  # Token from environment variable: TINVEST_TOKEN
+  # token set via env var (DO NOT commit real token!)
+  
+  # Max retries for transient failures
+  max_retries: 3
+  
+  # Automatic retry on rate limit (ResourceExhausted)
+  disable_resource_exhausted_retry: false
+  
+  # Default timeout for API calls (seconds)
+  call_timeout_sec: 30
+  
+  # Sandbox-specific: account ID for testing
+  sandbox_account_id: ""
+
+# Service ports
+services:
+  order_port: 9001
+  marketdata_port: 9002
+  portfolio_port: 9003
+  risk_port: 9004
+  gateway_port: 8080
+
+# Risk management
+risk:
+  # Max position size in lots per instrument
+  max_position_lots: 10
+  
+  # Circuit breaker: number of consecutive failures before halt
+  circuit_breaker_threshold: 5
+  
+  # Circuit breaker cooldown duration (Go duration format: "5m", "1h")
+  circuit_breaker_cooldown: "5m"
+  
+  # Margin call threshold (percentage of initial margin)
+  margin_call_threshold_percent: 80
+  
+  # Check trading session before order placement
+  check_trading_session: true
+
+# Logging configuration
+logging:
+  # Level: debug, info, warn, error
+  level: "info"
+  
+  # Format: json (recommended for production)
+  format: "json"
+  
+  # Output: stdout, file, both
+  output: "stdout"
+  
+  # File path (if output includes file)
+  file_path: "logs/24alert.log"
+  
+  # Include correlation IDs in logs
+  include_correlation_id: true
+
+# Metrics (Prometheus)
+metrics:
+  # Enable Prometheus metrics
+  enabled: true
+  
+  # Metrics endpoint path (usually /metrics)
+  endpoint: "/metrics"
+  
+  # Include detailed histograms (may increase memory usage)
+  detailed_histograms: false
+
+# Rate limiting configuration (per method, requests per minute)
+rate_limits:
+  # Order service
+  post_order: 900        # 15 req/sec * 60
+  post_order_async: 600
+  cancel_order: 100
+  replace_order: 100
+  get_orders: 200
+  get_order_state: 100
+  post_stop_order: 50
+  cancel_stop_order: 50
+  get_stop_orders: 60
+  
+  # Market data service
+  get_candles: 600
+  get_orderbook: 600
+  get_last_prices: 600
+  get_close_prices: 600
+  get_history: 30        # Bottleneck: 30 req/min
+  get_trading_status: 600
+  
+  # Portfolio service
+  get_positions: 200
+  get_portfolio: 200
+  get_withdraw_limits: 200
+  get_operations: 200
+  get_accounts: 200
+  get_margin_attributes: 200
+
+# Market data streaming
+market_data_stream:
+  # Max concurrent subscriptions per stream
+  max_subscriptions: 300
+  
+  # Number of concurrent streams (careful: 32 total limit from T-Invest)
+  max_concurrent_streams: 4
+  
+  # Reconnect strategy on stream failure
+  reconnect_delay_ms: 1000
+  max_reconnect_attempts: 10
+
+# Strategy plugin configuration
+strategy:
+  # gRPC endpoint for external strategy service
+  # Example: "localhost:9010"
+  endpoint: "localhost:9010"
+  
+  # Timeout for strategy evaluation (milliseconds)
+  evaluation_timeout_ms: 1000
+  
+  # Initial configuration (strategy-specific)
+  config: {}
+
+# Feature flags
+features:
+  # Enable order intent validation through risk service
+  enable_risk_validation: true
+  
+  # Enable order journaling (for audit trail)
+  enable_order_journal: true
+  
+  # Enable market data caching
+  enable_md_cache: true

@@ -1,0 +1,16 @@
+# 24Alert Trading Bot Configuration — Sandbox overrides
+
+tinvest:
+  endpoint: "sandbox-invest-public-api.tbank.ru:443"
+  sandbox_account_id: ""   # будет создан при первом запуске
+
+# Для sandbox можно смягчить risk-лимиты
+risk:
+  max_position_lots: 100
+  circuit_breaker_threshold: 20
+  circuit_breaker_cooldown: "1m"
+  check_trading_session: false
+
+logging:
+  level: "debug"
+  format: "text"

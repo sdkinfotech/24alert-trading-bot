@@ -1,0 +1,437 @@
+{
+  "title": "T-Invest API Methods Reference",
+  "version": "1.0",
+  "last_updated": "2026-04-03",
+  "sdk_version": "1.40.1",
+  "go_version": "1.16+",
+  "services": {
+    "OrderService": {
+      "description": "Order placement, management, and execution tracking",
+      "methods": {
+        "PostOrder": {
+          "input": {
+            "account_id": "string (required)",
+            "instrument_uid": "string (required)",
+            "quantity": "int64 (required)",
+            "direction": "BUY | SELL (required)",
+            "client_order_id": "string (required, UUID, max 36 chars, idempotent)",
+            "order_type": "MARKET | LIMIT | BESTPRICE (required)",
+            "price": "Quotation (required for LIMIT)",
+            "execution_type": "SYNC | ASYNC (optional)",
+            "metadata": "map<string,string> (optional)"
+          },
+          "output": {
+            "order_id": "string",
+            "status": "OrderStatus enum",
+            "filled_qty": "int64",
+            "executed_price": "Quotation",
+            "created_at_us": "int64"
+          },
+          "rate_limit": "900 req/min (15 req/sec) SYNC, 600 req/min ASYNC",
+          "gotchas": [
+            "order_id must be unique per account per 30 seconds",
+            "Duplicate order_id within 30s returns error 30057",
+            "BESTPRICE orders may not be available on all instruments",
+            "quantity must be multiple of lot_size"
+          ]
+        },
+        "CancelOrder": {
+          "input": {
+            "account_id": "string (required)",
+            "order_id": "string (required)"
+          },
+          "output": {
+            "order_id": "string",
+            "status": "OrderStatus enum",
+            "cancelled_at_us": "int64"
+          },
+          "rate_limit": "100 req/min",
+          "gotchas": [
+            "Cannot cancel already executed orders",
+            "Returns error 30059 if order already closed"
+          ]
+        },
+        "ReplaceOrder": {
+          "input": {
+            "account_id": "string (required)",
+            "order_id": "string (required, existing order)",
+            "new_client_order_id": "string (required, new UUID)",
+            "quantity": "int64 (new quantity)",
+            "price": "Quotation (new price)"
+          },
+          "output": {
+            "order_id": "string (new order ID)",
+            "status": "OrderStatus enum",
+            "filled_qty": "int64",
+            "executed_price": "Quotation"
+          },
+          "rate_limit": "100 req/min",
+          "notes": "Atomic cancel + post operation"
+        },
+        "GetOrders": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "orders": "repeated OrderState"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "Returns only active (non-filled) orders"
+        },
+        "GetOrderState": {
+          "input": {
+            "account_id": "string (required)",
+            "order_id": "string (required)"
+          },
+          "output": {
+            "order_id": "string",
+            "status": "OrderStatus enum",
+            "requested_qty": "int64",
+            "filled_qty": "int64",
+            "average_price": "Quotation",
+            "fills": "repeated ExecutionInfo"
+          },
+          "rate_limit": "100 req/min",
+          "notes": "Single order status query"
+        },
+        "PostStopOrder": {
+          "input": {
+            "account_id": "string (required)",
+            "instrument_uid": "string (required)",
+            "quantity": "int64 (required)",
+            "direction": "BUY | SELL (required)",
+            "client_order_id": "string (required, UUID)",
+            "stop_type": "STOP_LOSS | TAKE_PROFIT (required)",
+            "stop_price": "Quotation (required)",
+            "order_type": "MARKET | LIMIT (required, for triggered order)",
+            "price": "Quotation (optional, for LIMIT triggered orders)"
+          },
+          "output": {
+            "stop_order_id": "string",
+            "status": "OrderStatus enum",
+            "created_at_us": "int64"
+          },
+          "rate_limit": "50 req/min",
+          "gotchas": [
+            "stop_price triggers on bid/ask, not last traded price",
+            "Stop orders cannot be partially filled",
+            "Expiration defaults to GoodTillCancel"
+          ]
+        },
+        "GetStopOrders": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "stop_orders": "repeated StopOrderState"
+          },
+          "rate_limit": "60 req/min",
+          "notes": "List all active stop orders"
+        }
+      },
+      "streams": {
+        "StreamOrderStates": {
+          "subscription": "account_id",
+          "yields": "OrderStateEvent (on status changes)",
+          "max_connections": 16,
+          "latency": "100-500ms"
+        },
+        "StreamTrades": {
+          "subscription": "account_id",
+          "yields": "TradeEvent (on executions)",
+          "max_connections": 16,
+          "latency": "100-500ms"
+        }
+      }
+    },
+    "MarketDataService": {
+      "description": "Market data queries and streaming",
+      "methods": {
+        "GetCandles": {
+          "input": {
+            "instrument_uid": "string (required)",
+            "from_us": "int64 (required, microseconds since epoch)",
+            "to_us": "int64 (required)",
+            "interval": "enum (1MIN, 5MIN, 15MIN, 1H, 4H, 1D, 1W, 1M)"
+          },
+          "output": {
+            "candles": "repeated Candle"
+          },
+          "rate_limit": "600 req/min",
+          "notes": "Limited to ~6 months historical data per call"
+        },
+        "GetOrderbook": {
+          "input": {
+            "instrument_uid": "string (required)",
+            "depth": "int32 (1-50)"
+          },
+          "output": {
+            "bids": "repeated PriceLevel",
+            "asks": "repeated PriceLevel",
+            "time_us": "int64"
+          },
+          "rate_limit": "600 req/min",
+          "notes": "Order book snapshot at query time"
+        },
+        "GetLastPrices": {
+          "input": {
+            "instrument_uids": "repeated string (required)"
+          },
+          "output": {
+            "last_prices": "repeated LastPrice"
+          },
+          "rate_limit": "600 req/min",
+          "notes": "Batch query for up to 100 instruments"
+        },
+        "GetTradingStatus": {
+          "input": {
+            "instrument_uid": "string (required)"
+          },
+          "output": {
+            "status": "OPEN | CLOSED | BREAK",
+            "is_trading_enabled": "bool"
+          },
+          "rate_limit": "600 req/min",
+          "notes": "Check if instrument is tradable NOW"
+        },
+        "GetHistory": {
+          "input": {
+            "instrument_uid": "string (required)",
+            "from_us": "int64",
+            "to_us": "int64"
+          },
+          "output": {
+            "chunk": "bytes (streamed ZIP archive)"
+          },
+          "rate_limit": "30 req/min (CRITICAL BOTTLENECK)",
+          "notes": "Large export of historical data"
+        }
+      },
+      "streams": {
+        "Subscribe": {
+          "subscription": "list of (instrument_uid, subscription_type, interval)",
+          "subscription_types": [
+            "candles (requires interval: 1MIN, 5MIN, 15MIN, 1H, 4H, 1D, 1W, 1M)",
+            "orderbook (depth is configurable)",
+            "trades",
+            "last_price",
+            "info (trading status)"
+          ],
+          "max_connections": 32,
+          "max_subscriptions_per_connection": 300,
+          "delivery_interval": "100ms",
+          "notes": "Bidirectional stream, multiplex to avoid connection limits"
+        }
+      }
+    },
+    "PortfolioService": {
+      "description": "Portfolio and balance queries",
+      "methods": {
+        "GetPositions": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "positions": "repeated Position"
+          },
+          "rate_limit": "200 req/min",
+          "fields": [
+            "instrument_uid",
+            "quantity",
+            "current_price",
+            "pnl (unrealized P&L)",
+            "pnl_percent",
+            "expected_yield",
+            "available_for_sale"
+          ]
+        },
+        "GetPortfolio": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "positions": "repeated Position",
+            "balances": "repeated Balance (cash by currency)",
+            "total_amount_portfolio": "MoneyValue"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "Aggregated view: positions + cash"
+        },
+        "GetWithdrawLimits": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "money": "map<currency, OperationLimit>",
+            "securities": "repeated InstrumentPositionLimit"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "Available funds for withdrawal or trading"
+        },
+        "GetOperations": {
+          "input": {
+            "account_id": "string (required)",
+            "instrument_uid": "string (optional filter)",
+            "from_us": "int64 (optional)",
+            "to_us": "int64 (optional)",
+            "cursor": "string (for pagination)",
+            "limit": "int32 (default 100)"
+          },
+          "output": {
+            "operations": "repeated Operation",
+            "next_cursor": "string"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "Cursor-based pagination, use next_cursor for large histories"
+        },
+        "GetAccounts": {
+          "input": {},
+          "output": {
+            "accounts": "repeated Account"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "List of all available trading accounts"
+        },
+        "GetMarginAttributes": {
+          "input": {
+            "account_id": "string (required)"
+          },
+          "output": {
+            "liquid_portfolio": "MoneyValue",
+            "starting_margin_req": "MoneyValue",
+            "minimal_margin_req": "MoneyValue",
+            "funds_sufficiency_level": "MoneyValue",
+            "amount_call": "bool"
+          },
+          "rate_limit": "200 req/min",
+          "notes": "Margin requirements and status"
+        }
+      },
+      "streams": {
+        "StreamPortfolio": {
+          "subscription": "account_id",
+          "yields": "PortfolioEvent (on any portfolio change)",
+          "max_connections": 11,
+          "latency": "100-500ms"
+        },
+        "StreamPositions": {
+          "subscription": "account_id",
+          "yields": "PositionsEvent (on position changes)",
+          "max_connections": 11,
+          "latency": "100-500ms"
+        }
+      }
+    },
+    "InstrumentsService": {
+      "description": "Instrument metadata",
+      "methods": {
+        "FindInstrument": {
+          "input": {
+            "query": "string (ticker, FIGI, or name prefix)"
+          },
+          "output": {
+            "instruments": "repeated InstrumentShort"
+          },
+          "notes": "Search across all available instruments"
+        },
+        "GetInstrumentBy": {
+          "input": {
+            "ticker": "string",
+            "figi": "string",
+            "uid": "string"
+          },
+          "output": {
+            "instrument": "InstrumentShort"
+          },
+          "notes": "Provide one of: ticker, figi, or uid"
+        }
+      }
+    }
+  },
+  "data_types": {
+    "Quotation": {
+      "description": "Price with units and nano fractions",
+      "fields": {
+        "units": "int64",
+        "nano": "int32 (0 to 1e9-1)"
+      },
+      "example": "123 units + 456000000 nano = 123.456"
+    },
+    "OrderDirection": {
+      "enum_values": [
+        "ORDER_DIRECTION_UNSPECIFIED (0)",
+        "ORDER_DIRECTION_BUY (1)",
+        "ORDER_DIRECTION_SELL (2)"
+      ]
+    },
+    "OrderStatus": {
+      "enum_values": [
+        "ORDER_STATUS_PENDING_NEW",
+        "ORDER_STATUS_EXECUTED (fully filled)",
+        "ORDER_STATUS_CANCELLED",
+        "ORDER_STATUS_FILLED",
+        "ORDER_STATUS_PARTIALLY_FILLED",
+        "ORDER_STATUS_FAILED"
+      ]
+    }
+  },
+  "error_codes": {
+    "30057": {
+      "message": "Duplicate order_id",
+      "cause": "Same order_id submitted within 30 seconds",
+      "mitigation": "Use UUID for order_id, ensure uniqueness per 30s window"
+    },
+    "30051": {
+      "message": "Margin trading not enabled",
+      "cause": "Trying to sell options or futures without enabled margin",
+      "mitigation": "Enable margin trading on account, check account type"
+    },
+    "30059": {
+      "message": "Cannot cancel order",
+      "cause": "Order already closed, doesn't exist, or not yours",
+      "mitigation": "Verify order exists and is in cancellable state"
+    },
+    "40003": {
+      "message": "Invalid or expired token",
+      "cause": "TINVEST_TOKEN env var is wrong or revoked",
+      "mitigation": "Refresh token from Tinkoff Invest app"
+    }
+  },
+  "sandbox_notes": {
+    "endpoint": "sandbox-invest-public-api.tbank.ru:443",
+    "limitations": [
+      "No real account balance (set via SandboxPayIn)",
+      "No real order execution",
+      "Fake P&L and unrealized gains",
+      "getOperations returns only BUY/SELL, not dividends",
+      "Account closes after 7 days of inactivity",
+      "No realistic slippage or latency"
+    ],
+    "creation_flow": [
+      "1. Call SandboxService.OpenSandboxAccount()",
+      "2. Receive sandbox_account_id",
+      "3. Call SandboxService.SandboxPayIn(account_id, currency, amount) to seed balance",
+      "4. Use account_id in all subsequent calls",
+      "5. Call SandboxService.CloseSandboxAccount() when done"
+    ]
+  },
+  "recommendations": {
+    "for_backend": [
+      "Always use SDK's built-in rate limit retry (DisableResourceExhaustedRetry=false)",
+      "Implement per-method rate limiters to stay well within limits",
+      "Cache instrument metadata (UID → FIGI/Ticker mappings)",
+      "Use MarketDataStream for real-time updates instead of polling",
+      "For high-frequency strategies, use PostOrderAsync (600 req/min) instead of PostOrder (15 req/sec)",
+      "Monitor x-ratelimit-remaining header to detect rate limit pressure",
+      "Implement circuit breaker pattern for cascading failures",
+      "Use correlation IDs in all requests for debugging"
+    ],
+    "for_risk_management": [
+      "Call GetTradingStatus before posting orders to verify session is open",
+      "Check GetWithdrawLimits before order submission for available balance",
+      "Monitor GetMarginAttributes for margin calls (amount_call=true)",
+      "Track GetPositions count to implement position limits",
+      "Use circuit breaker to halt trading on N consecutive failures"
+    ]
+  }
+}
