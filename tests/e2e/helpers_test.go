@@ -313,3 +313,8 @@ func getAccounts() ([]Account, error) {
 func rateLimitPause() {
 	time.Sleep(500 * time.Millisecond)
 }
+
+// CurrentTime returns current UTC time
+func CurrentTime() time.Time {
+	return time.Now().UTC()
+}
