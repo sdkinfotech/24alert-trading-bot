@@ -38,6 +38,7 @@ cmd/*/main
 
 # Config & secrets
 config/*.local.yaml
+config/remote_write_password
 .env
 .env.local
 deployments/.env

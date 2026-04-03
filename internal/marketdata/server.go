@@ -10,6 +10,7 @@ import (
 
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 )
 
@@ -44,6 +45,14 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger) error 
 	reflection.Register(grpcServer)
 
 	logger.Info("MarketData gRPC server listening", "addr", addr)
+
+	metricsPort := cfg.Services.MarketDataPort + 100
+	go func() {
+		logger.Info("MarketData metrics server listening", "port", metricsPort)
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("MarketData metrics server error", "error", err)
+		}
+	}()
 
 	go func() {
 		if err := sm.Listen(ctx); err != nil && ctx.Err() == nil {

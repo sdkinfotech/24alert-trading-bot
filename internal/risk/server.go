@@ -12,6 +12,7 @@ import (
 	"github.com/24alert/trading-bot/internal/risk/checker"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 // Run initialises the risk service and starts the gRPC server.
@@ -63,6 +64,14 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger) error 
 	reflection.Register(grpcServer)
 
 	logger.Info("Risk gRPC server listening", "addr", addr)
+
+	metricsPort := cfg.Services.RiskPort + 100
+	go func() {
+		logger.Info("Risk metrics server listening", "port", metricsPort)
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("Risk metrics server error", "error", err)
+		}
+	}()
 
 	go func() {
 		<-ctx.Done()

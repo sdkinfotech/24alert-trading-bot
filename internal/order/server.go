@@ -10,6 +10,7 @@ import (
 
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 )
 
@@ -42,6 +43,14 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger) error 
 	reflection.Register(grpcServer)
 
 	logger.Info("Order gRPC server listening", "addr", addr)
+
+	metricsPort := cfg.Services.OrderPort + 100
+	go func() {
+		logger.Info("Order metrics server listening", "port", metricsPort)
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("Order metrics server error", "error", err)
+		}
+	}()
 
 	// Start background streams if a sandbox account is configured.
 	if acct := cfg.TInvest.SandboxAccountID; acct != "" {

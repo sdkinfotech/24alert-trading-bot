@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  external_labels:
+    project: "24alert"
+    environment: "production"
+
+scrape_configs:
+  - job_name: "24alert-gateway"
+    static_configs:
+      - targets: ["gateway:8080"]
+    metrics_path: /metrics
+
+  - job_name: "24alert-order-svc"
+    static_configs:
+      - targets: ["order-svc:9101"]
+    metrics_path: /metrics
+
+  - job_name: "24alert-marketdata-svc"
+    static_configs:
+      - targets: ["marketdata-svc:9102"]
+    metrics_path: /metrics
+
+  - job_name: "24alert-portfolio-svc"
+    static_configs:
+      - targets: ["portfolio-svc:9103"]
+    metrics_path: /metrics
+
+  - job_name: "24alert-risk-svc"
+    static_configs:
+      - targets: ["risk-svc:9104"]
+    metrics_path: /metrics
+
+# Remote write to central Prometheus on monitoring server.
+# Credentials configured via basic_auth_password_file or inline.
+# Update the URL and password before deploying.
+remote_write:
+  - url: "http://213.171.27.217:9191/api/v1/write"
+    basic_auth:
+      username: "24alert"
+      password_file: /etc/prometheus/remote_write_password

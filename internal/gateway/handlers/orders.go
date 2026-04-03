@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 // OrderResult is the gateway-level representation of an order placement result.
@@ -95,11 +97,17 @@ func (h *OrderHandlers) PostOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	result, err := h.svc.PostOrder(r.Context(), req.AccountID, req.InstrumentUID, req.Quantity, req.Direction, req.OrderType, req.Price)
+	elapsed := time.Since(start).Seconds()
+
+	metrics.OrderLatency.WithLabelValues(req.Direction, req.OrderType).Observe(elapsed)
 	if err != nil {
+		metrics.OrderErrorsTotal.WithLabelValues(req.Direction, req.OrderType).Inc()
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	metrics.OrdersTotal.WithLabelValues(req.Direction, req.OrderType, result.ExecutionStatus).Inc()
 	respondJSON(w, http.StatusCreated, result)
 }
 

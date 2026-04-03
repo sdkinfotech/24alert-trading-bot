@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 // RiskCheckResult is the gateway-level risk check result.
@@ -49,6 +51,11 @@ func (h *RiskHandlers) GetStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if status.CircuitBreakerTripped {
+		metrics.CircuitBreakerState.Set(1)
+	} else {
+		metrics.CircuitBreakerState.Set(0)
 	}
 	respondJSON(w, http.StatusOK, status)
 }

@@ -8,6 +8,8 @@ services:
     container_name: 24alert-order-svc
     ports:
       - "9001:9001"
+    expose:
+      - "9101"
     env_file:
       - .env
     environment:
@@ -34,6 +36,8 @@ services:
     container_name: 24alert-marketdata-svc
     ports:
       - "9002:9002"
+    expose:
+      - "9102"
     env_file:
       - .env
     environment:
@@ -60,6 +64,8 @@ services:
     container_name: 24alert-portfolio-svc
     ports:
       - "9003:9003"
+    expose:
+      - "9103"
     env_file:
       - .env
     environment:
@@ -86,6 +92,8 @@ services:
     container_name: 24alert-risk-svc
     ports:
       - "9004:9004"
+    expose:
+      - "9104"
     env_file:
       - .env
     environment:
@@ -144,13 +152,30 @@ services:
       start_period: 10s
 
   prometheus:
-    image: prom/prometheus:v2.51.0
-    container_name: 24alert-prometheus
+    image: prom/prometheus:v3.4.0
+    container_name: 24alert-prometheus-agent
+    command:
+      - "--enable-feature=agent"
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.agent.path=/prometheus"
     ports:
       - "9090:9090"
     volumes:
-      - ../config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ../config/prometheus-agent.yaml:/etc/prometheus/prometheus.yml:ro
+      - ../config/remote_write_password:/etc/prometheus/remote_write_password:ro
       - prometheus-data:/prometheus
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:3.5.0
+    container_name: 24alert-promtail
+    volumes:
+      - ../config/promtail.yaml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - trading-bot-net
     restart: unless-stopped

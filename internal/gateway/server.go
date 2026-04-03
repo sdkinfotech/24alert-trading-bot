@@ -9,12 +9,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
 
 	_ "github.com/24alert/trading-bot/docs"
 	"github.com/24alert/trading-bot/internal/gateway/handlers"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 // Services groups all backend service implementations the gateway depends on.
@@ -50,8 +52,10 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger, svcs S
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(requestLogger(logger))
+	r.Use(metrics.ChiMiddleware)
 
 	r.Get("/health", healthHandler)
+	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/swagger/*", httpSwagger.WrapHandler)
 
 	handlers.NewOrderHandlers(svcs.Orders).Routes(r)

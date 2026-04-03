@@ -1,0 +1,468 @@
+{
+  "uid": "24alert-trading-bot",
+  "title": "24alert Trading Bot",
+  "tags": ["24alert", "trading"],
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(up{project=\"24alert\"}, job)",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "API Overview",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=~\"$job\"}[5m]))",
+          "legendFormat": "Total RPS"
+        },
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=~\"$job\"}[5m])) by (path)",
+          "legendFormat": "{{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate (4xx / 5xx)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": { "fillOpacity": 10 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=~\"$job\",status=~\"4..\"}[5m])) / sum(rate(alert24_http_requests_total{job=~\"$job\"}[5m]))",
+          "legendFormat": "4xx rate"
+        },
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=~\"$job\",status=~\"5..\"}[5m])) / sum(rate(alert24_http_requests_total{job=~\"$job\"}[5m]))",
+          "legendFormat": "5xx rate"
+        }
+      ]
+    },
+    {
+      "title": "Latency p50 / p95 / p99",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "fillOpacity": 5 }
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(alert24_http_request_duration_seconds_bucket{job=~\"$job\"}[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(alert24_http_request_duration_seconds_bucket{job=~\"$job\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(alert24_http_request_duration_seconds_bucket{job=~\"$job\"}[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "API Availability",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "collapsed": false
+    },
+    {
+      "title": "Service Up/Down",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "up{job=~\"24alert.*\"}",
+          "legendFormat": "{{ job }}"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "none",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "Uptime (30d)",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.99 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "avg_over_time(up{job=\"24alert-gateway\"}[30d])",
+          "legendFormat": "Gateway"
+        }
+      ]
+    },
+    {
+      "title": "T-Invest Integration",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "collapsed": false
+    },
+    {
+      "title": "T-Invest Request Rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_tinvest_requests_total{job=~\"$job\"}[5m])) by (method)",
+          "legendFormat": "{{ method }}"
+        }
+      ]
+    },
+    {
+      "title": "T-Invest Error Rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_tinvest_errors_total{job=~\"$job\"}[5m])) by (method, error_type)",
+          "legendFormat": "{{ method }} ({{ error_type }})"
+        }
+      ]
+    },
+    {
+      "title": "T-Invest Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(alert24_tinvest_request_duration_seconds_bucket{job=~\"$job\"}[5m])) by (le, method))",
+          "legendFormat": "p95 {{ method }}"
+        }
+      ]
+    },
+    {
+      "title": "Orders & Trades",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false
+    },
+    {
+      "title": "Order Rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_trading_orders_total{job=~\"$job\"}[5m])) by (direction)",
+          "legendFormat": "{{ direction }}"
+        }
+      ]
+    },
+    {
+      "title": "Order Errors",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 10 },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_trading_order_errors_total{job=~\"$job\"}[5m])) by (direction, order_type)",
+          "legendFormat": "{{ direction }} {{ order_type }}"
+        }
+      ]
+    },
+    {
+      "title": "Order Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 24 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(alert24_trading_order_latency_seconds_bucket{job=~\"$job\"}[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(alert24_trading_order_latency_seconds_bucket{job=~\"$job\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "title": "Market Data",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "title": "Market Data Update Rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 32 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_marketdata_updates_total{job=~\"$job\"}[5m])) by (type)",
+          "legendFormat": "{{ type }}"
+        }
+      ]
+    },
+    {
+      "title": "Market Data Staleness",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 32 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 300 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "alert24_marketdata_staleness_seconds{job=~\"$job\"}",
+          "legendFormat": "{{ instrument }}"
+        }
+      ]
+    },
+    {
+      "title": "Risk Management",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "collapsed": false
+    },
+    {
+      "title": "Circuit Breaker State",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 40 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "CLOSED", "color": "green" }, "1": { "text": "OPEN", "color": "red" } } }
+          ]
+        }
+      },
+      "targets": [
+        {
+          "expr": "alert24_risk_circuit_breaker_state",
+          "legendFormat": "Circuit Breaker"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "graphMode": "none",
+        "colorMode": "background"
+      }
+    },
+    {
+      "title": "Risk Checks",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 40 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_risk_checks_total{job=~\"$job\"}[5m])) by (result)",
+          "legendFormat": "{{ result }}"
+        }
+      ]
+    },
+    {
+      "title": "Go Runtime",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "Process Memory (RSS)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 46 },
+          "fieldConfig": {
+            "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }
+          },
+          "targets": [
+            {
+              "expr": "process_resident_memory_bytes{job=~\"24alert.*\"}",
+              "legendFormat": "{{ job }}"
+            }
+          ]
+        },
+        {
+          "title": "Go Goroutines",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 46 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
+          },
+          "targets": [
+            {
+              "expr": "go_goroutines{job=~\"24alert.*\"}",
+              "legendFormat": "{{ job }}"
+            }
+          ]
+        },
+        {
+          "title": "GC Duration",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 46 },
+          "fieldConfig": {
+            "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
+          },
+          "targets": [
+            {
+              "expr": "rate(go_gc_duration_seconds_sum{job=~\"24alert.*\"}[5m])",
+              "legendFormat": "{{ job }}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Logs (Loki)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "collapsed": true,
+      "panels": [
+        {
+          "title": "Recent Logs",
+          "type": "logs",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 54 },
+          "targets": [
+            {
+              "expr": "{job=\"24alert\"}",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "enableLogDetails": true
+          }
+        },
+        {
+          "title": "Error Logs",
+          "type": "logs",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 64 },
+          "targets": [
+            {
+              "expr": "{job=\"24alert\"} |~ \"(?i)(error|panic|fatal)\"",
+              "legendFormat": ""
+            }
+          ],
+          "options": {
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "enableLogDetails": true
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true
+}

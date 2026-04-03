@@ -10,6 +10,7 @@ import (
 
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 )
 
@@ -41,6 +42,14 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger) error 
 	reflection.Register(grpcServer)
 
 	logger.Info("Portfolio gRPC server listening", "addr", addr)
+
+	metricsPort := cfg.Services.PortfolioPort + 100
+	go func() {
+		logger.Info("Portfolio metrics server listening", "port", metricsPort)
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("Portfolio metrics server error", "error", err)
+		}
+	}()
 
 	if acct := cfg.TInvest.SandboxAccountID; acct != "" {
 		accounts := []string{acct}

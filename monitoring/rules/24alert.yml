@@ -1,0 +1,90 @@
+groups:
+  - name: 24alert-api
+    rules:
+      - alert: 24alert_HighErrorRate
+        expr: >
+          (
+            sum(rate(alert24_http_requests_total{job=~"24alert.*",status=~"5.."}[5m]))
+            /
+            sum(rate(alert24_http_requests_total{job=~"24alert.*"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert HTTP 5xx error rate above 5%"
+          description: "5xx error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: 24alert_HighLatency
+        expr: >
+          histogram_quantile(0.95,
+            sum(rate(alert24_http_request_duration_seconds_bucket{job=~"24alert.*"}[5m])) by (le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert API p95 latency above 2s"
+          description: "p95 latency is {{ $value | humanizeDuration }}."
+
+      - alert: 24alert_ServiceDown
+        expr: up{job=~"24alert.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 2 minutes."
+
+  - name: 24alert-tinvest
+    rules:
+      - alert: 24alert_TInvestErrors
+        expr: >
+          sum(rate(alert24_tinvest_errors_total{job=~"24alert.*"}[5m])) * 300 > 10
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert T-Invest API errors above 10 in 5 min"
+          description: "T-Invest upstream error rate: {{ $value | humanize }} errors/5min."
+
+      - alert: 24alert_MarketDataStale
+        expr: alert24_marketdata_staleness_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert market data stale for {{ $labels.instrument }}"
+          description: "Instrument {{ $labels.instrument }} has not received an update for {{ $value | humanizeDuration }}."
+
+  - name: 24alert-risk
+    rules:
+      - alert: 24alert_CircuitBreakerOpen
+        expr: alert24_risk_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert circuit breaker is OPEN"
+          description: "The trading circuit breaker has tripped. All orders may be blocked."
+
+      - alert: 24alert_OrderFailures
+        expr: >
+          (
+            sum(rate(alert24_trading_order_errors_total{job=~"24alert.*"}[5m]))
+            /
+            (sum(rate(alert24_trading_orders_total{job=~"24alert.*"}[5m])) + sum(rate(alert24_trading_order_errors_total{job=~"24alert.*"}[5m])))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert order failure rate above 5%"
+          description: "Order failure rate is {{ $value | humanizePercentage }} over the last 5 minutes."

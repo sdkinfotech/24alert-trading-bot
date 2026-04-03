@@ -1,7 +1,7 @@
 .PHONY: help proto-gen build build-all test lint ci-check ci-test clean run-all fmt install-tools \
-       docker-build docker-up docker-down docker-logs
+       docker-build docker-up docker-down docker-logs docker-monitoring-up docker-monitoring-down
 
-COMPOSE := docker compose -f deployments/docker-compose.yaml
+COMPOSE := docker compose -p 24alert -f deployments/docker-compose.yaml
 
 help:
 	@echo "24Alert Trading Bot - Make targets"
@@ -105,3 +105,12 @@ docker-down:
 
 docker-logs:
 	$(COMPOSE) logs -f
+
+docker-monitoring-up:
+	@echo "Starting services with monitoring..."
+	$(COMPOSE) --profile monitoring up -d
+	@echo "Services + Prometheus Agent + Promtail started!"
+
+docker-monitoring-down:
+	@echo "Stopping monitoring..."
+	$(COMPOSE) --profile monitoring down
