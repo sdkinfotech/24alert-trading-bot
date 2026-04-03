@@ -131,11 +131,56 @@ ci-check: lint test build-all
 ### 6. Handoff
 
 Создай `.tasks/TASK-004/backend/handoff.md`:
-- ✅ Все тесты пройдены
-- ✅ Linting пройден (0 errors)
-- ✅ Код компилируется
-- ✅ Build script готов
-- ✅ Makefile targets добавлены
-- Корректировки для DevOps: `make ci-check` должна быть первым шагом в workflow
 
-**Успех**: `make ci-check` выполняется без ошибок.
+```markdown
+# Handoff: Backend → TASK-004
+
+## Статус
+DONE
+
+## Что сделано
+- ✅ Все тесты пройдены (go test -v -cover ./...)
+- ✅ Linting пройден (golangci-lint run ./..., 0 errors)
+- ✅ Код компилируется все 5 сервисов (gateway, order-svc, marketdata-svc, portfolio-svc, risk-svc)
+- ✅ Build script создан (scripts/ci-test.sh)
+- ✅ Makefile targets добавлены (test, lint, build-all, ci-check)
+- ✅ Coverage >= 70%
+
+## Артефакты
+- Файлы: .golangci.yml, scripts/ci-test.sh, updated Makefile
+- Коммиты: [commit hashes for test additions/linting setup]
+
+## Корректировки для следующей роли (DevOps)
+`make ci-check` должна быть первым шагом в GitHub Actions workflow. Команда успешно выполняется за < 2 минуты на Ubuntu.
+
+## Блокеры
+НЕТ
+```
+
+---
+
+## ✅ Успешное завершение
+
+Когда handoff готов → **передаёшь задачу DevOps'у**:
+
+**Следующий шаг**:
+- Backend done ✅
+- **→ DevOps начинает** (`.tasks/TASK-004/devops/prompt.md`)
+
+**DevOps будет**:
+- Создавать GitHub Actions workflow
+- Настраивать секреты
+- Писать deploy скрипты
+- Использовать твой `make ci-check` как first step
+
+---
+
+## 📋 Чек-лист перед handoff
+
+- [ ] `go test -v -cover ./...` проходит с coverage >= 70%
+- [ ] `golangci-lint run ./...` возвращает 0 ошибок
+- [ ] `make ci-check` выполняется полностью без ошибок
+- [ ] `scripts/ci-test.sh` исполняемый и работает
+- [ ] Все файлы закоммичены (`.golangci.yml`, script, Makefile обновлён)
+- [ ] handoff.md написан с указанием корректировок для DevOps
+- [ ] Git push на origin main
