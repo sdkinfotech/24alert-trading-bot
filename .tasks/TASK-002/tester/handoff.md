@@ -4,7 +4,7 @@
 DONE (с замечаниями)
 
 ## Резюме
-После доработок DevOps + бэкенда проведён полный повторный code-review + unit-тесты + static analysis. Ключевые блокеры из первого прогона **исправлены**: gateway wired, unit-тесты написаны, Swagger добавлен, .env создан с sandbox/prod токенами. Интеграционное тестирование через sandbox API **не проводилось** (требует ручного запуска Docker + реальное подключение к T-Invest sandbox — это верифицируемо только в runtime). Все автоматизированные проверки пройдены.
+После доработок DevOps + бэкенда проведены 3 прогона тестирования. Все критические и major баги из первого прогона **исправлены**. Последний прогон DevOps дополнительно закрыл BUG-011 (prometheus.yaml) и BUG-012 (Makefile build без proto-gen), обновил docker-compose для проброса sandbox/prod токенов. Gateway wired, unit-тесты написаны, Swagger добавлен, .env создан с sandbox/prod ключами. Интеграционное тестирование через sandbox API **не проводилось** (требует Docker build + реальное подключение к T-Invest sandbox). Все автоматизированные проверки пройдены.
 
 ---
 
@@ -209,6 +209,14 @@ DONE (с замечаниями)
 | BUG-006 | MAJOR | Нет nil-guard | **FIXED** (Services.Validate()) |
 | BUG-007 | MINOR | Config.Load() требует токен | **FIXED** |
 | BUG-010 | MAJOR | Swagger не реализован | **FIXED** (docs/swagger.go + route) |
+| BUG-011 | MEDIUM | prometheus.yaml отсутствует | **FIXED** (DevOps прогон 3: config/prometheus.yaml создан) |
+| BUG-012 | MINOR | Makefile build зависит от proto-gen | **FIXED** (DevOps прогон 3: `build` самостоятельный, `build-all` = proto-gen + build) |
+
+### Дополнительные изменения DevOps (прогон 3)
+
+- **docker-compose.yaml**: все 5 сервисов получают `TINVEST_SANDBOX`, `TINVEST_SANDBOX_TOKEN`, `TINVEST_PROD_TOKEN` через environment (ранее только `LOG_LEVEL`)
+- **config/prometheus.yaml**: scrape_interval 15s, jobs: gateway:8080, order-svc:9001
+  - **Замечание**: покрывает 2 из 5 сервисов. Отсутствуют jobs для marketdata-svc:9002, portfolio-svc:9003, risk-svc:9004
 
 ### Открытые (не критичные)
 
@@ -216,11 +224,10 @@ DONE (с замечаниями)
 |----|----------|----------|
 | BUG-008 | MINOR | Rate limiter lock contention |
 | BUG-009 | MINOR | CLI printResult fallback |
-| BUG-011 | MEDIUM | prometheus.yaml отсутствует |
-| BUG-012 | MINOR | Makefile build зависит от proto-gen |
 | BUG-013 | MINOR | Stream goroutines без WaitGroup |
 | BUG-014 | MINOR | Risk checkers = stubs (always pass) |
 | BUG-015 | MINOR | floatToQuotation() в adapter — упрощённая, дублирует pkg/types |
+| BUG-016 | MINOR | prometheus.yaml — неполное покрытие (2/5 сервисов) |
 
 ---
 
@@ -245,10 +252,10 @@ DONE (с замечаниями)
 1. **Runtime e2e тестирование**: Gateway wired корректно, sandbox токен задан. Рекомендуется ручной прогон `make docker-up` + curl smoke tests для финальной верификации.
 2. **Risk stubs (BUG-014)**: Все risk checkers — заглушки. Для production нужно заменить `StubPortfolioQuerier` / `StubMarketDataQuerier` на реальные адаптеры к portfolio-svc / marketdata-svc.
 3. **Дублирование floatToQuotation (BUG-015)**: В `adapter/order_adapter.go` дублирована конверсия — использовать `pkg/types.Float64ToQuotation()`.
-4. **prometheus.yaml (BUG-011)**: Файл отсутствует, monitoring profile в docker-compose упадёт.
+4. **prometheus.yaml (BUG-016)**: Файл создан, но покрывает 2/5 сервисов (нет marketdata, portfolio, risk).
 5. **gRPC серверы (BUG-005)**: По-прежнему не регистрируют proto-обработчики. Архитектура — монолит через interfaces, не реальные микросервисы. Техлиду решить, ОК ли это для Phase 1.
 6. **Swagger response schemas**: Минимальные — рекомендуется расширить.
-7. **Открытые MINOR баги**: BUG-008, BUG-009, BUG-012, BUG-013 — не блокеры, но стоит запланировать fix.
+7. **Открытые MINOR баги**: BUG-008, BUG-009, BUG-013 — не блокеры, но стоит запланировать fix.
 
 ## Блокеры
 **НЕТ** — все критические и major баги исправлены. Проект готов для передачи техлиду.
