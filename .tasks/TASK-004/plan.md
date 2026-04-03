@@ -1,100 +1,249 @@
-# План: TASK-004 — CI/CD Пайплайн (GitHub Actions)
+# Plan: TASK-004 — CI/CD Pipeline (GitHub Actions)
 
-## Цель
-Настроить полностью автоматизированный GitHub Actions workflow, который деплоит изменения на production-сервер при каждом push в main branch.
+**Date Created**: 2026-04-03  
+**Created by**: Planner  
+**Status**: Ready to Execute
 
-## Scope / Out of scope
+---
 
-### In scope
-- GitHub Actions workflow (`.github/workflows/deploy.yml`)
-- Docker build и push на Docker Hub
-- SSH деплой на srv03-cloud с deploy key
-- Pre-deployment: тесты, linting, compile check
-- Post-deployment: health checks, smoke tests
-- Уведомления в Slack при успехе/ошибке
-- Логирование деплоев на сервере (`/var/log/24alert-deploy.log`)
-- Rollback скрипт при критических ошибках
+## Goal (1 Sentence)
 
-### Out of scope
-- Kubernetes / Helm
-- Multi-environment (staging, dev) — будущее
-- Кэширование Docker слоёв (базовая версия)
-- Метрики и детальный мониторинг
+Полностью автоматизированный GitHub Actions workflow для zero-click deployment: тесты → Docker build → production deploy → health checks → rollback on failure.
 
-## Порядок ролей
+---
+
+## Scope & Out of Scope
+
+### In Scope
+- ✅ GitHub Actions workflow (.github/workflows/deploy.yml)
+- ✅ Testing pipeline (go test, golangci-lint, coverage)
+- ✅ Docker build & push to registry
+- ✅ SSH deployment to srv03-cloud
+- ✅ Health checks & validation
+- ✅ Rollback mechanism
+- ✅ Slack notifications
+- ✅ GitHub Secrets management
+- ✅ Makefile CI targets (local simulation)
+
+### Out of Scope
+- ❌ Kubernetes (→ TASK-005)
+- ❌ Multi-environment branching (v2 feature)
+- ❌ Canary/Blue-Green deployment (→ TASK-005)
+- ❌ Private Docker registry (use GitHub Packages)
+- ❌ GitHub Actions cost optimization
+
+---
+
+## Role Execution Order & Dependencies
 
 ```
-Планировщик → Backend (CI config) → DevOps (GitHub Actions) → Tester (e2e) → Tech-lead (review)
+Backend (1 day)
+    ↓ — creates Makefile targets, test config
+DevOps (2 days)
+    ↓ — creates workflow, deploy scripts, secrets setup
+Tester (1 day)
+    ↓ — validates e2e flow, rollback, notifications
+Tech-Lead (0.5 day)
+    ↓ — security review, production readiness
 ```
 
-| Роль | Промпт | Что делает | Когда |
-|------|--------|-----------|-------|
-| **Планировщик** | plan.md (этот файл) | Декомпозиция, архитектура, зависимости | Первый |
-| **Backend** | backend/prompt.md | Добавить тесты, lint config, build script | День 1 |
-| **DevOps** | devops/prompt.md | GitHub Actions workflow, Deploy key, scripts | День 2 |
-| **Tester** | tester/prompt.md | End-to-end тесты деплоя, rollback tests | День 3 |
-| **Tech-lead** | tech-lead/prompt.md | Review workflow, security, best practices | День 4 |
+**Critical Path**: Backend → DevOps → Tester → Tech-Lead  
+**No parallel tracks** (each depends on previous)
 
-## Архитектура CI/CD
+---
 
-```
-git push origin main
-         ↓
-GitHub (webhook trigger)
-         ↓
-GitHub Actions (4 job'а):
-  1. [test] Go build, lint, tests
-  2. [build] Docker build & push
-  3. [deploy] SSH to server, git pull, docker-compose up
-  4. [validate] Health checks, smoke tests
-         ↓
-✓ Success: Slack notification
-✗ Failure: Slack + auto-rollback
-         ↓
-Production live
-```
+## Role Assignments & Prompts
 
-## Риски
+### 1️⃣ Backend (1 day)
+**File**: `.tasks/TASK-004/backend/prompt.md`
 
-| Риск | Вероятность | Влияние | Митигация |
-|------|------------|---------|----------|
-| Deploy key скомпрометирован | LOW | CRITICAL | Rotate регулярно, restrict permissions |
-| Docker push fails (Docker Hub down) | MEDIUM | MEDIUM | Fallback to local build |
-| SSH timeout к серверу | MEDIUM | HIGH | Retry logic + timeout settings |
-| Health check false positive | MEDIUM | MEDIUM | Multi-check validation |
-| Production goes down (bug) | MEDIUM | CRITICAL | Automated rollback to previous version |
+**What to deliver**:
+- `go test -v -cover ./...` in GitHub Actions
+- `golangci-lint` configuration (.golangci.yml)
+- `Makefile` targets: `ci-test`, `ci-check`, `ci-build`
+- `scripts/ci-test.sh` (local test runner)
+- Code coverage threshold: 70% minimum (enforced in workflow)
+
+**Success Criteria**:
+- ✅ All unit tests pass
+- ✅ Coverage >= 70%
+- ✅ Linting clean (no errors/warnings)
+- ✅ Makefile targets work locally
+- ✅ Handoff specifies how to run tests locally
+
+### 2️⃣ DevOps (2 days)
+**File**: `.tasks/TASK-004/devops/prompt.md`
+
+**What to deliver**:
+- `.github/workflows/deploy.yml` (complete workflow YAML)
+- `scripts/deploy-prod.sh` (deployment script for srv03-cloud)
+- `scripts/rollback-prod.sh` (rollback script)
+- GitHub Secrets setup documentation
+- Timeout & retry logic
+- Health check curl commands
+- `.github/DEPLOYMENT.md` (runbook for troubleshooting)
+
+**Success Criteria**:
+- ✅ Workflow triggers on `push main`
+- ✅ Tests run → pass before build
+- ✅ Docker images build and push successfully
+- ✅ SSH deploy completes < 2 minutes
+- ✅ Health check validates all services
+- ✅ Rollback tested manually (simulated failure → recovery)
+- ✅ Slack webhook sends notifications
+- ✅ No secrets in logs
+
+### 3️⃣ Tester (1 day)
+**File**: `.tasks/TASK-004/tester/prompt.md`
+
+**What to validate**:
+- E2E test: push commit → workflow runs → deploy succeeds
+- Smoke tests: API endpoints respond (200 OK)
+- Rollback test: simulate deploy failure → previous version restored
+- Slack notification test: check message format & webhook timing
+- Log validation: no tokens/secrets leaked
+
+**Test Cases** (10+):
+1. ✅ Push to main triggers workflow
+2. ✅ Tests run and pass
+3. ✅ Code coverage computed
+4. ✅ Docker images built
+5. ✅ Images tagged correctly
+6. ✅ Deploy via SSH succeeds
+7. ✅ All 5 services healthy after deploy
+8. ✅ Rollback on simulated failure
+9. ✅ Slack notification sent
+10. ✅ No secrets visible in logs
+
+**Success Criteria**:
+- ✅ All 10+ tests pass
+- ✅ E2E workflow executes end-to-end (push → prod)
+- ✅ Handoff specifies test commands
+
+### 4️⃣ Tech-Lead (0.5 day)
+**File**: `.tasks/TASK-004/tech-lead/prompt.md`
+
+**What to review**:
+- Security: no hardcoded secrets, GitHub Secrets best practices
+- Best practices: idempotency, timeout/retry logic, error handling
+- Workflow structure: clarity, maintainability
+- Deployment strategy: safety, rollback mechanism
+- Documentation: clarity for DevOps on-call
+
+**Sign-off criteria**:
+- ✅ No security risks
+- ✅ Idempotent deployment (deploy twice = same state)
+- ✅ Timeout logic sound (< 10 min total)
+- ✅ Rollback reliable
+- ✅ Documentation complete
+
+---
+
+## Key Technical Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| GitHub Actions (not GitLab CI, Jenkins) | Free, integrated with GitHub, good matrix support |
+| Docker Hub registry | Free tier, simplicity (vs self-hosted) |
+| SSH key auth (not token) | More secure for deploy key (rotatable) |
+| Health check = HTTP GET /health | Simple, fast validation |
+| Rollback = restart previous image | Atomic, reliable (vs complex state management) |
+| Slack webhook (not email) | Real-time, visible to team |
+| Makefile CI targets | Local dev → CI parity (can test locally) |
+
+---
+
+## Risks & Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|---|---|---|
+| GitHub Actions quota exceeded | LOW | Deploy blocked | Monitor usage, use self-hosted runner if needed |
+| SSH timeout to srv03-cloud | MEDIUM | Deploy fails, manual intervention | 5 min timeout, retry logic, Slack alert + docs |
+| Deploy key compromised | MEDIUM | Security breach | Key rotation weekly, GitHub log audit monthly |
+| Health check false positive | MEDIUM | Rollback on bad health | Multiple endpoints, verbose logging, retry logic |
+| Previous version unreachable | LOW | Rollback fails, manual recovery | Keep 2 stable images tagged, docs for manual recovery |
+| Slack webhook expires | LOW | Notifications silent | Test webhook monthly, document renewal process |
+| Network partition mid-deploy | LOW | Inconsistent state | Idempotent scripts, state file validation |
+| Docker image push fails | MEDIUM | Deploy skipped, undetected | Push retry logic, explicit error handling |
+
+---
 
 ## Timeline
 
-| Фаза | Роль | Время | Задача |
-|------|------|-------|--------|
-| 1 | Backend | 1 день | Добавить `go test`, `golangci-lint`, build script |
-| 2 | DevOps | 1 день | Создать GitHub Actions workflow |
-| 3 | DevOps | 1 день | Настроить GitHub Secrets, Deploy key |
-| 4 | Tester | 1 день | Тесты деплоя, rollback, e2e |
-| 5 | Tech-lead | 0.5 дня | Review, security checklist, sign-off |
-| **Total** | | **4-5 дней** | |
+| Phase | Owner | Days | Deliverable | Notes |
+|-------|-------|------|---|---|
+| Backend | Backend | 1 | Makefile + test config | Can start immediately |
+| DevOps | DevOps | 2 | Workflow + deploy scripts | Depends on Backend |
+| Tester | Tester | 1 | E2E tests + validation | Depends on DevOps |
+| Tech-Lead | Tech-Lead | 0.5 | Sign-off + docs | Depends on Tester |
+| Buffer | — | 0.5 | Fixes, re-tests | Contingency |
+| **TOTAL** | — | **5 days** | Production-ready CI/CD | Start date: 2026-04-03 |
 
-## Файлы для создания
+**Estimated Completion**: 2026-04-08 (5 calendar days, assuming parallel where possible)
 
-```
-.github/
-  workflows/
-    deploy.yml            # Main CI/CD workflow
-    test.yml              # Testing matrix (go versions, os)
+---
 
-config/
-  golangci.yml           # Linting config
-  
-scripts/
-  ci-test.sh             # Pre-push test script
-  ci-rollback.sh         # Rollback on server
-```
+## Artifacts to Create
 
-## Success Criteria
+- `.github/workflows/deploy.yml` — GitHub Actions workflow
+- `.github/DEPLOYMENT.md` — deployment runbook
+- `.golangci.yml` — linting configuration
+- `Makefile` — updated with ci-* targets
+- `scripts/ci-test.sh` — test runner script
+- `scripts/deploy-prod.sh` — deployment script
+- `scripts/rollback-prod.sh` — rollback script
+- `.tasks/TASK-004/backend/handoff.md` — Backend deliverables
+- `.tasks/TASK-004/devops/handoff.md` — DevOps deliverables
+- `.tasks/TASK-004/tester/handoff.md` — Tester results
+- `.tasks/TASK-004/tech-lead/handoff.md` — Tech-Lead approval
 
-✅ Push → GitHub Actions → Deployment в production за <5 минут  
-✅ Все smoke tests пройдены  
-✅ Slack notification получена  
-✅ Логи деплоя на сервере сохранены  
-✅ Rollback работает и протестирован
+---
+
+## Dependencies
+
+**External**:
+- ✅ TASK-003 completed (production running)
+- ✅ GitHub repo created (tinvest-api-bot)
+- ✅ Docker Hub account (push permissions)
+- ✅ Slack webhook URL (create in Slack workspace)
+
+**Internal**:
+- ✅ GitHub Secrets configured (DEPLOY_KEY, DEPLOY_HOST, etc.)
+- ✅ srv03-cloud SSH key setup
+- ✅ Makefile with test/build targets (mostly exist, may need ci-* additions)
+
+---
+
+## Success Criteria (DoD)
+
+- ✅ GitHub Actions workflow executes end-to-end without manual intervention
+- ✅ All tests pass (100% of test suite)
+- ✅ Code coverage >= 70%
+- ✅ Docker images build, tag, and push successfully
+- ✅ Deployment to srv03-cloud succeeds via SSH
+- ✅ Health checks pass (all 5 services respond)
+- ✅ Rollback tested and working (failure → recovery)
+- ✅ Slack notifications sent on success & failure
+- ✅ No secrets or tokens visible in logs
+- ✅ Idempotent deployment (deploy twice = same state)
+- ✅ E2E test passes (push → production updated)
+- ✅ Deployment documentation complete
+- ✅ Tech-Lead signed off (APPROVED)
+
+---
+
+## Communication & Handoff
+
+- **Backend → DevOps**: Handoff includes test/linting setup, Makefile targets
+- **DevOps → Tester**: Handoff includes workflow YAML, test commands, credentials
+- **Tester → Tech-Lead**: Handoff includes test results, validation logs
+- **Tech-Lead → Done**: APPROVED status, production readiness confirmed
+
+---
+
+## Post-Deployment Notes
+
+- **Monitoring**: Log all deploy actions for audit trail
+- **On-call**: Include deployment runbook in on-call playbook
+- **Incident**: If deploy fails, follow rollback docs, don't manually intervene unless documented
+- **Future**: Phase 2 (TASK-005) will migrate to Kubernetes, upgrading rollout strategy
