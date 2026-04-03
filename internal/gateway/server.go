@@ -19,18 +19,19 @@ import (
 
 // Services groups all backend service implementations the gateway depends on.
 type Services struct {
-	Orders     handlers.OrderService
-	StopOrders handlers.StopOrderService
-	MarketData handlers.MarketDataService
-	Portfolio  handlers.PortfolioService
-	Accounts   handlers.AccountService
-	Risk       handlers.RiskService
+	Orders      handlers.OrderService
+	StopOrders  handlers.StopOrderService
+	MarketData  handlers.MarketDataService
+	Portfolio   handlers.PortfolioService
+	Accounts    handlers.AccountService
+	Risk        handlers.RiskService
+	Instruments handlers.InstrumentsService
 }
 
 // Validate returns an error if any required service is nil.
 func (s Services) Validate() error {
 	if s.Orders == nil || s.StopOrders == nil || s.MarketData == nil ||
-		s.Portfolio == nil || s.Accounts == nil || s.Risk == nil {
+		s.Portfolio == nil || s.Accounts == nil || s.Risk == nil || s.Instruments == nil {
 		return fmt.Errorf("gateway: all service implementations must be non-nil")
 	}
 	return nil
@@ -59,6 +60,7 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger, svcs S
 	handlers.NewPortfolioHandlers(svcs.Portfolio).Routes(r)
 	handlers.NewAccountHandlers(svcs.Accounts).Routes(r)
 	handlers.NewRiskHandlers(svcs.Risk).Routes(r)
+	handlers.NewInstrumentsHandlers(svcs.Instruments).Routes(r)
 
 	addr := fmt.Sprintf(":%d", cfg.Services.GatewayPort)
 	srv := &http.Server{

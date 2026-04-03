@@ -96,12 +96,13 @@ func runServer(cmd *cobra.Command) error {
 	riskSvc := risk.NewService(sessionChecker, balanceChecker, positionChecker, cb, cfg.Risk, logger)
 
 	svcs := gateway.Services{
-		Orders:     adapter.NewOrderAdapter(orderSvc),
-		StopOrders: adapter.NewStopOrderAdapter(orderSvc),
-		MarketData: adapter.NewMarketDataAdapter(mdSvc),
-		Portfolio:  adapter.NewPortfolioAdapter(portfolioSvc),
-		Accounts:   adapter.NewAccountAdapter(portfolioSvc),
-		Risk:       adapter.NewRiskAdapter(riskSvc),
+		Orders:      adapter.NewOrderAdapter(orderSvc),
+		StopOrders:  adapter.NewStopOrderAdapter(orderSvc),
+		MarketData:  adapter.NewMarketDataAdapter(mdSvc),
+		Portfolio:   adapter.NewPortfolioAdapter(portfolioSvc),
+		Accounts:    adapter.NewAccountAdapter(portfolioSvc),
+		Risk:        adapter.NewRiskAdapter(riskSvc),
+		Instruments: adapter.NewInstrumentsAdapter(tinvestClient, mdSvc),
 	}
 
 	if err := gateway.Run(ctx, cfg, logger, svcs); err != nil {
