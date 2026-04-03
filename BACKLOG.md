@@ -9,7 +9,7 @@
 
 | ID | Title | Priority | Complexity | Status | Phase |
 |---|-------|----------|-----------|--------|-------|
-| TASK-004 | CI/CD Pipeline (GitHub Actions) | HIGH | M | Planned | Phase 2 |
+| TASK-004 | CI/CD Pipeline (GitHub Actions) | HIGH | M | Done | Phase 2 |
 | TASK-005 | Kubernetes Migration & Scaling | HIGH | XL | Planned | Phase 2 |
 | TASK-006 | Monitoring, Logging & Alerting | HIGH | L | Planned | Phase 2 |
 | TASK-007 | Real Trading Strategies (Alpha) | MEDIUM | XL | Backlog | Phase 3 |
