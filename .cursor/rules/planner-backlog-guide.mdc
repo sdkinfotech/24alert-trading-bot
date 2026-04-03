@@ -1,0 +1,366 @@
+# Плануировщик: Инструкция по управлению бэклогом
+
+**Создано**: 2026-04-03  
+**Версия**: 1.0
+
+---
+
+## Что такое бэклог?
+
+**BACKLOG.md** — это центральная таблица всех задач проекта. Она содержит:
+- **Идентификатор** (TASK-NNN)
+- **Название** (краткое описание)
+- **Приоритет** (HIGH, MEDIUM, LOW)
+- **Сложность** (S, M, L, XL, XXL — в днях)
+- **Статус** (Planned, In Progress, Done)
+- **Фаза** (Phase 1, 2, 3, 4)
+
+Бэклог помогает:
+- Видеть полный roadmap проекта
+- Отслеживать прогресс
+- Выбирать следующую задачу
+- Управлять приоритетами
+
+---
+
+## Когда работать с бэклогом?
+
+### 1. Перед началом новой задачи
+
+**Ситуация**: Пользователь просит создать промпт для следующей роли.
+
+**Действия**:
+1. Открой `BACKLOG.md`
+2. Найди задачу со Status "Planned" и наивысшим приоритетом
+3. Проверь зависимости (Dependencies) — все ли они DONE?
+   - Если нет → выбери другую задачу
+4. Обнови Status на "In Progress"
+5. Создай `/TASK-NNN/task.md` → `plan.md` → prompts
+
+**Пример**:
+```
+BACKLOG.md:
+| TASK-004 | CI/CD Pipeline | HIGH | M | Planned | Phase 2 |
+
+Действия:
+1. Проверь зависимости: TASK-003 ✅ (DONE)
+2. Обнови: Status → "In Progress"
+3. Создай task.md, plan.md, промпты для Backend → DevOps → Tester → Tech-lead
+```
+
+### 2. После завершения задачи
+
+**Ситуация**: Tech-lead подтвердил APPROVED для задачи.
+
+**Действия**:
+1. Убедись, что есть `handoff.md` от всех ролей
+2. Убедись, что последний `tech-lead/handoff.md` содержит APPROVED
+3. Обнови BACKLOG.md: Status "Done"
+4. Добавь link к folder'у task (для истории)
+
+**Пример**:
+```
+BACKLOG.md:
+| TASK-004 | CI/CD Pipeline | HIGH | M | Done | Phase 2 |
+Link: [TASK-004](.tasks/TASK-004)
+```
+
+### 3. Еженедельная переоценка приоритетов
+
+**Ситуация**: Каждый понедельник (или по запросу).
+
+**Действия**:
+1. Поговори с tech-lead и бизнесом:
+   - Какие приоритеты изменились?
+   - Появились ли новые требования?
+2. Обнови BACKLOG.md:
+   - Перемести задачи между Planned/Backlog/Done
+   - Измени Priority если нужно
+   - Уточни Complexity (estimate) на основе velocity
+3. Пересчитай timeline:
+   - Velocity = (completed task days) / (actual calendar days)
+   - Например, если за 5 дней сделали 3 дня работы → velocity 0.6
+4. Обновления залей в Git
+
+---
+
+## Как выбрать следующую задачу?
+
+### Алгоритм
+
+1. **Отфильтруй задачи**:
+   - Status = "Planned" (исключи "In Progress", "Done", "Backlog")
+2. **Сортируй по приоритету**:
+   - HIGH → MEDIUM → LOW
+3. **Проверь зависимости**:
+   - Все ли зависимые задачи DONE?
+   - Если нет → переход к следующей
+4. **Выбери первую подходящую**
+
+**Пример**:
+```
+Candidates:
+- TASK-004: HIGH, deps=[TASK-003✅] → ✅ SELECTED
+- TASK-005: HIGH, deps=[TASK-004📋] → ❌ (TASK-004 not done yet)
+- TASK-014: HIGH, deps=[TASK-003✅] → could be next
+```
+
+### Параллельные задачи
+
+Некоторые задачи можно делать параллельно (разные команды):
+- TASK-006 (Monitoring) может быть параллельна с TASK-004 (CI/CD)
+- TASK-007 (Strategies) может быть параллельна с TASK-005 (K8s)
+
+**Правило**: Если нет явной зависимости в BACKLOG.md → можно делать параллельно.
+
+---
+
+## Как создать новую задачу?
+
+### Структура
+
+```
+TASK-NNN/
+├── task.md              # Исходная постановка
+├── plan.md              # План (созданный планировщиком)
+├── planner/
+│   └── prompt.md        # Этот файл (для планировщика)
+├── backend/
+│   ├── prompt.md        # Задание для backend
+│   └── handoff.md       # Результат backend
+├── devops/
+│   ├── prompt.md
+│   └── handoff.md
+├── tester/
+│   ├── prompt.md
+│   └── handoff.md
+└── tech-lead/
+    ├── prompt.md
+    └── handoff.md
+```
+
+### Шаги
+
+#### Шаг 1: Создай task.md
+
+**Путь**: `.tasks/TASK-NNN/task.md`
+
+**Содержит**:
+- Goal (1 предложение)
+- Scope / Out of scope
+- Requirements (функциональные + нефункциональные)
+- Definition of Done (чек-лист)
+- Timeline (примерная оценка)
+- Risks
+- Dependencies
+- Notes & Links
+
+**Длина**: 2-4 страницы
+
+#### Шаг 2: Создай plan.md
+
+**Путь**: `.tasks/TASK-NNN/plan.md`
+
+**Содержит**:
+- Goal (копия из task.md)
+- Role execution order (кто за кем)
+- Роли и их задачи
+- Timeline (сколько дней на каждую роль)
+- Risks & mitigations
+- Artifacts (что создавать)
+- Dependencies (внутренние и внешние)
+- Success criteria (DoD)
+
+**Длина**: 3-5 страниц
+
+**Составить план:**
+1. Прочитай task.md
+2. Определи, какие роли нужны: Backend, DevOps, Tester, Tech-lead, Frontend, Analyst?
+3. Расставь их в правильном порядке (зависимости)
+4. Напиши timeline для каждой
+5. Опиши риски и mitigation
+6. Выпиши artifacts
+
+#### Шаг 3: Создай prompts для каждой роли
+
+**Путь**: `.tasks/TASK-NNN/<роль>/prompt.md`
+
+**Содержит**:
+- Контекст (кто делал перед ним, что передали)
+- Что нужно сделать (конкретные действия)
+- Чек-лист (что проверить перед handoff)
+- Пример handoff.md (что напишет в конце)
+
+**Длина**: 1-3 страницы
+
+**Для каждой роли свой prompt!**
+
+#### Шаг 4: Обнови BACKLOG.md
+
+**Найди подходящую фазу** (Phase 1/2/3/4):
+- Phase 1: MVP (TASK-001-003) ✅ DONE
+- Phase 2: Stabilization (TASK-004-006, 014, 016, 017)
+- Phase 3: Growth (TASK-007-013)
+- Phase 4: Enterprise (TASK-012+)
+
+**Добавь строку в таблицу**:
+```
+| TASK-NNN | Title | Priority | Complexity | Status | Phase |
+```
+
+---
+
+## Как обновлять бэклог?
+
+### Еженедельная синхронизация
+
+**Понедельник 10:00**:
+1. Проверь статус текущей задачи (In Progress)
+2. Проверь завершённые задачи → обнови Status на Done
+3. Спроси у tech-lead: есть ли изменения приоритетов?
+4. Пересчитай velocity: average (actual days / estimated days)
+5. Обнови timeline для оставшихся задач (если velocity изменилась)
+6. Commit: `git add BACKLOG.md && git commit -m "chore: update backlog priorities and velocity"`
+
+### При изменении требований
+
+**Ситуация**: Пользователь просит добавить новое требование в текущую задачу.
+
+**Действия**:
+1. Обнови `.tasks/TASK-NNN/task.md` (Requirements)
+2. Обнови `.tasks/TASK-NNN/plan.md` (если это влияет на timeline/roles)
+3. Обнови соответствующие `prompt.md` (если это влияет на чьё-то задание)
+4. Commit: `git add .tasks/TASK-NNN && git commit -m "docs: update TASK-NNN requirements"`
+
+### При риске срыва deadline
+
+**Ситуация**: Backend сообщил, что не успеет в срок.
+
+**Действия**:
+1. Переоцени Complexity (увеличь estimate в BACKLOG.md)
+2. Обнови timeline в `plan.md`
+3. Проверь, не блокирует ли это другие задачи
+4. Сообщи tech-lead о рисках
+5. Commit: `git add BACKLOG.md && git commit -m "docs: update TASK-NNN estimate due to complexity"`
+
+---
+
+## Velocity & Timeline
+
+### Что такое velocity?
+
+**Velocity** = (фактический выполненный труд) / (фактическое время)
+
+**Пример**:
+```
+TASK-001: estimate 3 дня, actual 5 дней → velocity 0.6
+TASK-002: estimate 10 дней, actual 12 дней → velocity 0.83
+TASK-003: estimate 3 дня, actual 2 дня → velocity 1.5
+
+Average velocity = (0.6 + 0.83 + 1.5) / 3 ≈ 0.98
+```
+
+### Использование velocity для прогноза
+
+Если average velocity = 0.9:
+
+```
+TASK-004: estimate 5 дней × 0.9 = 4.5 дней (реалистичная оценка)
+TASK-005: estimate 14 дней × 0.9 = 12.6 дней
+```
+
+**Обновляй BACKLOG.md каждый раз** когда завершаешь задачу!
+
+---
+
+## Шаблон: Еженедельный отчёт планировщика
+
+```markdown
+# Backlog Update — Week of Apr 7, 2026
+
+## Completed Tasks
+- ✅ TASK-003: Deployment & Smoke Testing (approved by tech-lead)
+
+## In Progress
+- 📋 TASK-004: CI/CD Pipeline (Backend working, 60% done)
+
+## Next Up
+- ⏳ TASK-005: Kubernetes Migration (planned, deps on TASK-004)
+
+## Velocity
+- Average: 0.9 (tasks taking 10% longer than estimated)
+- Trend: Stable (last 3 tasks ≈ 0.9)
+
+## Risks
+- TASK-004 backend might slip 1 day (complexity higher than expected)
+- Mitigation: Tech-lead to review & reallocate if needed
+
+## Backlog Status
+- Total: 17 tasks
+- Phase 1 (MVP): 3/3 DONE ✅
+- Phase 2 (Stabilization): 1/7 in progress, 6/7 planned
+- Phase 3+ (Future): backlog
+```
+
+---
+
+## Troubleshooting
+
+### "Не знаю, какая задача следующая"
+
+**Решение**: Открой BACKLOG.md, отфильтруй Status="Planned", выбери с максимальным приоритетом.
+
+### "Estimate был 5 дней, а занял 10"
+
+**Решение**: Это нормально! Обнови velocity, пересчитай timeline для остальных задач. Обсуди с tech-lead, почему так случилось (новые требования, недооценка сложности, блокеры).
+
+### "Нужно срочно добавить задачу в бэклог"
+
+**Решение**: 
+1. Создай TASK-NNN/task.md (быстро)
+2. Добавь в BACKLOG.md (строка в таблицу)
+3. Установи Priority & Status
+4. plan.md создашь позже (когда будешь её выбирать)
+
+### "Как делать задачи параллельно?"
+
+**Решение**: Если нет зависимостей (Dependencies), можно назначить разные команды. Например:
+- TASK-004 (CI/CD) — Backend + DevOps + Tester + Tech-lead
+- TASK-005 (K8s) — параллельно, другая team
+
+Оба TASK-004 и TASK-005 зависят от TASK-003, но не друг от друга → параллель возможна.
+
+---
+
+## Чек-лист: Что проверять перед началом задачи?
+
+- [ ] Прочитал `BACKLOG.md`
+- [ ] Выбрал задачу с Status="Planned"
+- [ ] Проверил все Dependencies (они DONE)
+- [ ] Создал `TASK-NNN/task.md` (если новая)
+- [ ] Создал `TASK-NNN/plan.md`
+- [ ] Создал `TASK-NNN/<роль>/prompt.md` для каждой роли
+- [ ] Обновил `BACKLOG.md` (Status → "In Progress")
+- [ ] Все файлы залил в Git
+- [ ] Tech-lead reviewed & approved plan
+
+---
+
+## Ссылки
+
+- Основная документация: [workflow.mdc](.cursor/rules/workflow.mdc)
+- Правила планировщика: [role-planner.mdc](.cursor/rules/role-planner.mdc)
+- Бэклог: [BACKLOG.md](BACKLOG.md)
+- TASK-004 план: [.tasks/TASK-004/plan.md](.tasks/TASK-004/plan.md)
+
+---
+
+## Контрольный вопрос: Готов ли ты?
+
+1. Как выбрать следующую задачу? → Смотри алгоритм выше
+2. Что делать после завершения задачи? → Обнови Status на Done
+3. Как создать новую задачу? → 4 шага: task.md → plan.md → prompts → BACKLOG
+4. Что такое velocity? → Ratio фактического времени к оценке
+5. Как работать с паралллельными задачами? → Если нет зависимостей → параллель ок
+
+Если ответил на все → готов! 🚀
