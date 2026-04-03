@@ -401,20 +401,36 @@ logging:
 
 ## Development Workflow
 
-This project uses a **role-based task pipeline**:
+This project uses a **role-based task pipeline** with a structured backlog:
 
 ```
 Analyst (research) → Backend (implementation) → DevOps (deployment) 
     → Tester (validation) → Tech Lead (review)
 ```
 
-See `.tasks/TASK-NNN/` for active tasks:
-- **TASK-001**: Server setup and resource validation ✅
-- **TASK-002**: Trading bot implementation (Go microservices) ✅
-- **TASK-003**: Deployment and smoke testing
-- **TASK-004**: CI/CD pipeline (GitHub Actions)
-- **TASK-005**: Kubernetes migration
-- **TASK-006**: Monitoring and alerting
+### Task Status
+
+See `.tasks/TASK-NNN/` for active tasks and `BACKLOG.md` for the complete roadmap:
+
+**Phase 1: MVP (Completed ✅)**
+- ✅ **TASK-001**: Server setup and resource validation
+- ✅ **TASK-002**: Trading bot implementation (Go microservices)
+- ✅ **TASK-003**: Deployment and smoke testing (Production Ready)
+
+**Phase 2: Stabilization (In Progress)**
+- ⏳ **TASK-004**: CI/CD pipeline (GitHub Actions) — Planned
+- ⏳ **TASK-005**: Kubernetes migration & scaling — Planned
+- ⏳ **TASK-006**: Monitoring, logging & alerting — Planned
+- ⏳ **TASK-014**: Database migration (PostgreSQL) — Planned
+- ⏳ **TASK-016**: Security audit & hardening — Planned
+
+**Phase 3: Growth (Backlog)**
+- **TASK-007**: Real trading strategies
+- **TASK-008**: Strategy plugin marketplace
+- **TASK-009**: Backtesting engine
+- **TASK-010**: User management & multi-account
+
+See `BACKLOG.md` for the complete roadmap with priorities, complexity estimates, and dependencies.
 
 ## Related Repositories
 
