@@ -20,14 +20,23 @@ func NewStopOrderAdapter(svc *order.Service) *StopOrderAdapter {
 }
 
 func (a *StopOrderAdapter) PostStopOrder(ctx context.Context, accountID, instrumentUID string, qty int64, direction, stopOrderType string, stopPrice, price float64) (*handlers.StopOrderResult, error) {
+	soType := parseStopOrderType(stopOrderType)
+
+	exchangeType := pb.ExchangeOrderType_EXCHANGE_ORDER_TYPE_MARKET
+	if soType == pb.StopOrderType_STOP_ORDER_TYPE_STOP_LIMIT {
+		exchangeType = pb.ExchangeOrderType_EXCHANGE_ORDER_TYPE_LIMIT
+	}
+
 	req := &investgo.PostStopOrderRequest{
-		InstrumentId:  instrumentUID,
-		Quantity:      qty,
-		Direction:     parseStopOrderDirection(direction),
-		AccountId:     accountID,
-		StopOrderType: parseStopOrderType(stopOrderType),
-		StopPrice:     floatToQuotation(stopPrice),
-		Price:         floatToQuotation(price),
+		InstrumentId:      instrumentUID,
+		Quantity:          qty,
+		Direction:         parseStopOrderDirection(direction),
+		AccountId:         accountID,
+		StopOrderType:     soType,
+		ExpirationType:    pb.StopOrderExpirationType_STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
+		ExchangeOrderType: exchangeType,
+		StopPrice:         floatToQuotation(stopPrice),
+		Price:             floatToQuotation(price),
 	}
 
 	resp, err := a.svc.PostStopOrder(ctx, req)

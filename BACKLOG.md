@@ -10,7 +10,8 @@
 | ID | Title | Priority | Complexity | Status | Phase |
 |---|-------|----------|-----------|--------|-------|
 | TASK-004 | CI/CD Pipeline (GitHub Actions) | HIGH | M | Done | Phase 2 |
-| TASK-005 | Kubernetes Migration & Scaling | HIGH | XL | Planned | Phase 2 |
+| TASK-005 | Full API E2E Testing (Sandbox) | HIGH | L | Done | Phase 2 |
+| TASK-018 | Kubernetes Migration & Scaling | HIGH | XL | Planned | Phase 2 |
 | TASK-006 | Monitoring, Logging & Alerting | HIGH | L | Planned | Phase 2 |
 | TASK-007 | Real Trading Strategies (Alpha) | MEDIUM | XL | Backlog | Phase 3 |
 | TASK-008 | Strategy Plugin Marketplace | MEDIUM | XXL | Backlog | Phase 3 |
@@ -28,6 +29,28 @@
 
 ## Phase 2 (Current: Stabilization & Scale)
 
+### TASK-005: Full API E2E Testing (Sandbox)
+**Priority**: HIGH | **Complexity**: L | **Effort**: 2-3 дня
+
+**Description**: E2E тестирование всех 22 REST endpoints на T-Invest sandbox.
+
+**Results**: 43 тестов, 38 pass, 4 skip (sandbox limitation — stop orders), 0 fail.
+
+**Scope**:
+- Orders: market, limit, bestprice, replace, cancel
+- Stop orders: stop_loss, take_profit, stop_limit (skipped — sandbox)
+- Market data: candles (1min, 5min, 1h, day), orderbook (depth 5/20), prices, trading status
+- Portfolio: positions, portfolio, limits, operations, margin
+- Risk: circuit breaker status, reset
+- Negative/edge cases: 12 tests
+- Full trade roundtrip: buy → position → operations → sell
+
+**Dependencies**: TASK-004 (CI/CD)
+
+**Roles**: Backend (tests), Tester (coverage review), Tech-lead (sign-off)
+
+---
+
 ### TASK-004: CI/CD Pipeline (GitHub Actions)
 **Priority**: HIGH | **Complexity**: M | **Effort**: 3-5 дней
 
@@ -44,7 +67,7 @@
 
 ---
 
-### TASK-005: Kubernetes Migration & Scaling
+### TASK-018: Kubernetes Migration & Scaling
 **Priority**: HIGH | **Complexity**: XL | **Effort**: 2 недели
 
 **Description**: Миграция с docker-compose на Kubernetes для масштабирования и надёжности.
