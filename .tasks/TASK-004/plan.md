@@ -216,19 +216,21 @@ Tech-Lead (0.5 day)
 
 ## Success Criteria (DoD)
 
-- ✅ GitHub Actions workflow executes end-to-end without manual intervention
-- ✅ All tests pass (100% of test suite)
-- ✅ Code coverage >= 70%
-- ✅ Docker images build, tag, and push successfully
-- ✅ Deployment to srv03-cloud succeeds via SSH
-- ✅ Health checks pass (all 5 services respond)
-- ✅ Rollback tested and working (failure → recovery)
-- ✅ Slack notifications sent on success & failure
-- ✅ No secrets or tokens visible in logs
-- ✅ Idempotent deployment (deploy twice = same state)
-- ✅ E2E test passes (push → production updated)
-- ✅ Deployment documentation complete
-- ✅ Tech-Lead signed off (APPROVED)
+**КРИТИЧНОЕ УСЛОВИЕ**: Все критерии должны быть основаны на ФАКТИЧЕСКИХ результатах, не на предположениях!
+
+- ✅ GitHub Actions workflow executes end-to-end without manual intervention (ФАКТИЧЕСКОЕ выполнение!)
+- ✅ All tests pass (100% of test suite) — на production сервере
+- ✅ Code coverage >= 70% — верифицировано в GitHub Actions logs
+- ✅ Docker images build, tag, and push successfully — с логами
+- ✅ Deployment to srv03-cloud succeeds via SSH — SSH команды выполнены
+- ✅ Health checks pass (all 5 services respond) — запрос к реальному эндпоинту
+- ✅ Rollback tested and working (failure → recovery) — реальная симуляция failure
+- ✅ Slack notifications sent on success & failure — сообщения в канал
+- ✅ No secrets or tokens visible in logs — проверка GitHub Actions logs
+- ✅ Idempotent deployment (deploy twice = same state) — два реальных deployment'а
+- ✅ E2E test passes (push → production updated) — реальный git push
+- ✅ Deployment documentation complete — `.github/DEPLOYMENT.md` существует
+- ✅ Tech-Lead signed off (APPROVED) — после проверки фактических результатов
 
 ---
 
@@ -247,3 +249,47 @@ Tech-Lead (0.5 day)
 - **On-call**: Include deployment runbook in on-call playbook
 - **Incident**: If deploy fails, follow rollback docs, don't manually intervene unless documented
 - **Future**: Phase 2 (TASK-005) will migrate to Kubernetes, upgrading rollout strategy
+
+---
+
+## ⚠️ КРИТИЧНОЕ ЗАМЕЧАНИЕ ДЛЯ ВСЕХ РОЛЕЙ
+
+**После анализа Tester обнаружено**: На production сервере (`srv03-cloud`, 176.123.160.234) **ничего не было развёрнуто**:
+- ❌ Docker не установлен
+- ❌ Git репозиторий не клонирован
+- ❌ Порты не открыты
+
+**Результат**: Все предыдущие отчёты о "пройденных" интеграционных/E2E тестах были **фактически невозможны**.
+
+### Что это значит для каждой роли:
+
+**Backend**: ✅ Ваша работа валидна (unit-тесты, code quality)
+- Убедитесь, что код закоммичен и готов к push в main
+
+**DevOps**: ⚠️ КРИТИЧНОЕ ДЕЙСТВИЕ ТРЕБУЕТСЯ
+- Установить Docker & Docker Compose на srv03-cloud
+- Клонировать репозиторий
+- Развернуть приложение с `.env` production
+- Настроить GitHub Secrets для workflow
+- **ТОЛЬКО ПОСЛЕ ЭТОГО** Tester может выполнить настоящие E2E тесты
+
+**Tester**: ⏹️ Ожидание
+- Текущие интеграционные тесты невозможны
+- Дождитесь, пока DevOps развернёт production
+- Затем повторите ВСЕ 11 тестов на реальном сервере
+- Используйте только **фактические результаты**, не предположения
+
+**Tech-Lead**: 📋 Запросите доказательства
+- Требуйте логи GitHub Actions
+- Требуйте скриншоты curl requests
+- Требуйте реальные Slack сообщения
+- Требуйте доказательства rollback'а
+- **Не принимайте отчёты на основе "анализа кода"**
+
+### Правило №1: Не выдумываем, проверяем
+
+✅ Фактические результаты (с логами, скриншотами, коммитами)
+❌ Предположения ("это должно работать")
+❌ Статический анализ вместо реального тестирования
+
+---
