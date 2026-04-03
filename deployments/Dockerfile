@@ -1,5 +1,5 @@
 FROM golang:1.25-alpine AS builder
-RUN apk --no-cache add git
+RUN apk --no-cache add git ca-certificates
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/service ./cmd
 FROM alpine:3.21
 RUN apk --no-cache add ca-certificates && update-ca-certificates
 WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /app/bin/service .
 COPY config/ ./config/
 EXPOSE 8080 9001 9002 9003 9004
