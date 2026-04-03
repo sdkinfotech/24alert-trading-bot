@@ -55,11 +55,11 @@ type ClosePrice struct {
 
 // TradingStatus holds trading status information for an instrument.
 type TradingStatus struct {
-	InstrumentUID          string
-	TradingStatus          string
-	LimitOrderAvailable    bool
-	MarketOrderAvailable   bool
-	APITradeAvailable      bool
+	InstrumentUID        string
+	TradingStatus        string
+	LimitOrderAvailable  bool
+	MarketOrderAvailable bool
+	APITradeAvailable    bool
 }
 
 // Service wraps T-Invest MarketData API with rate limiting and caching.

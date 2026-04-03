@@ -12,21 +12,21 @@ import (
 )
 
 type PortfolioEvent struct {
-	AccountID          string
-	TotalAmountShares  float64
-	TotalAmountBonds   float64
-	TotalAmountETF     float64
+	AccountID             string
+	TotalAmountShares     float64
+	TotalAmountBonds      float64
+	TotalAmountETF        float64
 	TotalAmountCurrencies float64
-	TotalAmountFutures float64
-	ExpectedYield      float64
-	Positions          []Position
+	TotalAmountFutures    float64
+	ExpectedYield         float64
+	Positions             []Position
 }
 
 type PositionEvent struct {
-	AccountID string
-	Money     []PositionMoney
+	AccountID  string
+	Money      []PositionMoney
 	Securities []PositionSecurity
-	Date      time.Time
+	Date       time.Time
 }
 
 type PositionMoney struct {
@@ -46,9 +46,9 @@ type PortfolioStreamManager struct {
 	tinvestClient *tinvest.Client
 	logger        *logging.Logger
 
-	mu              sync.Mutex
-	portfolioSubs   []chan<- PortfolioEvent
-	positionSubs    []chan<- PositionEvent
+	mu            sync.Mutex
+	portfolioSubs []chan<- PortfolioEvent
+	positionSubs  []chan<- PositionEvent
 }
 
 func NewPortfolioStreamManager(client *tinvest.Client, logger *logging.Logger) *PortfolioStreamManager {

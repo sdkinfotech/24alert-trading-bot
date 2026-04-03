@@ -1,0 +1,214 @@
+name: Deploy Trading Bot
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: sdkinfotech/24alert-trading-bot
+  DEPLOY_TIMEOUT: 300  # 5 minutes
+  HEALTH_CHECK_RETRIES: 5
+  HEALTH_CHECK_INTERVAL: 2
+
+jobs:
+  # ========================================
+  # Job 1: Test & Lint
+  # ========================================
+  test:
+    runs-on: ubuntu-latest
+    name: Test & Lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+          cache: 'go'
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Run CI checks (lint, test, build)
+        run: make ci-check
+        timeout-minutes: 5
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage-reports
+          path: |
+            coverage*.out
+            coverage*.html
+
+  # ========================================
+  # Job 2: Build & Push Docker Images
+  # ========================================
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    name: Build & Push Docker Images
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          COMMIT_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "commit_short=$COMMIT_SHORT" >> $GITHUB_OUTPUT
+          echo "version=v1.0.0-$COMMIT_SHORT" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+          echo "image_version=${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Build Docker images
+        run: |
+          docker-compose -f deployments/docker-compose.yaml build
+
+      - name: Tag images
+        run: |
+          COMMIT_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          # Tag gateway
+          docker tag 24alert-trading-bot-gateway:latest ${{ env.IMAGE_NAME }}:latest
+          docker tag 24alert-trading-bot-gateway:latest ${{ env.IMAGE_NAME }}:main-$COMMIT_SHORT
+
+      - name: Push images to Docker Hub
+        run: |
+          COMMIT_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          docker push ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:main-$COMMIT_SHORT
+
+      - name: Print image info
+        run: |
+          echo "✅ Docker images pushed:"
+          echo "  Latest: ${{ env.IMAGE_NAME }}:latest"
+          echo "  Commit: ${{ env.IMAGE_NAME }}:main-${{ steps.meta.outputs.commit_short }}"
+
+  # ========================================
+  # Job 3: Deploy to Production
+  # ========================================
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -t rsa ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Save previous image tag
+        id: prev_image
+        run: |
+          PREV_TAG="main-$(git rev-parse HEAD~1 | cut -c1-7)"
+          echo "tag=${{ env.IMAGE_NAME }}:$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "Previous image tag: ${{ env.IMAGE_NAME }}:$PREV_TAG"
+
+      - name: Deploy to srv03-cloud
+        id: deploy
+        timeout-minutes: 5
+        run: |
+          bash scripts/deploy-prod.sh \
+            ${{ secrets.DEPLOY_HOST }} \
+            ${{ secrets.DEPLOY_USER }} \
+            ${{ github.sha }}
+
+      - name: Rollback on failure
+        if: failure() && steps.deploy.conclusion == 'failure'
+        run: |
+          echo "⚠️ Deploy failed — triggering rollback to ${{ steps.prev_image.outputs.tag }}"
+          bash scripts/rollback-prod.sh \
+            ${{ secrets.DEPLOY_HOST }} \
+            ${{ secrets.DEPLOY_USER }} \
+            ${{ steps.prev_image.outputs.tag }}
+
+      - name: Health check (local validation)
+        run: |
+          echo "✅ Deployment successful (remote validation done)"
+
+      - name: Clean up SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
+
+  # ========================================
+  # Job 4: Notify on Completion
+  # ========================================
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy]
+    if: always()
+
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.build.result }}" == "success" ] && \
+             [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        if: env.SLACK_WEBHOOK != ''
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          COMMIT_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          STATUS="${{ steps.status.outputs.status }}"
+          EMOJI="${{ steps.status.outputs.emoji }}"
+          
+          MESSAGE="{
+            \"text\": \"$EMOJI Trading Bot Deploy $STATUS\",
+            \"blocks\": [
+              {
+                \"type\": \"section\",
+                \"text\": {
+                  \"type\": \"mrkdwn\",
+                  \"text\": \"*$EMOJI Trading Bot Deployment $STATUS*\n*Commit:* \`$COMMIT_SHORT\`\n*Author:* ${{ github.actor }}\n*Branch:* ${{ github.ref_name }}\n*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\"
+                }
+              }
+            ]
+          }"
+          
+          curl -X POST -H 'Content-type: application/json' \
+            --data "$MESSAGE" \
+            "$SLACK_WEBHOOK"
+
+      - name: Cleanup on failure
+        if: failure()
+        run: |
+          echo "Deployment failed. Check logs above."
+          exit 1

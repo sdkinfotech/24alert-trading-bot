@@ -1,4 +1,4 @@
-.PHONY: help proto-gen build build-all test lint clean run-all fmt install-tools \
+.PHONY: help proto-gen build build-all test lint ci-check ci-test clean run-all fmt install-tools \
        docker-build docker-up docker-down docker-logs
 
 COMPOSE := docker compose -f deployments/docker-compose.yaml
@@ -10,6 +10,8 @@ help:
 	@echo "  make build-all       - proto-gen then build"
 	@echo "  make test            - Run unit tests"
 	@echo "  make lint            - Run linter"
+	@echo "  make ci-check        - Run lint, test, and build (local CI)"
+	@echo "  make ci-test         - Run tests with coverage threshold check (alias for ci-check)"
 	@echo "  make fmt             - Format code"
 	@echo "  make clean           - Clean binaries and generated code"
 	@echo "  make install-tools   - Install development tools"
@@ -54,6 +56,11 @@ lint:
 	@echo "Linting code..."
 	@which golangci-lint > /dev/null || (echo "golangci-lint not found, install with: golangci-lint --version"; exit 1)
 	golangci-lint run ./...
+
+ci-check: lint test build
+	@echo "CI checks passed"
+
+ci-test: ci-check
 
 fmt:
 	@echo "Formatting code..."

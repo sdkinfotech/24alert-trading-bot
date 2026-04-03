@@ -25,14 +25,14 @@ type Position struct {
 }
 
 type PortfolioInfo struct {
-	AccountID          string
-	TotalAmountShares  float64
-	TotalAmountBonds   float64
-	TotalAmountETF     float64
+	AccountID             string
+	TotalAmountShares     float64
+	TotalAmountBonds      float64
+	TotalAmountETF        float64
 	TotalAmountCurrencies float64
-	TotalAmountFutures float64
-	ExpectedYield      float64
-	Positions          []Position
+	TotalAmountFutures    float64
+	ExpectedYield         float64
+	Positions             []Position
 }
 
 type WithdrawLimit struct {
@@ -42,16 +42,16 @@ type WithdrawLimit struct {
 }
 
 type Operation struct {
-	ID             string
-	AccountID      string
-	InstrumentUID  string
-	Type           string
-	State          string
-	Payment        float64
-	Currency       string
-	Quantity       int64
-	Date           time.Time
-	Trades         []OperationTrade
+	ID            string
+	AccountID     string
+	InstrumentUID string
+	Type          string
+	State         string
+	Payment       float64
+	Currency      string
+	Quantity      int64
+	Date          time.Time
+	Trades        []OperationTrade
 }
 
 type OperationTrade struct {
@@ -247,7 +247,7 @@ func (s *Service) GetOperations(
 			State:         item.GetState().String(),
 			Payment:       moneyToFloat(item.GetPayment()),
 			Currency:      item.GetPayment().GetCurrency(),
-			Quantity:       int64(item.GetQuantityDone()),
+			Quantity:      int64(item.GetQuantityDone()),
 			Date:          item.GetDate().AsTime(),
 		}
 		for _, t := range item.GetTradesInfo().GetTrades() {

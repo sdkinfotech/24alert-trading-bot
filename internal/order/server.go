@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -80,9 +79,4 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger) error 
 // Call this once proto-generated code is available to wire up the real server descriptor.
 func RegisterWithServer(_ *grpc.Server, _ *Service) {
 	// TODO: generated_pb.RegisterOrderServiceServer(srv, handler) once proto is generated
-}
-
-// tokenFromEnv reads T-Invest token, kept separate for testability.
-func tokenFromEnv() string {
-	return os.Getenv("TINVEST_TOKEN")
 }

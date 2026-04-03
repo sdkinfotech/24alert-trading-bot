@@ -12,7 +12,6 @@ build/
 *.test
 *.out
 *.prof
-go.sum
 
 # IDEs
 .idea/
@@ -28,14 +27,14 @@ gen/
 *.pb.go
 *.pb.gw.go
 
-# Binaries
+# Binaries (root-level only, not directories)
 cmd/*/main
-24alert
-order-svc
-marketdata-svc
-portfolio-svc
-risk-svc
-gateway
+/24alert
+/order-svc
+/marketdata-svc
+/portfolio-svc
+/risk-svc
+/gateway
 
 # Config & secrets
 config/*.local.yaml

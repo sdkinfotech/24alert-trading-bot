@@ -55,10 +55,10 @@ func NewTInvestClient(ctx context.Context, endpoint, token string, logger *slog.
 	}
 
 	config := investgo.Config{
-		EndPoint:                     endpoint,
-		Token:                        token,
-		AppName:                      "24alert-trading-bot",
-		MaxRetries:                   3,
+		EndPoint:                      endpoint,
+		Token:                         token,
+		AppName:                       "24alert-trading-bot",
+		MaxRetries:                    3,
 		DisableResourceExhaustedRetry: false,
 	}
 
@@ -78,7 +78,7 @@ func NewTInvestClient(ctx context.Context, endpoint, token string, logger *slog.
 // Stop gracefully closes the client connection
 func (c *Client) Stop() {
 	if c.underlying != nil {
-		c.underlying.Stop()
+		_ = c.underlying.Stop()
 	}
 }
 

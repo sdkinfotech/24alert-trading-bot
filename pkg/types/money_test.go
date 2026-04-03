@@ -159,6 +159,37 @@ func TestSubtractQuotations(t *testing.T) {
 	}
 }
 
+func TestNewMoneyValue(t *testing.T) {
+	m := NewMoneyValue("RUB", 100.5)
+	if m.Currency != "RUB" {
+		t.Errorf("Currency = %q, want RUB", m.Currency)
+	}
+	got := MoneyValueToFloat64(m)
+	if math.Abs(got-100.5) > 1e-6 {
+		t.Errorf("amount = %v, want 100.5", got)
+	}
+}
+
+func TestFormatMoney(t *testing.T) {
+	tests := []struct {
+		name string
+		m    *MoneyValue
+		want string
+	}{
+		{"nil", nil, "0 (unknown)"},
+		{"normal", NewMoneyValue("USD", 42.5), "42.50 USD"},
+		{"zero", NewMoneyValue("RUB", 0), "0.00 RUB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatMoney(tt.m)
+			if got != tt.want {
+				t.Errorf("FormatMoney() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMultiplyQuotation(t *testing.T) {
 	tests := []struct {
 		name   string

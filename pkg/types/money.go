@@ -30,7 +30,7 @@ func QuotationToFloat64(q *Quotation) float64 {
 func Float64ToQuotation(f float64) *Quotation {
 	units := int64(math.Floor(f))
 	nano := int32(math.Round((f - float64(units)) * 1e9))
-	
+
 	// Handle floating point precision
 	if nano >= 1e9 {
 		units++
@@ -40,7 +40,7 @@ func Float64ToQuotation(f float64) *Quotation {
 		units--
 		nano = 0
 	}
-	
+
 	return &Quotation{
 		Units: units,
 		Nano:  nano,
@@ -83,7 +83,7 @@ func FormatMoney(m *MoneyValue) string {
 func CompareQuotations(a, b *Quotation) int {
 	aVal := QuotationToFloat64(a)
 	bVal := QuotationToFloat64(b)
-	
+
 	if aVal < bVal {
 		return -1
 	}

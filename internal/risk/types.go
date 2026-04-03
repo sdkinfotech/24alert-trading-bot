@@ -14,9 +14,9 @@ type OrderIntent struct {
 
 // RiskCheckResult is the outcome of a single risk check.
 type RiskCheckResult struct {
-	Name    string
-	Passed  bool
-	Reason  string
+	Name   string
+	Passed bool
+	Reason string
 }
 
 // RiskResponse aggregates the results of all checks for one order intent.
