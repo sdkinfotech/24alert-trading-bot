@@ -86,7 +86,7 @@ func TestLimitOrder_PlaceAndCancel(t *testing.T) {
 	t.Logf("Current price: %.4f", currentPrice)
 
 	// Limit price 5% below market — should not execute
-	limitPrice := currentPrice * 0.95
+	limitPrice := roundPrice(currentPrice * 0.95)
 
 	rateLimitPause()
 
@@ -157,7 +157,7 @@ func TestReplaceOrder(t *testing.T) {
 		"quantity":       1,
 		"direction":      "buy",
 		"order_type":     "limit",
-		"price":          currentPrice * 0.90,
+		"price":          roundPrice(currentPrice * 0.95),
 	})
 	result := unmarshal[OrderResult](t, orderR)
 	t.Logf("Initial limit order: id=%s", result.OrderID)
@@ -171,7 +171,7 @@ func TestReplaceOrder(t *testing.T) {
 	q := url.Values{"account_id": {accountID}}
 	replaceR := doPut(t, "/api/v1/orders/"+result.OrderID, q, map[string]any{
 		"quantity": 2,
-		"price":    currentPrice * 0.92,
+		"price":    roundPrice(currentPrice * 0.97),
 	})
 	replaced := unmarshal[OrderResult](t, replaceR)
 	t.Logf("Replaced order: id=%s lots_req=%d", replaced.OrderID, replaced.LotsRequested)

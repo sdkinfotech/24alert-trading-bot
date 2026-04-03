@@ -15,7 +15,7 @@ func TestStopLoss(t *testing.T) {
 		t.Skip("no price data")
 	}
 	currentPrice := prices[0].Price
-	stopPrice := currentPrice * 0.98 // 2% below
+	stopPrice := roundPrice(currentPrice * 0.98) // 2% below
 
 	rateLimitPause()
 
@@ -27,7 +27,6 @@ func TestStopLoss(t *testing.T) {
 		"direction":       "sell",
 		"stop_order_type": "stop_loss",
 		"stop_price":      stopPrice,
-		"price":           0,
 	})
 
 	// Sandbox may not support stop orders (error 30043)
@@ -70,7 +69,7 @@ func TestTakeProfit(t *testing.T) {
 		t.Skip("no price data")
 	}
 	currentPrice := prices[0].Price
-	tpPrice := currentPrice * 1.02 // 2% above
+	tpPrice := roundPrice(currentPrice * 1.02) // 2% above
 
 	rateLimitPause()
 
@@ -81,11 +80,10 @@ func TestTakeProfit(t *testing.T) {
 		"direction":       "sell",
 		"stop_order_type": "take_profit",
 		"stop_price":      tpPrice,
-		"price":           0,
 	})
 
 	if code != 201 || r.Error != "" {
-		t.Skipf("Take-profit not available (sandbox limitation): %d — %s", code, r.Error)
+		t.Skipf("Take-profit not available (production limitation): %d — %s", code, r.Error)
 	}
 
 	result := unmarshal[StopOrderResult](t, r)
@@ -111,8 +109,8 @@ func TestStopLimit(t *testing.T) {
 		t.Skip("no price data")
 	}
 	currentPrice := prices[0].Price
-	stopPrice := currentPrice * 0.97
-	limitPrice := currentPrice * 0.96
+	stopPrice := roundPrice(currentPrice * 0.97)
+	limitPrice := roundPrice(currentPrice * 0.96)
 
 	rateLimitPause()
 
@@ -127,7 +125,7 @@ func TestStopLimit(t *testing.T) {
 	})
 
 	if code != 201 || r.Error != "" {
-		t.Skipf("Stop-limit not available (sandbox limitation): %d — %s", code, r.Error)
+		t.Skipf("Stop-limit not available (production limitation): %d — %s", code, r.Error)
 	}
 
 	result := unmarshal[StopOrderResult](t, r)
@@ -162,11 +160,10 @@ func TestStopOrdersCRUD(t *testing.T) {
 		"quantity":        1,
 		"direction":       "sell",
 		"stop_order_type": "stop_loss",
-		"stop_price":      currentPrice * 0.95,
+		"stop_price":      roundPrice(currentPrice * 0.95),
 	})
 	if slCode != 201 || sl.Error != "" {
-		// Error 30043 = T-Invest API limitation (stop orders not supported for this instrument/account)
-		t.Skipf("Stop orders not available (T-Invest API limitation - error 30043): %d — %s", slCode, sl.Error)
+		t.Skipf("Stop orders not available (production limitation): %d — %s", slCode, sl.Error)
 	}
 	slResult := unmarshal[StopOrderResult](t, sl)
 
@@ -178,10 +175,10 @@ func TestStopOrdersCRUD(t *testing.T) {
 		"quantity":        1,
 		"direction":       "sell",
 		"stop_order_type": "take_profit",
-		"stop_price":      currentPrice * 1.05,
+		"stop_price":      roundPrice(currentPrice * 1.05),
 	})
 	if tpCode != 201 || tp.Error != "" {
-		t.Skipf("Stop orders not available (sandbox limitation): %d — %s", tpCode, tp.Error)
+		t.Skipf("Stop orders not available (production limitation): %d — %s", tpCode, tp.Error)
 	}
 	tpResult := unmarshal[StopOrderResult](t, tp)
 

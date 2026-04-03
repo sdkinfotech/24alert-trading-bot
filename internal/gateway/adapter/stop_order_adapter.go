@@ -39,6 +39,10 @@ func (a *StopOrderAdapter) PostStopOrder(ctx context.Context, accountID, instrum
 		Price:             floatToQuotation(price),
 	}
 
+	if soType == pb.StopOrderType_STOP_ORDER_TYPE_TAKE_PROFIT {
+		req.TakeProfitType = pb.TakeProfitType_TAKE_PROFIT_TYPE_REGULAR
+	}
+
 	resp, err := a.svc.PostStopOrder(ctx, req)
 	if err != nil {
 		return nil, err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -317,4 +318,8 @@ func rateLimitPause() {
 // CurrentTime returns current UTC time
 func CurrentTime() time.Time {
 	return time.Now().UTC()
+}
+
+func roundPrice(p float64) float64 {
+	return math.Round(p*100) / 100
 }
