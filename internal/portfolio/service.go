@@ -8,6 +8,7 @@ import (
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 	"github.com/russianinvestments/invest-api-go-sdk/investgo"
 )
@@ -112,10 +113,17 @@ func (s *Service) GetPositions(ctx context.Context, accountID string) ([]Positio
 		return nil, fmt.Errorf("GetPositions: rate limit: %w", err)
 	}
 
+	start := time.Now()
 	resp, err := s.tinvestClient.OperationsServiceClient().GetPortfolio(accountID, pb.PortfolioRequest_RUB)
+	duration := time.Since(start).Seconds()
+
+	metrics.TInvestLatency.WithLabelValues("operations", "GetPortfolio").Observe(duration)
 	if err != nil {
+		metrics.TInvestRequestsTotal.WithLabelValues("operations", "GetPortfolio", "failure").Inc()
+		metrics.TInvestErrorsTotal.WithLabelValues("operations", "GetPortfolio", "error").Inc()
 		return nil, fmt.Errorf("GetPositions: %w", err)
 	}
+	metrics.TInvestRequestsTotal.WithLabelValues("operations", "GetPortfolio", "success").Inc()
 
 	positions := make([]Position, 0, len(resp.GetPositions()))
 	for _, p := range resp.GetPositions() {
@@ -144,10 +152,17 @@ func (s *Service) GetPortfolio(ctx context.Context, accountID string) (*Portfoli
 		return nil, fmt.Errorf("GetPortfolio: rate limit: %w", err)
 	}
 
+	start := time.Now()
 	resp, err := s.tinvestClient.OperationsServiceClient().GetPortfolio(accountID, pb.PortfolioRequest_RUB)
+	duration := time.Since(start).Seconds()
+
+	metrics.TInvestLatency.WithLabelValues("operations", "GetPortfolio").Observe(duration)
 	if err != nil {
+		metrics.TInvestRequestsTotal.WithLabelValues("operations", "GetPortfolio", "failure").Inc()
+		metrics.TInvestErrorsTotal.WithLabelValues("operations", "GetPortfolio", "error").Inc()
 		return nil, fmt.Errorf("GetPortfolio: %w", err)
 	}
+	metrics.TInvestRequestsTotal.WithLabelValues("operations", "GetPortfolio", "success").Inc()
 
 	positions := make([]Position, 0, len(resp.GetPositions()))
 	for _, p := range resp.GetPositions() {
@@ -279,10 +294,17 @@ func (s *Service) GetAccounts(ctx context.Context) ([]Account, error) {
 		return nil, fmt.Errorf("GetAccounts: rate limit: %w", err)
 	}
 
+	start := time.Now()
 	resp, err := s.tinvestClient.UsersServiceClient().GetAccounts(nil)
+	duration := time.Since(start).Seconds()
+
+	metrics.TInvestLatency.WithLabelValues("users", "GetAccounts").Observe(duration)
 	if err != nil {
+		metrics.TInvestRequestsTotal.WithLabelValues("users", "GetAccounts", "failure").Inc()
+		metrics.TInvestErrorsTotal.WithLabelValues("users", "GetAccounts", "error").Inc()
 		return nil, fmt.Errorf("GetAccounts: %w", err)
 	}
+	metrics.TInvestRequestsTotal.WithLabelValues("users", "GetAccounts", "success").Inc()
 
 	var accounts []Account
 	for _, a := range resp.GetAccounts() {

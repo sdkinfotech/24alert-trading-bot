@@ -13,6 +13,7 @@ import (
 	"github.com/24alert/trading-bot/internal/gateway"
 	"github.com/24alert/trading-bot/internal/gateway/adapter"
 	"github.com/24alert/trading-bot/internal/gateway/cli"
+	"github.com/24alert/trading-bot/internal/gateway/handlers"
 	"github.com/24alert/trading-bot/internal/marketdata"
 	"github.com/24alert/trading-bot/internal/order"
 	"github.com/24alert/trading-bot/internal/portfolio"
@@ -87,6 +88,13 @@ func runServer(cmd *cobra.Command) error {
 	priceCache := marketdata.NewPriceCache()
 	mdSvc := marketdata.NewService(tinvestClient, rlm, instrumentCache, priceCache, logger)
 
+	streamMgr := marketdata.NewStreamManager(tinvestClient, priceCache, cfg.MarketDataStream, logger)
+	go func() {
+		if err := streamMgr.Listen(ctx); err != nil && ctx.Err() == nil {
+			logger.Error("stream manager stopped", "error", err)
+		}
+	}()
+
 	portfolioSvc := portfolio.NewService(tinvestClient, rlm, logger)
 
 	cb := risk.NewCircuitBreaker(cfg.Risk.CircuitBreakerThreshold, cfg.Risk.CircuitBreakerCooldown)
@@ -103,6 +111,7 @@ func runServer(cmd *cobra.Command) error {
 		Accounts:    adapter.NewAccountAdapter(portfolioSvc),
 		Risk:        adapter.NewRiskAdapter(riskSvc),
 		Instruments: adapter.NewInstrumentsAdapter(tinvestClient, mdSvc),
+		Stream:      handlers.NewStreamHandlers(streamMgr, logger),
 	}
 
 	if err := gateway.Run(ctx, cfg, logger, svcs); err != nil {

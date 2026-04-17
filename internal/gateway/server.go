@@ -28,6 +28,7 @@ type Services struct {
 	Accounts    handlers.AccountService
 	Risk        handlers.RiskService
 	Instruments handlers.InstrumentsService
+	Stream      *handlers.StreamHandlers // optional, nil disables streaming
 }
 
 // Validate returns an error if any required service is nil.
@@ -50,9 +51,8 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger, svcs S
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(metricsMiddleware)
 	r.Use(requestLogger(logger))
-	r.Use(metrics.ChiMiddleware)
 
 	r.Get("/health", healthHandler)
 	r.Handle("/metrics", promhttp.Handler())
@@ -65,14 +65,17 @@ func Run(ctx context.Context, cfg *config.Config, logger *logging.Logger, svcs S
 	handlers.NewAccountHandlers(svcs.Accounts).Routes(r)
 	handlers.NewRiskHandlers(svcs.Risk).Routes(r)
 	handlers.NewInstrumentsHandlers(svcs.Instruments).Routes(r)
+	if svcs.Stream != nil {
+		svcs.Stream.Routes(r)
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Services.GatewayPort)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		WriteTimeout:      0,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
@@ -115,4 +118,20 @@ func requestLogger(logger *logging.Logger) func(next http.Handler) http.Handler 
 			)
 		})
 	}
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
+
+		duration := time.Since(start).Seconds()
+		status := fmt.Sprintf("%d", ww.Status())
+		path := r.URL.Path
+
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, status).Inc()
+		metrics.HTTPRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
+		metrics.HTTPResponseSize.WithLabelValues(r.Method, path).Observe(float64(ww.BytesWritten()))
+	})
 }

@@ -8,6 +8,7 @@ import (
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 )
 
@@ -143,6 +144,8 @@ func (s *Service) GetOrderbook(ctx context.Context, instrumentUID string, depth 
 		return nil, fmt.Errorf("GetOrderbook: %w", err)
 	}
 
+	metrics.MarketDataUpdatesTotal.WithLabelValues("orderbook").Inc()
+
 	ob := &Orderbook{
 		InstrumentUID: instrumentUID,
 		Depth:         depth,
@@ -181,16 +184,20 @@ func (s *Service) GetLastPrices(ctx context.Context, instrumentUIDs []string) ([
 		return nil, fmt.Errorf("GetLastPrices: %w", err)
 	}
 
+	metrics.MarketDataUpdatesTotal.WithLabelValues("price").Add(float64(len(resp.GetLastPrices())))
+
 	prices := make([]LastPrice, 0, len(resp.GetLastPrices()))
 	for _, lp := range resp.GetLastPrices() {
 		price := quotationToFloat(lp.GetPrice())
 		uid := lp.GetInstrumentUid()
+		ts := lp.GetTime().AsTime()
 		prices = append(prices, LastPrice{
 			InstrumentUID: uid,
 			Price:         price,
-			Time:          lp.GetTime().AsTime(),
+			Time:          ts,
 		})
 		s.prices.SetLastPrice(uid, price)
+		metrics.MarketDataStaleness.WithLabelValues(uid).Set(time.Since(ts).Seconds())
 	}
 
 	l.Info("GetLastPrices completed", "count", len(prices))

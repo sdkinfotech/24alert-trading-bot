@@ -3,11 +3,13 @@ package order
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 
 	"github.com/24alert/trading-bot/pkg/idempotency"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/tinvest"
 	"github.com/russianinvestments/invest-api-go-sdk/investgo"
 )
@@ -37,7 +39,13 @@ func NewService(
 
 // PostOrder places a new exchange order via T-Invest API.
 func (s *Service) PostOrder(ctx context.Context, req *investgo.PostOrderRequest) (*investgo.PostOrderResponse, error) {
+	start := time.Now()
 	l := s.logger.WithContext(ctx)
+
+	orderType := req.OrderType.String()
+	defer func() {
+		metrics.OrderLatency.WithLabelValues(orderType).Observe(time.Since(start).Seconds())
+	}()
 
 	if req.OrderId == "" {
 		req.OrderId = s.idGen.NewOrderID()
@@ -51,13 +59,17 @@ func (s *Service) PostOrder(ctx context.Context, req *investgo.PostOrderRequest)
 	)
 
 	if err := s.rateLimiter.Wait(ctx, "post_order"); err != nil {
+		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostOrder: rate limit: %w", err)
 	}
 
 	resp, err := s.tinvestClient.OrdersServiceClient().PostOrder(req)
 	if err != nil {
+		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostOrder: %w", err)
 	}
+
+	metrics.OrdersTotal.WithLabelValues(orderType, "success").Inc()
 
 	s.repo.SaveOrder(&OrderRecord{
 		OrderID:       req.OrderId,
@@ -173,9 +185,15 @@ func (s *Service) GetOrderState(ctx context.Context, accountID, orderID string, 
 	return resp, nil
 }
 
-// PostStopOrder places a new stop order via T-Invest API.
+// PostStopOrder places a new exchange order via T-Invest API.
 func (s *Service) PostStopOrder(ctx context.Context, req *investgo.PostStopOrderRequest) (*investgo.PostStopOrderResponse, error) {
+	start := time.Now()
 	l := s.logger.WithContext(ctx)
+
+	orderType := "stop_" + req.StopOrderType.String()
+	defer func() {
+		metrics.OrderLatency.WithLabelValues(orderType).Observe(time.Since(start).Seconds())
+	}()
 
 	if req.OrderID == "" {
 		req.OrderID = s.idGen.NewOrderID()
@@ -188,13 +206,17 @@ func (s *Service) PostStopOrder(ctx context.Context, req *investgo.PostStopOrder
 	)
 
 	if err := s.rateLimiter.Wait(ctx, "post_stop_order"); err != nil {
+		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostStopOrder: rate limit: %w", err)
 	}
 
 	resp, err := s.tinvestClient.StopOrdersServiceClient().PostStopOrder(req)
 	if err != nil {
+		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostStopOrder: %w", err)
 	}
+
+	metrics.OrdersTotal.WithLabelValues(orderType, "success").Inc()
 
 	l.Info("PostStopOrder completed", "stop_order_id", resp.GetStopOrderId())
 	return resp, nil

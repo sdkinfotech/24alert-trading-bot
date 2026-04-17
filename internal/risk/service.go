@@ -6,6 +6,7 @@ import (
 	"github.com/24alert/trading-bot/internal/risk/checker"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 // Service orchestrates risk checks for inbound order intents.
@@ -50,15 +51,18 @@ func (s *Service) ValidateOrderIntent(ctx context.Context, intent OrderIntent) (
 	resp := &RiskResponse{Allowed: true}
 
 	if s.cb.IsTripped() {
+		metrics.CircuitBreakerState.Set(1)
 		resp.Allowed = false
 		resp.Checks = append(resp.Checks, RiskCheckResult{
 			Name:   "circuit_breaker",
 			Passed: false,
 			Reason: "circuit breaker is tripped — rejecting all orders",
 		})
+		metrics.RiskChecksTotal.WithLabelValues("tripped").Inc()
 		l.Warn("order rejected: circuit breaker tripped")
 		return resp, nil
 	}
+	metrics.CircuitBreakerState.Set(0)
 
 	if s.cfg.CheckTradingSession {
 		r := s.sessionChecker.Check(ctx, intent.InstrumentUID)
@@ -82,9 +86,11 @@ func (s *Service) ValidateOrderIntent(ctx context.Context, intent OrderIntent) (
 
 	if resp.Allowed {
 		s.cb.RecordSuccess()
+		metrics.RiskChecksTotal.WithLabelValues("approved").Inc()
 		l.Info("order intent approved")
 	} else {
 		s.cb.RecordFailure()
+		metrics.RiskChecksTotal.WithLabelValues("rejected").Inc()
 		l.Warn("order intent rejected", "checks", len(resp.Checks))
 	}
 
@@ -106,6 +112,7 @@ func (s *Service) GetRiskStatus(_ context.Context) *RiskStatus {
 // ResetCircuitBreaker allows manual intervention to re-open the breaker.
 func (s *Service) ResetCircuitBreaker(_ context.Context) error {
 	s.cb.Reset()
+	metrics.CircuitBreakerState.Set(0)
 	s.logger.Info("circuit breaker manually reset")
 	return nil
 }

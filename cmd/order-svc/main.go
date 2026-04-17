@@ -11,6 +11,7 @@ import (
 	"github.com/24alert/trading-bot/internal/order"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 func main() {
@@ -33,6 +34,15 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	// Start metrics server (Phase 2: Metrics Exposition)
+	go func() {
+		metricsPort := 9101
+		logger.Info("Starting metrics server", slog.Int("port", metricsPort))
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("Metrics server failed", "error", err)
+		}
+	}()
 
 	if err := order.Run(ctx, cfg, logger); err != nil {
 		logger.Error("Order Service exited with error", "error", err)

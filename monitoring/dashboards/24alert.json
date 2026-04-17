@@ -30,6 +30,7 @@
     },
     {
       "title": "Request Rate (RPS)",
+      "description": "Количество HTTP-запросов в секунду к gateway API.\n\n**Что показывает:** Total RPS — общая нагрузка; по path — какие эндпоинты вызываются чаще всего.\n\n**Норма:** 1-20 rps в зависимости от активности Traderbook и торговых стратегий.\n\n**Кейс:** RPS = 0 при работающем gateway — Traderbook перестал запрашивать данные. Проверить market-data сервис Traderbook и его cron-задания.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
@@ -52,6 +53,7 @@
     },
     {
       "title": "Error Rate (4xx / 5xx)",
+      "description": "Доля клиентских (4xx) и серверных (5xx) ошибок от общего числа запросов.\n\n**Что показывает:** 4xx — ошибки клиента (невалидные параметры, 404); 5xx — ошибки сервера (баги, недоступность T-Invest).\n\n**Норма:** 4xx < 1%, 5xx < 1%. > 5% — алерт 24alert_HighErrorRate.\n\n**Кейс:** 5xx > 5% — T-Invest API недоступен или gateway crashует. 4xx > 10% — Traderbook шлёт невалидные запросы (изменился контракт API).",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
@@ -82,6 +84,7 @@
     },
     {
       "title": "Latency p50 / p95 / p99",
+      "description": "Перцентили времени обработки HTTP-запросов gateway.\n\n**Что показывает:** p50 — медиана (типичный запрос), p95 — «обычно медленный», p99 — «самый медленный».\n\n**Норма:** p50 < 50ms, p95 < 500ms, p99 < 2s. p95 > 2s → алерт 24alert_HighLatency.\n\n**Кейс:** p95 > 2s — T-Invest API отвечает медленно или gateway перегружен. Проверить T-Invest Latency на панели ниже.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
@@ -114,6 +117,7 @@
     },
     {
       "title": "Service Up/Down",
+      "description": "Статус доступности каждого микросервиса 24alert.\n\n**Что показывает:** UP (1) — Prometheus может скрейпить /metrics, DOWN (0) — сервис недоступен.\n\n**Норма:** все сервисы UP.\n\n**Кейс:** gateway DOWN — Traderbook не сможет получать цены, инструменты и свечи. Все графики и тепловая карта перестанут обновляться. Срочно: docker compose up -d gateway.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 10 },
@@ -138,6 +142,7 @@
     },
     {
       "title": "Uptime (30d)",
+      "description": "Доступность gateway за последние 30 дней.\n\n**Что показывает:** средний процент времени, когда gateway был UP.\n\n**Норма:** > 99.9% (три девятки). < 99% — серьёзные проблемы со стабильностью.\n\n**Кейс:** uptime < 99% — частые рестарты gateway. Проверить логи на паники/OOM и стабильность Docker.",
       "type": "gauge",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 12, "x": 12, "y": 10 },
@@ -164,16 +169,107 @@
       ]
     },
     {
-      "title": "T-Invest Integration",
+      "title": "Traderbook Integration",
       "type": "row",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
       "collapsed": false
     },
     {
-      "title": "T-Invest Request Rate",
+      "title": "Instruments API (Traderbook)",
+      "description": "RPS на эндпоинты инструментов, используемые Traderbook для синхронизации акций и фьючерсов.\n\n**Что показывает:** частоту запросов к /api/v1/instruments/shares и /api/v1/instruments/futures.\n\n**Норма:** ~0.01 rps (запросы каждые 4 часа от syncInstruments Traderbook). Всплески при ручной синхронизации.\n\n**Кейс:** 0 rps более 8 часов — Traderbook перестал синхронизировать инструменты. Проверить cron syncInstruments в market-data.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=\"24alert-gateway\",path=~\"/api/v1/instruments/.*\"}[5m])) by (path)",
+          "legendFormat": "{{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "Prices API (Traderbook)",
+      "description": "RPS на эндпоинты цен, используемые Traderbook для обновления тепловой карты и скринера.\n\n**Что показывает:** частоту запросов к /api/v1/prices/bulk и /api/v1/prices/close.\n\n**Норма:** ~0.01-0.05 rps (syncPrices каждые 2 мин, syncVolumes каждые 15 мин).\n\n**Кейс:** 0 rps — тепловая карта и скринер Traderbook показывают устаревшие данные. Проверить cron syncPrices в market-data.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15 } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=\"24alert-gateway\",path=~\"/api/v1/prices/.*\"}[5m])) by (path)",
+          "legendFormat": "{{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "Candle Stream (Traderbook)",
+      "description": "RPS на WebSocket-эндпоинт стрима свечей /api/v1/stream/candles.\n\n**Что показывает:** активность WebSocket-подключений от Traderbook market-data для онлайн-свечей.\n\n**Норма:** единичные запросы на установку соединения. При реконнекте — всплеск.\n\n**Кейс:** частые запросы (> 1/мин) — Traderbook постоянно переподключается. Проблема с WebSocket (таймауты, сетевые разрывы).",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "drawStyle": "bars" } }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=\"24alert-gateway\",path=~\"/api/v1/stream/.*\"}[5m]))",
+          "legendFormat": "candle stream"
+        }
+      ]
+    },
+    {
+      "title": "Traderbook Endpoints — Errors",
+      "description": "Ошибки на эндпоинтах, используемых Traderbook (instruments, prices, stream).\n\n**Что показывает:** 4xx/5xx ответы на запросы от Traderbook.\n\n**Норма:** 0 ошибок.\n\n**Кейс:** 5xx на /api/v1/prices/bulk — T-Invest API недоступен, цены не обновляются. 400 на instruments — изменился формат запроса.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "fillOpacity": 15 },
+          "color": { "mode": "palette-classic" }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_http_requests_total{job=\"24alert-gateway\",path=~\"/api/v1/(instruments|prices|stream)/.*\",status=~\"[45]..\"}[5m])) by (path, status)",
+          "legendFormat": "{{ path }} [{{ status }}]"
+        }
+      ]
+    },
+    {
+      "title": "Traderbook Endpoints — Latency (p95)",
+      "description": "P95 латентность эндпоинтов, используемых Traderbook.\n\n**Что показывает:** время ответа для запросов от Traderbook.\n\n**Норма:** instruments < 1s, prices < 500ms.\n\n**Кейс:** prices p95 > 2s — T-Invest API тормозит. Traderbook market-data будет долго ждать данные, возможны таймауты.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(alert24_http_request_duration_seconds_bucket{job=\"24alert-gateway\",path=~\"/api/v1/(instruments|prices|stream)/.*\"}[5m])) by (le, path))",
+          "legendFormat": "p95 {{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "T-Invest Upstream",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "collapsed": false
+    },
+    {
+      "title": "T-Invest Request Rate",
+      "description": "Количество запросов к API Т-Инвестиций по методу.\n\n**Что показывает:** интенсивность использования внешнего API: GetCandles, GetInstruments, GetPrices и т.д.\n\n**Норма:** зависит от активности cron-заданий Traderbook. Пики при syncCandlesNightly.\n\n**Кейс:** RPS = 0 — gateway не делает запросов к T-Invest. Либо нет клиентов, либо проблема с конфигурацией T-Invest токена.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 31 },
       "fieldConfig": {
         "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 } }
       },
@@ -186,9 +282,10 @@
     },
     {
       "title": "T-Invest Error Rate",
+      "description": "Ошибки при вызовах API Т-Инвестиций по методу и типу ошибки.\n\n**Что показывает:** сбои взаимодействия с внешним API (timeout, rate_limit, auth_error, network_error).\n\n**Норма:** 0 ошибок. > 10/5мин → алерт 24alert_TInvestErrors.\n\n**Кейс:** error_type=rate_limit — превышен лимит API (180 req/min). error_type=auth_error — истёк или отозван API-токен T-Invest.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 16 },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 31 },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
       },
@@ -201,9 +298,10 @@
     },
     {
       "title": "T-Invest Latency",
+      "description": "P95 латентность запросов к API Т-Инвестиций по методам.\n\n**Что показывает:** скорость ответа внешнего API.\n\n**Норма:** < 500ms для большинства методов. GetCandles может быть до 2s.\n\n**Кейс:** p95 > 5s — T-Invest API перегружен или сеть нестабильна. Это напрямую влияет на скорость обновления данных в Traderbook.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 16 },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 31 },
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
       },
@@ -217,14 +315,15 @@
     {
       "title": "Orders & Trades",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
       "collapsed": false
     },
     {
       "title": "Order Rate",
+      "description": "Скорость подачи торговых заявок по направлению (buy/sell).\n\n**Что показывает:** интенсивность торговли.\n\n**Норма:** зависит от стратегии. 0 = бот не торгует (выходные, нет стратегии).\n\n**Кейс:** buy >> sell — бот только покупает, возможно зациклилась стратегия. Проверить risk-svc и стратегию.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 24 },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 39 },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
       },
@@ -237,9 +336,10 @@
     },
     {
       "title": "Order Errors",
+      "description": "Ошибки при подаче торговых заявок по направлению и типу.\n\n**Что показывает:** неудачные ордера (отклонены биржей, таймаут, недостаточно средств).\n\n**Норма:** 0. > 5% от общего числа → алерт 24alert_OrderFailures.\n\n**Кейс:** всплеск market buy errors — маркет-мейкер отсутствует или недостаточно ликвидности. Limit errors — некорректная цена.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 24 },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 39 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -256,9 +356,10 @@
     },
     {
       "title": "Order Latency",
+      "description": "Перцентили латентности исполнения ордеров (p50 и p95).\n\n**Что показывает:** сколько времени проходит от подачи заявки до подтверждения.\n\n**Норма:** p50 < 100ms, p95 < 500ms.\n\n**Кейс:** p95 > 2s — биржа тормозит или order-svc перегружен. Для HFT-стратегий критично: p95 > 250ms уже проблема.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 24 },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 39 },
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
       },
@@ -276,14 +377,15 @@
     {
       "title": "Market Data",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 },
       "collapsed": false
     },
     {
       "title": "Market Data Update Rate",
+      "description": "Скорость обновления рыночных данных по типу (candles, prices, orderbook).\n\n**Что показывает:** поток входящих данных от T-Invest.\n\n**Норма:** > 0 в торговые часы. 0 в нерабочее время — нормально.\n\n**Кейс:** 0 updates в торговое время — подписка на данные прервана. Traderbook не получит онлайн-свечи. Проверить WebSocket-подключение к T-Invest.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 32 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 47 },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
       },
@@ -296,9 +398,10 @@
     },
     {
       "title": "Market Data Staleness",
+      "description": "Устаревание рыночных данных: секунды с последнего обновления по инструменту.\n\n**Что показывает:** насколько свежие данные. > 60с — жёлтая зона, > 300с (5 мин) — красная зона и алерт 24alert_MarketDataStale.\n\n**Норма:** < 30с для ликвидных инструментов в торговые часы.\n\n**Кейс:** staleness > 300с для SBER — T-Invest стрим оборвался или инструмент деактивирован. Traderbook получит устаревшие цены для тепловой карты.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 32 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 47 },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -322,14 +425,15 @@
     {
       "title": "Risk Management",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
       "collapsed": false
     },
     {
       "title": "Circuit Breaker State",
+      "description": "Состояние торгового предохранителя (circuit breaker).\n\n**Что показывает:** CLOSED (0, зелёный) — торговля разрешена. OPEN (1, красный) — торговля заблокирована.\n\n**Норма:** CLOSED. OPEN → алерт 24alert_CircuitBreakerOpen.\n\n**Кейс:** OPEN — сработала защита от убытков. Все ордера блокируются. Проверить risk-svc логи: причина срабатывания (макс. просадка, серия убытков).",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 40 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 55 },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -351,9 +455,10 @@
     },
     {
       "title": "Risk Checks",
+      "description": "Количество проверок risk-модулем по результату (passed/rejected).\n\n**Что показывает:** сколько ордеров прошли/не прошли risk-контроль.\n\n**Норма:** rejected < 5% от passed.\n\n**Кейс:** 100% rejected — circuit breaker открыт или лимиты исчерпаны. 0 checks — бот не торгует (нет стратегии или рынок закрыт).",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 40 },
+      "gridPos": { "h": 5, "w": 18, "x": 6, "y": 55 },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
       },
@@ -365,16 +470,55 @@
       ]
     },
     {
+      "title": "HTTP & Network",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "collapsed": false
+    },
+    {
+      "title": "HTTP Response Size (p95)",
+      "description": "P95 размер HTTP-ответов gateway по эндпоинтам.\n\n**Что показывает:** объём данных, отдаваемых клиентам.\n\n**Норма:** instruments ~50-200 KB, prices ~5-50 KB, candles ~10-100 KB.\n\n**Кейс:** response size /api/v1/instruments/shares > 1 MB — отдаём слишком много данных. Проверить пагинацию. Маленький размер на prices — возможно пустой ответ.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 61 },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(alert24_http_response_size_bytes_bucket{job=\"24alert-gateway\"}[5m])) by (le, path))",
+          "legendFormat": "p95 {{ path }}"
+        }
+      ]
+    },
+    {
+      "title": "Request Volume by Endpoint (1h)",
+      "description": "Количество запросов за последний час по каждому эндпоинту.\n\n**Что показывает:** какие API самые востребованные.\n\n**Кейс:** /api/v1/prices/bulk — самый частый (syncPrices каждые 2 мин). /api/v1/instruments/* — редкий (каждые 4 часа). Аномально высокий RPS на редком эндпоинте — подозрительно.",
+      "type": "piechart",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 61 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(alert24_http_requests_total{job=\"24alert-gateway\"}[1h])) by (path)",
+          "legendFormat": "{{ path }}"
+        }
+      ]
+    },
+    {
       "title": "Go Runtime",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 },
       "collapsed": true,
       "panels": [
         {
           "title": "Process Memory (RSS)",
+          "description": "Резидентная память (RSS) процессов 24alert по сервисам.\n\n**Что показывает:** потребление физической RAM.\n\n**Норма:** gateway 30-100 MB, gRPC-сервисы 20-80 MB. Линейный рост = утечка.\n\n**Кейс:** RSS gateway > 500 MB — возможна утечка goroutine или некорректная работа с WebSocket-соединениями.",
           "type": "timeseries",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 46 },
+          "gridPos": { "h": 7, "w": 8, "x": 0, "y": 69 },
           "fieldConfig": {
             "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }
           },
@@ -387,9 +531,10 @@
         },
         {
           "title": "Go Goroutines",
+          "description": "Количество активных goroutines по каждому сервису.\n\n**Что показывает:** параллелизм в Go-процессах.\n\n**Норма:** gateway 50-500, gRPC-сервисы 20-100. Линейный рост = goroutine leak.\n\n**Кейс:** goroutines gateway > 10K — утечка: WebSocket-хендлеры не закрывают goroutines при дисконнекте. Нужен pprof и фикс.",
           "type": "timeseries",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 46 },
+          "gridPos": { "h": 7, "w": 8, "x": 8, "y": 69 },
           "fieldConfig": {
             "defaults": { "unit": "short", "custom": { "fillOpacity": 10 } }
           },
@@ -402,9 +547,10 @@
         },
         {
           "title": "GC Duration",
+          "description": "Время, потраченное на сборку мусора (GC) в Go.\n\n**Что показывает:** нагрузку на GC. Высокое значение = много аллокаций.\n\n**Норма:** < 0.01s/s (1% CPU на GC).\n\n**Кейс:** GC > 0.05s/s — gateway тратит > 5% CPU на GC. Профилировать: go tool pprof /debug/pprof/heap.",
           "type": "timeseries",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 46 },
+          "gridPos": { "h": 7, "w": 8, "x": 16, "y": 69 },
           "fieldConfig": {
             "defaults": { "unit": "s", "custom": { "fillOpacity": 5 } }
           },
@@ -420,14 +566,15 @@
     {
       "title": "Logs (Loki)",
       "type": "row",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 76 },
       "collapsed": true,
       "panels": [
         {
           "title": "Recent Logs",
+          "description": "Все логи 24alert из Loki в реальном времени.\n\n**Что показывает:** полный поток логов всех сервисов.\n\n**Кейс:** быстрый просмотр текущей активности. Фильтровать по ключевым словам через строку поиска Loki.",
           "type": "logs",
           "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 54 },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 77 },
           "targets": [
             {
               "expr": "{job=\"24alert\"}",
@@ -443,9 +590,10 @@
         },
         {
           "title": "Error Logs",
+          "description": "Только ошибки и паники из логов 24alert.\n\n**Что показывает:** error, panic, fatal сообщения.\n\n**Кейс:** при инциденте — первым делом сюда. panic = crash goroutine (сервис может быть нестабилен). fatal = процесс завершился.",
           "type": "logs",
           "datasource": { "type": "loki", "uid": "loki" },
-          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 64 },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 87 },
           "targets": [
             {
               "expr": "{job=\"24alert\"} |~ \"(?i)(error|panic|fatal)\"",

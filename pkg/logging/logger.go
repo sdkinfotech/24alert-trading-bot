@@ -42,13 +42,14 @@ func NewLogger(level, format, output string, filePath string) (*Logger, error) {
 	}
 
 	var handler slog.Handler
+	opts := &slog.HandlerOptions{Level: logLevel}
 	if format == "json" {
-		handler = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: logLevel})
+		handler = slog.NewJSONHandler(out, opts)
 	} else {
-		handler = slog.NewTextHandler(out, &slog.HandlerOptions{Level: logLevel})
+		handler = slog.NewTextHandler(out, opts)
 	}
 
-	return &Logger{Logger: slog.New(handler)}, nil
+	return &Logger{Logger: slog.New(handler).With("project", "24alert")}, nil
 }
 
 // Logger wraps slog.Logger with convenience methods

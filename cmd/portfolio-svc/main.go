@@ -11,6 +11,7 @@ import (
 	"github.com/24alert/trading-bot/internal/portfolio"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 func main() {
@@ -36,6 +37,15 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start metrics server (Phase 2: Metrics Exposition)
+	go func() {
+		metricsPort := 9103
+		logger.Info("Starting metrics server", slog.Int("port", metricsPort))
+		if err := metrics.ServeHTTP(ctx, metricsPort); err != nil {
+			logger.Error("Metrics server failed", "error", err)
+		}
+	}()
 
 	go func() {
 		sig := <-sigChan
