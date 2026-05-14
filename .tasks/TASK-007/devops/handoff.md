@@ -66,9 +66,17 @@ $ curl -s http://127.0.0.1:9090/api/v1/label/__name__/values
 
 ✅ WebSocket работает
 
-## Рекомендации
+## Post-Deploy Verification
 
-- Для постоянного доступа к Prometheus — настроить VPN или SSH-туннель через systemd
-- Рассмотреть добавление ACL на уровне nginx для `/metrics` endpoint gateway
+- [x] Логи проверены — нет error/panic/OOM
+- [x] Smoke-тесты пройдены (Gateway health, REST API, WebSocket)
+- [x] Порты закрыты извне (nmap)
+- [x] Микросервисы доступны локально
+- [x] Prometheus доступен через SSH-туннель
+- [x] Traderbook потребитель подтвердил получение данных
+- [x] Наблюдение 1 час после деплоя — без аномалий
+- [x] Регрессионные тесты пройдены (см. REGRESSION.md)
+
+---
 
 ## Блокеры: НЕТ

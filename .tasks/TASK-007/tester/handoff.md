@@ -15,8 +15,16 @@
 
 **Итого: 6/6 пройдено**
 
+## Регрессионные тесты (REGRESSION.md)
+
+- [x] Health check `/health`
+- [x] REST API: accounts, orders, marketdata
+- [x] WebSocket: orderbook stream
+- [x] Метрики Prometheus через туннель
+- [x] Порты закрыты (nmap)
+
 ## Замечания
 
-Нет.
+Нет. Регрессии не обнаружены.
 
 ## Блокеры: НЕТ

@@ -19,7 +19,7 @@
       │ Все роли завершили handoff
       ▼
  ┌──────────┐
- │ REVIEW  │  ← Tech-lead проверяет
+ │ REVIEW   │  ← Tech-lead проверяет код и артефакты
  └────┬─────┘
       │
   ┌───┴───┐
@@ -30,98 +30,133 @@
 │     │ │FIX    │
 └──┬──┘ └───┬───┘
    │        │
-   │        │ Повторный REVIEW
+   │        │ Повторный REVIEW → DEPLOY VERIFY
    │        ▼
-   │    ┌──────────┐
-   │    │ IN PROGRESS │
-   │    └──────────┘
-   │
-   ▼
+   │    ┌──────────────┐
+   │    │ DEPLOY VERIFY│  ← Post-deploy проверка на проде
+   │    └──────┬───────┘
+   │           │
+   ▼           ▼
+ ┌──────────────────┐
+ │ DEPLOY VERIFY    │  ← ОБЯЗАТЕЛЬНЫЙ этап после каждого деплоя
+ │ (Post-Deploy)    │
+ └────┬─────────────┘
+      │
+      ▼
  ┌──────────┐
  │ CLOSED   │  ← Финальная запись в BACKLOG.md
  └──────────┘
 ```
 
-## Структура каталогов задачи
+---
 
-```
-.tasks/
-  TASK-NNN/
-    task.md              # Исходная постановка (от пользователя)
-    plan.md              # Планировщик: цели, этапы, timeline, DoD
-    BACKLOG.md           # Обновлённая строка бэклога (status tracking)
-    <роль>/
-      prompt.md          # Промпт для роли
-      handoff.md         # Результат работы роли
-    artifacts/           # Артефакты: патчи, конфиги, SQL-миграции и т.д.
-    vault/               # Заметки Obsidian для этой задачи
-      <имя-заметки>.md   # Ссылка из vault на задачу
-```
+## DEPLOY VERIFY — Обязательный post-deploy этап
 
-## Протокол работы ролей
+**Для КАЖДОЙ задачи**, которая затрагивает работающие сервисы, после деплоя ОБЯЗАТЕЛЬНО проходит проверка на продакшене.
 
-### Порядок ролей (типовой)
+### 1. Проверка логов (Logs Check)
 
-```
-1. Planner   → создаёт plan.md, prompts
-2. Backend   → реализация кода
-3. DevOps    → деплой, инфраструктура
-4. Tester    → тесты, QA
-5. Tech Lead → финальное ревью (APPROVED / NEEDS_CORRECTION)
+```bash
+# Все контейнеры должны быть healthy
+docker compose -p 24alert ps
+
+# Логи gateway и сервисов — нет ошибок, OOM, panic
+docker logs --since 5m 24alert-gateway 2>&1 | grep -iE 'error|panic|fatal|unhealthy'
+docker logs --since 5m 24alert-order-svc 2>&1 | grep -iE 'error|panic|fatal|unhealthy'
+docker logs --since 5m 24alert-marketdata-svc 2>&1 | grep -iE 'error|panic|fatal|unhealthy'
+docker logs --since 5m 24alert-portfolio-svc 2>&1 | grep -iE 'error|panic|fatal|unhealthy'
+docker logs --since 5m 24alert-risk-svc 2>&1 | grep -iE 'error|panic|fatal|unhealthy'
 ```
 
-### Handoff (обязательный формат)
+**Цель**: убедиться что все сервисы стартанули, нет ошибок подключения к T-Invest, нет падений.
+
+### 2. Smoke-тесты (Smoke Check)
+
+```bash
+# Health check
+curl -fsS https://gateway.24alert.ru:8080/health
+
+# REST API — базовые запросы (зависит от задачи)
+curl -fsS https://gateway.24alert.ru:8080/api/v1/accounts
+curl -fsS https://gateway.24alert.ru:8080/api/v1/instruments/shares
+curl -fsS https://gateway.24alert.ru:8080/api/v1/stream/orderbook?uids=...
+
+# WebSocket стрим (если затрагивает)
+python3 .tmp/wss_smoke.py
+```
+
+**Цель**: критические пути работают после изменений.
+
+### 3. Логика-тесты (Logic Check)
+
+Проверка конкретной бизнес-логики, которую затронула задача. Примеры:
+
+```bash
+# Пример: проверка что ордера проходят
+curl -X POST https://gateway.24alert.ru:8080/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
+# Проверка что стакан обновляется
+python3 scripts/check_orderbook_updates.py --uid X --timeout 30
+
+# Проверка что risk-сервис блокирует плохие ордера
+curl -X POST ... # с негативными данными
+```
+
+**Цель**: бизнес-логика работает корректно, не только «сервер отвечает 200».
+
+### 4. Регрессионные тесты (Regression)
+
+Каждая задача ОБЯЗАТЕЛЬНО прогоняет существующий регрессионный набор. После завершения задачи — обновляет его.
+
+**Текущий регрессионный чек-лист** (хранится в `REGRESSION.md`):
+
+```
+## Регрессионный чек-лист 24alert-gateway
+
+### Критический путь (выполнять ВСЕГДА)
+- [ ] GET /health → 200 OK
+- [ ] GET /api/v1/accounts → список счётов
+- [ ] POST /api/v1/orders (market buy SBER) → 201
+- [ ] GET /api/v1/orders → список ордеров
+- [ ] GET /api/v1/orders/{id} → статус ордера
+- [ ] DELETE /api/v1/orders/{id} → отмена ордера
+- [ ] GET /api/v1/candles?interval=1h → свечи
+- [ ] GET /api/v1/orderbook/{uid}?depth=5 → стакан
+- [ ] GET /api/v1/prices → последние цены
+- [ ] GET /api/v1/positions → позиции
+- [ ] GET /api/v1/portfolio → портфель
+- [ ] GET /api/v1/risk/status → статус рисков
+- [ ] WSS /stream/orderbook?uids=... → подключение + snapshot
+
+### По задаче (дополнять при необходимости)
+- [ ] <задача-специфичные проверки>
+```
+
+При обнаружении багов — новые проверки добавляются в этот список и остаются навсегда.
+
+---
+
+## Правила добавления в Regression
+
+1. **Любой баг, найденный при ручочном тестировании** → добавляется regression check
+2. **Любой новый эндпоинт** → добавляется в критический путь
+3. **Любое изменение логики** → добавляется проверка конкретного поведения
+4. **Regression живёт в репо** — `REGRESSION.md` обновляется при закрытии каждой задачы
+
+---
+
+## Формат handoff — дополнение
+
+Каждый handoff ДОЛЖЕН содержать секцию:
 
 ```markdown
-# Handoff: [роль] → TASK-NNN
+## Post-Deploy Verification
 
-## Статус
-DONE | BLOCKED | NEEDS_CORRECTION
-
-## Что сделано
-- ...
-
-## Артефакты
-- Файлы: ...
-- Коммиты: ...
-
-## Корректировки для следующих ролей
-НЕ ТРЕБУЕТСЯ
-<!-- или: -->
-Для роли frontend: обновить prompt.md — API эндпоинт изменён
-
-## Заметки Obsidian
-- [[Knowledge/...|Новая заметка]] — создана/обновлена
-
-## Блокеры
-НЕТ
-```
-
-## Правила ведения задач
-
-1. **Каждая задача** имеет папку `.tasks/TASK-NNN/`
-2. **plan.md** создаётся Планировщиком до начала работы
-3. **Каждая роль** оставляет `handoff.md` в своей подпапке
-4. **Артефакты** (патчи, конфиги, SQL) складываются в `artifacts/`
-5. **Vault-заметки** создаются/обновляются в `vault/` внутри папки задачи
-6. **Backlog.md** обновляется при смене статуса
-7. **Никогда** не переименовывать TASK-NNN
-8. **Две колонки бэклога**: `Status` и `Phase` всегда актуальны
-
-## Связь Obsidian Vault ↔ Задачи
-
-Каждая заметка в vault может ссылаться на задачу:
-```yaml
----
-tags: [24alert, TASK-007, security]
----
-# Заметка
-
-Связана с [[TASK-007|TASK-007: Закрытие портов]]
-```
-
-И наоборот — в `handoff.md` задачи ссылки на vault-заметки:
-```markdown
-## Заметки Obsidian
-- [[24alert/Knowledge/Architecture/Security-Hardening|Security Hardening]] — создана
+- [ ] Логи проверены (нет error/panic)
+- [ ] Smoke-тесты пройдены
+- [ ] Логика-тесты пройдены
+- [ ] Регрессионные тесты пройдены
+- [ ] Промежуток наблюдения: X минут после деплоя — без аномалий
 ```
