@@ -49,8 +49,12 @@ build:
 build-all: proto-gen build
 
 test:
-	@echo "Running tests..."
-	go test -v -cover ./...
+	@echo "Running tests (excluding tests/e2e; use make test-e2e with gateway up)..."
+	go test -v -cover $$(go list ./... | grep -v '/tests/e2e')
+
+test-e2e:
+	@echo "E2E against API_BASE_URL (default http://127.0.0.1:18080)"
+	go test -v -count=1 ./tests/e2e/...
 
 lint:
 	@echo "Linting code..."

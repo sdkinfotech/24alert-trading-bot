@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,12 +22,14 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	baseURL = envOr("API_BASE_URL", "http://176.123.160.234:8080")
-	client = &http.Client{Timeout: 30 * time.Second}
+	// Default: local docker compose (gateway published on loopback :18080).
+	// Remote / TLS: set API_BASE_URL (e.g. https://host:8080 — nginx may not expose all REST paths).
+	baseURL = strings.TrimRight(envOr("API_BASE_URL", "http://127.0.0.1:18080"), "/")
+	client = newE2EHTTPClient(baseURL)
 
 	accs, err := getAccounts()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: cannot get accounts: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FATAL: cannot get accounts (API_BASE_URL=%q): %v\n", baseURL, err)
 		os.Exit(1)
 	}
 	if len(accs) == 0 {
@@ -43,6 +47,17 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func newE2EHTTPClient(base string) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	if strings.HasPrefix(strings.ToLower(base), "https:") {
+		tr.TLSClientConfig = &tls.Config{
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: true, //nolint:gosec // e2e against hosts without public CA (e.g. IP TLS)
+		}
+	}
+	return &http.Client{Timeout: 30 * time.Second, Transport: tr}
 }
 
 // --- HTTP helpers ---
