@@ -4,20 +4,20 @@ A modular Go trading bot built on T-Invest (Tinkoff Investments) API with micros
 
 ## Architecture
 
-```
-gateway (:8080) ─── REST/Swagger + CLI
-    ├── order-svc (:9001)      → T-Invest Orders API
-    ├── marketdata-svc (:9002)  → T-Invest MarketData API
-    ├── portfolio-svc (:9003)   → T-Invest Operations/Users API
-    └── risk-svc (:9004)        → portfolio-svc + marketdata-svc (no direct T-Invest calls)
+### Runtime (Docker Compose)
 
+- **gateway** listens on **`:8080` inside the container**; on the host it is published as **`127.0.0.1:18080`** so nginx on `:8080/tcp` can TLS-terminate and proxy selected paths (see [`docs/STREAM_ORDERBOOK.md`](docs/STREAM_ORDERBOOK.md)).
+- **REST** is implemented **in-process** in the gateway: it wires `order`, `marketdata`, `portfolio`, and `risk` packages with one shared T-Invest client (`cmd/gateway/main.go`). HTTP handlers do **not** call the sibling `order-svc` / `marketdata-svc` / … containers over Docker DNS.
+
+**Decision — keep the `*-svc` containers in compose:** they still provide separate **`/metrics` on `:910x`** scrape targets used by [`config/prometheus-agent.yaml`](config/prometheus-agent.yaml) (plus optional direct gRPC/CLI use). Trade-off: extra T-Invest sessions vs the gateway until we consolidate metrics or drop those jobs.
+
+- **gRPC** contracts in `proto/`; standalone `*-svc` binaries speak gRPC on host ports `127.0.0.1:9001–9004` when published.
+- **CLI** (cobra) for command-line workflows.
+- **Protocol Buffers** for service contracts.
+
+```
 strategy-plugin (:9010) ─── external gRPC server (contract defined, not implemented)
 ```
-
-- **gRPC** between services (internal communication)
-- **REST** on gateway (external API)
-- **CLI** (cobra) for command-line interface
-- **Protocol Buffers** for service contracts
 
 ## Quick Start
 
@@ -122,6 +122,8 @@ make docker-down
 
 Все контейнеры получают `TINVEST_SANDBOX`, `TINVEST_SANDBOX_TOKEN`, `TINVEST_PROD_TOKEN` и `LOG_LEVEL` из `deployments/.env`.
 
+С хоста после `make docker-up` gateway опубликован на **http://127.0.0.1:18080** (loopback → контейнер `:8080`). Другие контейнеры в той же сети ходят на `http://gateway:8080`.
+
 #### Локально (без Docker)
 
 ```bash
@@ -142,9 +144,8 @@ TINVEST_SANDBOX=false    # ← переключает на боевой конт
 
 ### API Access
 
-- **REST API**: http://localhost:8080/api/v1/...
-- **Swagger UI**: http://localhost:8080/swagger/
-- **Health Check**: http://localhost:8080/health
+- **Docker Compose (с хоста)**: `http://127.0.0.1:18080/api/v1/...`, Swagger `http://127.0.0.1:18080/swagger/`, health `http://127.0.0.1:18080/health`
+- **Локально без Docker** (бинарники слушают `:8080`): `http://localhost:8080/...`
 
 ### CLI Usage
 
@@ -362,6 +363,24 @@ GET    /api/v1/margin/:account_id      # Get margin attributes
 GET    /api/v1/risk/status             # Get risk status
 POST   /api/v1/risk/reset              # Reset circuit breaker
 ```
+
+#### Real-time streams (WebSocket)
+
+```
+GET    /api/v1/stream/candles          # WS: multiplexed candle stream
+GET    /api/v1/stream/orderbook        # WS: multiplexed order book stream (since TASK-019)
+```
+
+Public production WebSocket: `wss://gateway.24alert.ru:8080/api/v1/stream/orderbook`
+(IP-whitelisted; see `docs/STREAM_ORDERBOOK.md`). The same nginx vhost exposes **`/health`** and stream paths; **most REST paths are not proxied on that public URL** (they return 404 from nginx). Co-located apps such as Traderbook call the gateway on the Docker network, e.g. `ALERT_GATEWAY_URL=http://24alert-gateway:8080`.
+
+Query parameters:
+
+- `uids` — CSV of T-Invest instrument UIDs (required, ≤300 per connection)
+- `depth` — order book depth (10/20/30/40/50; default 20)
+
+JSON frames: `{type:"snapshot", uid, depth, bids[], asks[], ts}`, `{type:"ping", ts}`,
+`{type:"error", error, ts}`. Full protocol + ops playbook: [`docs/STREAM_ORDERBOOK.md`](docs/STREAM_ORDERBOOK.md).
 
 ### gRPC Services
 

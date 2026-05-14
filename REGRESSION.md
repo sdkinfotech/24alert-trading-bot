@@ -9,6 +9,7 @@
 
 ### Health & Connectivity
 - [ ] `curl https://gateway.24alert.ru:8080/health` → 200 OK, `{"status":"ok"}`
+- [ ] **REST smoke (не через публичный домен):** nginx на `:8080` не проксирует большинство `/api/v1/*` наружу (с публичного URL будет **404**). Проверка REST: с хоста `curl -fsS http://127.0.0.1:18080/api/v1/accounts` (или из Docker-сети потребителя с `ALERT_GATEWAY_URL`).
 - [ ] Все контейнеры healthy: `docker compose -p 24alert ps`
 - [ ] Логи без panic/OOM за последние 5 минут
 

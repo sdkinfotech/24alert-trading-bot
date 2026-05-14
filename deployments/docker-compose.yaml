@@ -123,8 +123,10 @@ services:
       args:
         SERVICE_NAME: gateway
     container_name: 24alert-gateway
+    # Host loopback only: matches nginx upstream 127.0.0.1:18080 (see docs/STREAM_ORDERBOOK.md).
+    # Other containers reach gateway at http://gateway:8080 or http://24alert-gateway:8080 on trading-bot-net.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:18080:8080"
     env_file:
       - .env
     environment:
