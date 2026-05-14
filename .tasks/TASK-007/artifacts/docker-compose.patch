@@ -1,0 +1,49 @@
+diff --git a/deployments/docker-compose.yaml b/deployments/docker-compose.yaml
+index 80b1c2a..15bb7f8 100644
+--- a/deployments/docker-compose.yaml
++++ b/deployments/docker-compose.yaml
+@@ -7,7 +7,7 @@ services:
+         SERVICE_NAME: order-svc
+     container_name: 24alert-order-svc
+     ports:
+-      - "9001:9001"
++      - "127.0.0.1:9001:9001"
+     expose:
+       - "9101"
+     env_file:
+@@ -35,7 +35,7 @@ services:
+         SERVICE_NAME: marketdata-svc
+     container_name: 24alert-marketdata-svc
+     ports:
+-      - "9002:9002"
++      - "127.0.0.1:9002:9002"
+     expose:
+       - "9102"
+     env_file:
+@@ -63,7 +63,7 @@ services:
+         SERVICE_NAME: portfolio-svc
+     container_name: 24alert-portfolio-svc
+     ports:
+-      - "9003:9003"
++      - "127.0.0.1:9003:9003"
+     expose:
+       - "9103"
+     env_file:
+@@ -91,7 +91,7 @@ services:
+         SERVICE_NAME: risk-svc
+     container_name: 24alert-risk-svc
+     ports:
+-      - "9004:9004"
++      - "127.0.0.1:9004:9004"
+     expose:
+       - "9104"
+     env_file:
+@@ -159,7 +159,7 @@ services:
+       - "--config.file=/etc/prometheus/prometheus.yml"
+       - "--storage.agent.path=/prometheus"
+     ports:
+-      - "9090:9090"
++      - "127.0.0.1:9090:9090"
+     volumes:
+       - ../config/prometheus-agent.yaml:/etc/prometheus/prometheus.yml:ro
+       - ../config/remote_write_password:/etc/prometheus/remote_write_password:ro

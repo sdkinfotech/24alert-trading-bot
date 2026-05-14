@@ -52,6 +52,9 @@ docs/swagger.yaml
 *.log
 logs/
 
+# Qwen agent local files
+.qwen/
+
 # Temporary
 .tasks/.tmp/
 tmp/
