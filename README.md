@@ -288,7 +288,8 @@ Generates Go code in `gen/go/<service>/v1/`.
 ### Run Tests
 
 ```bash
-make test
+make test          # unit + integration packages (excludes tests/e2e — no live gateway required)
+make test-e2e      # optional: needs gateway reachable at API_BASE_URL (default http://127.0.0.1:18080)
 ```
 
 ### Format Code
