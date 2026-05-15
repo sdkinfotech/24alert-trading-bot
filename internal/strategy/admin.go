@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+// corsMiddleware adds CORS headers for the web dashboard dev server.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if req.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
 // NewManagementHandler serves health, instance list, and start/stop controls.
 func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 	mux := http.NewServeMux()
@@ -110,5 +124,48 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(sum)
 	})
-	return mux
+	mux.HandleFunc("GET /instances/{id}/indicator", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		data, ok := r.InstanceIndicatorData(id)
+		if !ok {
+			http.Error(w, "instance not running or no indicator data", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	})
+	mux.HandleFunc("GET /instances/{id}/signals", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		limit := 200
+		if v := req.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
+				limit = n
+			}
+		}
+		rows, err := r.InstanceRecentSignals(req.Context(), id, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	mux.HandleFunc("GET /instances/{id}/events", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		limit := 200
+		if v := req.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
+				limit = n
+			}
+		}
+		rows, err := r.InstanceEvents(req.Context(), id, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))
+	return corsMiddleware(mux)
 }

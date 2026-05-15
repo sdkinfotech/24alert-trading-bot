@@ -233,6 +233,20 @@ strategies:
 - **E2E** тесты в `tests/e2e` требуют доступный gateway по `API_BASE_URL`; для проверки только runner используйте `go test ./internal/... ./pkg/...`.
 - Публичный nginx у продакшена может **не проксировать** большинство REST-путей gateway; управление **strategy-runner** обычно с хоста/VPN по опубликованному порту или SSH-туннелю — согласуйте с вашей схемой деплоя.
 
+## Первый боевой запуск (пример: ВТБ на ИИС)
+
+Полный сценарий, выполненный 2026-05-15:
+
+1. **Счёт:** ИИС `2001673385`, баланс 2 000 RUB, маржа недоступна.
+2. **Инструмент:** ВТБ (VTBR) `962e2a95-02a9-4171-abd7-aa198dbe643a`, ~122 RUB/лот, лот = 1 акция.
+3. **Критерии подбора:** цена лота вписывается в баланс; тысячи лотов в стакане; `api_trade_available: true`; спред 1 коп.
+4. **Конфигурация:** `config/config.yaml` → `strategies.instances` с `iis-vtb-sma`, `quantity: 1`, `interval: 1h`.
+5. **Watchdog:** `max_drawdown_percent: 10`, `max_daily_loss_rub: 500`, `pause_on_drawdown: true`.
+6. **Деплой:** `git push` → `git pull` на сервере → `docker compose build strategy-runner` → `docker compose up -d`.
+7. **Проверка:** `curl http://127.0.0.1:9020/instances` → `running: true`; логи: `strategy instance started`, `SUBSCRIPTION_STATUS_SUCCESS`.
+
+Подробно о том, как подбирать инструменты: [`docs/INSTRUMENT_SELECTION.md`](INSTRUMENT_SELECTION.md).
+
 ## Связанные файлы
 
 | Область | Путь |
@@ -244,3 +258,5 @@ strategies:
 | Журнал | `internal/journal/` |
 | Ledger | `internal/strategy/ledger/` |
 | Конфиг типов | `pkg/config/config.go` |
+| Подбор инструментов | [`docs/INSTRUMENT_SELECTION.md`](INSTRUMENT_SELECTION.md) |
+| Мониторинг и метрики | [`docs/STRATEGY_MONITORING.md`](STRATEGY_MONITORING.md) |

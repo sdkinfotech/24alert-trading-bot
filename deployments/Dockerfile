@@ -1,8 +1,16 @@
+FROM node:22-slim AS dashboard
+WORKDIR /app/web/strategy-dashboard
+COPY web/strategy-dashboard/package.json web/strategy-dashboard/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY web/strategy-dashboard/ .
+RUN npm run build
+
 FROM golang:1.25 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=dashboard /app/web/strategy-dashboard/dist /app/internal/strategy/dashboard_dist
 ARG SERVICE_NAME=gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/service ./cmd/${SERVICE_NAME}
 

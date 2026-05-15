@@ -55,6 +55,10 @@ logs/
 # Qwen agent local files
 .qwen/
 
+# Frontend
+web/strategy-dashboard/node_modules/
+web/strategy-dashboard/dist/
+
 # Temporary
 .tasks/.tmp/
 tmp/

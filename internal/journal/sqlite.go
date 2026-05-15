@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS strategy_state (
 );
 CREATE INDEX IF NOT EXISTS idx_exec_instance_ts ON executions(instance_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_instance_ts ON orders(instance_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_instance_ts ON signals(instance_id, ts DESC);
 `
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
@@ -133,6 +134,95 @@ func (s *SQLite) ListRecentExecutions(ctx context.Context, instanceID string, li
 		}
 		r.CreatedAt = time.UnixMilli(tsMs).UTC()
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ListRecentSignals(ctx context.Context, instanceID string, limit int) ([]SignalRecord, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT ts, instance_id, instrument_uid, direction, quantity, order_type, ref_price, reason
+		FROM signals WHERE instance_id = ? ORDER BY id DESC LIMIT ?`, instanceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SignalRecord
+	for rows.Next() {
+		var tsMs int64
+		var r SignalRecord
+		if err := rows.Scan(&tsMs, &r.InstanceID, &r.InstrumentUID, &r.Direction, &r.Quantity, &r.OrderType, &r.RefPrice, &r.Reason); err != nil {
+			return nil, err
+		}
+		r.CreatedAt = time.UnixMilli(tsMs).UTC()
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ListRecentOrders(ctx context.Context, instanceID string, limit int) ([]OrderRecord, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT ts, instance_id, order_id, instrument_uid, direction, quantity, order_type, ref_price
+		FROM orders WHERE instance_id = ? ORDER BY id DESC LIMIT ?`, instanceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []OrderRecord
+	for rows.Next() {
+		var tsMs int64
+		var r OrderRecord
+		if err := rows.Scan(&tsMs, &r.InstanceID, &r.OrderID, &r.InstrumentUID, &r.Direction, &r.Quantity, &r.OrderType, &r.RefPrice); err != nil {
+			return nil, err
+		}
+		r.CreatedAt = time.UnixMilli(tsMs).UTC()
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ListEvents(ctx context.Context, instanceID string, limit int) ([]TimelineEvent, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 200
+	}
+	perTable := limit
+	query := `
+SELECT type, ts, instance_id, instrument_uid, direction, quantity, order_type, ref_price, reason, order_id, status, filled_qty, avg_price, message
+FROM (
+  SELECT 'signal' AS type, ts, instance_id, instrument_uid, direction, quantity, order_type, ref_price, reason,
+         '' AS order_id, '' AS status, 0 AS filled_qty, 0.0 AS avg_price, '' AS message
+  FROM signals WHERE instance_id = ? ORDER BY id DESC LIMIT ?
+) UNION ALL SELECT * FROM (
+  SELECT 'order' AS type, ts, instance_id, instrument_uid, direction, quantity, order_type, ref_price, '' AS reason,
+         order_id, 'submitted' AS status, 0 AS filled_qty, 0.0 AS avg_price, '' AS message
+  FROM orders WHERE instance_id = ? ORDER BY id DESC LIMIT ?
+) UNION ALL SELECT * FROM (
+  SELECT 'execution' AS type, ts, instance_id, instrument_uid, '' AS direction, 0 AS quantity, '' AS order_type, 0.0 AS ref_price, '' AS reason,
+         order_id, status, filled_qty, avg_price, message
+  FROM executions WHERE instance_id = ? ORDER BY id DESC LIMIT ?
+)
+ORDER BY ts DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, query, instanceID, perTable, instanceID, perTable, instanceID, perTable, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TimelineEvent
+	for rows.Next() {
+		var e TimelineEvent
+		var tsMs int64
+		if err := rows.Scan(&e.Type, &tsMs, &e.InstanceID, &e.InstrumentUID, &e.Direction, &e.Quantity, &e.OrderType, &e.RefPrice, &e.Reason,
+			&e.OrderID, &e.Status, &e.FilledQty, &e.AvgPrice, &e.Message); err != nil {
+			return nil, err
+		}
+		e.Time = time.UnixMilli(tsMs).UTC().Format(time.RFC3339)
+		out = append(out, e)
 	}
 	return out, rows.Err()
 }

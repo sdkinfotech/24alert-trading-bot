@@ -7,3 +7,9 @@ type StatefulStrategy interface {
 	Snapshot() ([]byte, error)
 	Restore([]byte) error
 }
+
+// IndicatorProvider is optionally implemented by strategies that expose
+// indicator data for visualization (charts, SMA lines, signal markers).
+type IndicatorProvider interface {
+	IndicatorData() interface{}
+}

@@ -1,4 +1,4 @@
-.PHONY: help proto-gen build build-all test lint ci-check ci-test clean run-all fmt install-tools \
+.PHONY: help proto-gen dashboard-build build build-all test lint ci-check ci-test clean run-all fmt install-tools \
        docker-build docker-up docker-down docker-logs docker-monitoring-up docker-monitoring-down
 
 COMPOSE := docker compose -p 24alert -f deployments/docker-compose.yaml
@@ -36,6 +36,13 @@ proto-gen: $(PROTO_OUT)
 
 $(PROTO_OUT):
 	mkdir -p $(PROTO_OUT)
+
+dashboard-build:
+	@echo "Building strategy dashboard SPA..."
+	cd web/strategy-dashboard && npm ci && npm run build
+	rm -rf internal/strategy/dashboard_dist
+	cp -r web/strategy-dashboard/dist internal/strategy/dashboard_dist
+	@echo "Dashboard built and embedded assets updated"
 
 build:
 	@echo "Building services..."

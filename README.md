@@ -219,6 +219,8 @@ TINVEST_SANDBOX=false    # ← переключает на боевой конт
 ├── gen/                       # Generated protobuf code (after make proto-gen)
 ├── docs/                      # Markdown + Swagger helpers
 │   ├── STRATEGY_RUNNER.md    # strategy-runner: config, API, observability
+│   ├── INSTRUMENT_SELECTION.md # how to pick instruments for strategies
+│   ├── STRATEGY_MONITORING.md  # how to monitor strategy performance & metrics
 │   ├── STREAM_ORDERBOOK.md
 │   └── TRADING_API.md
 ├── deployments/               # Docker, K8s, etc

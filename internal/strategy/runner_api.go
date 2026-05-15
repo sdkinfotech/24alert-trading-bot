@@ -40,6 +40,30 @@ func (r *Runner) InstanceRecentExecutions(ctx context.Context, id string, limit 
 	return r.journal.ListRecentExecutions(ctx, id, limit)
 }
 
+// InstanceRecentSignals returns persisted signals from the journal.
+func (r *Runner) InstanceRecentSignals(ctx context.Context, id string, limit int) ([]journal.SignalRecord, error) {
+	return r.journal.ListRecentSignals(ctx, id, limit)
+}
+
+// InstanceEvents returns a unified timeline of signals, orders, and executions.
+func (r *Runner) InstanceEvents(ctx context.Context, id string, limit int) ([]journal.TimelineEvent, error) {
+	return r.journal.ListEvents(ctx, id, limit)
+}
+
+// InstanceIndicatorData returns indicator visualization data if the strategy supports it.
+func (r *Runner) InstanceIndicatorData(id string) (interface{}, bool) {
+	r.mu.Lock()
+	rt := r.instances[id]
+	r.mu.Unlock()
+	if rt == nil {
+		return nil, false
+	}
+	if ip, ok := rt.strat.(IndicatorProvider); ok {
+		return ip.IndicatorData(), true
+	}
+	return nil, false
+}
+
 // DailyJournalSummary wraps journal daily aggregation.
 func (r *Runner) DailyJournalSummary(ctx context.Context, day time.Time) (journal.DailySummary, error) {
 	return r.journal.DailySummary(ctx, day)
