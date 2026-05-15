@@ -102,6 +102,11 @@ func (g *candleGroup) run(ctx context.Context, src <-chan *pb.Candle) {
 			if c == nil {
 				continue
 			}
+			// The T-Invest SDK shares a single WebSocket stream, so candles
+			// for other instruments may arrive on this channel. Filter them.
+			if c.GetInstrumentUid() != g.key.instrumentUID {
+				continue
+			}
 			sc := pbCandleToStrategy(c)
 			g.mu.Lock()
 			subs := append([]chan Candle(nil), g.subs...)
