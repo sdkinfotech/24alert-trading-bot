@@ -15,7 +15,9 @@ import { InstanceSelector } from './components/InstanceSelector';
 import { AiChatPanel } from './components/AiChatPanel';
 import { SystemGuidePage } from './components/SystemGuidePage';
 
-const REFRESH_MS = 30_000;
+/** Polling while «Мониторинг» is visible; slower when tab in background. */
+const REFRESH_VISIBLE_MS = 5_000;
+const REFRESH_HIDDEN_MS = 30_000;
 
 type MainTab = 'monitor' | 'guide';
 
@@ -103,8 +105,25 @@ export default function App() {
   useEffect(() => {
     if (tab !== 'monitor') return;
     loadData();
-    const timer = setInterval(loadData, REFRESH_MS);
-    return () => clearInterval(timer);
+    let timer: ReturnType<typeof setInterval>;
+    const arm = () => {
+      clearInterval(timer);
+      const ms =
+        typeof document !== 'undefined' && document.visibilityState === 'hidden'
+          ? REFRESH_HIDDEN_MS
+          : REFRESH_VISIBLE_MS;
+      timer = setInterval(loadData, ms);
+    };
+    arm();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') loadData();
+      arm();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [loadData, tab]);
 
   return (
@@ -165,7 +184,7 @@ export default function App() {
               if (!cur) {
                 return (
                   <p className="text-xs text-gray-500">
-                    Автообновление каждые {REFRESH_MS / 1000} с
+                    Автообновление ~{REFRESH_VISIBLE_MS / 1000} с (фон ~{REFRESH_HIDDEN_MS / 1000} с)
                     {lastUpdate && (
                       <> · последнее: {lastUpdate.toLocaleTimeString('ru-RU')}</>
                     )}
@@ -182,7 +201,7 @@ export default function App() {
                   )}
                   <span className="text-gray-400">{cur.type}</span>
                   {' · '}
-                  автообновление {REFRESH_MS / 1000} с
+                  автообновление ~{REFRESH_VISIBLE_MS / 1000} с (фон ~{REFRESH_HIDDEN_MS / 1000} с)
                   {lastUpdate && <> · последнее: {lastUpdate.toLocaleTimeString('ru-RU')}</>}
                 </p>
               );

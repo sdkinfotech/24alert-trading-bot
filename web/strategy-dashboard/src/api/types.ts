@@ -47,6 +47,12 @@ export interface SignalPoint {
 export interface IndicatorData {
   instance_id?: string;
   instrument_uid?: string;
+  /** Config params.interval (empty means runner default: 5m). */
+  chart_interval_param?: string;
+  chart_instrument_uid?: string;
+  /** Proto enum string; must match CandleHub subscription. */
+  chart_subscription_interval?: string;
+  chart_rest_interval?: string;
   strategy_type?: string;
   fast_period?: number;
   slow_period?: number;

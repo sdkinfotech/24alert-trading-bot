@@ -36,6 +36,34 @@ func TestSubscriptionToCandleIntervalUnspecified(t *testing.T) {
 	}
 }
 
+func TestParseSubscriptionInterval(t *testing.T) {
+	tests := []struct {
+		in   string
+		want pb.SubscriptionInterval
+	}{
+		{"", pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_FIVE_MINUTES},
+		{"15m", pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_FIFTEEN_MINUTES},
+		{"1h", pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_ONE_HOUR},
+		{"  1h  ", pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_ONE_HOUR},
+	}
+	for _, tc := range tests {
+		got, err := ParseSubscriptionInterval(tc.in)
+		if err != nil {
+			t.Fatalf("ParseSubscriptionInterval(%q): %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Fatalf("ParseSubscriptionInterval(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestParseSubscriptionIntervalUnknown(t *testing.T) {
+	_, err := ParseSubscriptionInterval("fortnightly")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestIntervalDuration(t *testing.T) {
 	tests := []struct {
 		sub  pb.SubscriptionInterval

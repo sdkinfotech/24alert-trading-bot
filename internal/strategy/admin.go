@@ -142,7 +142,9 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 	})
 	mux.HandleFunc("GET /instances/{id}/indicator", func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
-		data, ok := r.InstanceIndicatorData(id)
+		ctx, cancel := context.WithTimeout(req.Context(), 12*time.Second)
+		defer cancel()
+		data, ok := r.InstanceIndicatorForChart(ctx, id)
 		if !ok {
 			http.Error(w, "instance not running or no indicator data", http.StatusNotFound)
 			return

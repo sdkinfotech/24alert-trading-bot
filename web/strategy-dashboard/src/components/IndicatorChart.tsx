@@ -55,9 +55,25 @@ function levelBounceLevels(data: IndicatorData): { support: number[]; resistance
   return { support: sup, resistance: res };
 }
 
+const MSK_TZ = 'Europe/Moscow';
+
+function formatMskTime(time: number | string): string {
+  if (typeof time === 'number') {
+    return new Date(time * 1000).toLocaleString('ru-RU', {
+      timeZone: MSK_TZ,
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return String(time);
+}
+
 export function IndicatorChart({ data }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const isFirstDataPaintRef = useRef(true);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const line1Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const line2Ref = useRef<ISeriesApi<'Line'> | null>(null);
@@ -71,13 +87,23 @@ export function IndicatorChart({ data }: Props) {
         background: { type: ColorType.Solid, color: '#0a0a0f' },
         textColor: '#9ca3af',
       },
+      localization: {
+        locale: 'ru-RU',
+        timeFormatter: (t: number | string) => formatMskTime(t),
+      },
       grid: {
         vertLines: { color: '#1f2937' },
         horzLines: { color: '#1f2937' },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: '#374151' },
-      timeScale: { borderColor: '#374151', timeVisible: true },
+      timeScale: {
+        borderColor: '#374151',
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 8,
+        tickMarkFormatter: (t: number | string) => formatMskTime(t),
+      },
       width: containerRef.current.clientWidth,
       height: 420,
     });
@@ -250,7 +276,16 @@ export function IndicatorChart({ data }: Props) {
       markersRef.current.setMarkers([]);
     }
 
-    chartRef.current?.timeScale().fitContent();
+    requestAnimationFrame(() => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const ts = chart.timeScale();
+      if (isFirstDataPaintRef.current) {
+        ts.fitContent();
+        isFirstDataPaintRef.current = false;
+      }
+      ts.scrollToRealTime();
+    });
   }, [data]);
 
   const buyCount = data?.signals.filter((s) => s.direction === 'buy').length ?? 0;
@@ -270,6 +305,12 @@ export function IndicatorChart({ data }: Props) {
   const lbMode = data ? isLevelBounce(data) : false;
   const smaMode = data ? hasSMA(data) : false;
 
+  const intervalHint =
+    data?.chart_interval_param ||
+    (data?.chart_subscription_interval
+      ? data.chart_subscription_interval.replace(/^SUBSCRIPTION_INTERVAL_/, '')
+      : '');
+
   let headerLabel = '';
   if (lbMode && data) {
     const { support, resistance } = levelBounceLevels(data);
@@ -287,7 +328,15 @@ export function IndicatorChart({ data }: Props) {
     <div>
       <div className="flex items-center justify-between mb-2 px-1">
         <div className="text-sm text-gray-400">
-          {headerLabel} &middot;{' '}
+          {headerLabel}
+          {intervalHint && (
+            <>
+              {' '}
+              &middot; <span className="text-gray-500">свеча: {intervalHint}</span>
+            </>
+          )}
+          {' '}
+          &middot;{' '}
           Signals: <span className="text-white font-medium">{total}</span>{' '}
           <span className="text-green-400">({buyCount} buy</span> /{' '}
           <span className="text-red-400">{sellCount} sell)</span>

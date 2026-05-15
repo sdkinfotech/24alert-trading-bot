@@ -115,17 +115,44 @@ func (s *Service) GetCandles(
 	from, to time.Time,
 	interval pb.CandleInterval,
 ) ([]Candle, error) {
-	l := s.logger.WithContext(ctx)
-	l.Info("GetCandles", "instrument_uid", instrumentUID, "from", from, "to", to, "interval", interval.String())
+	return s.getCandles(ctx, instrumentUID, from, to, interval, false)
+}
 
-	// Try cache first.
-	cached, cacheErr := s.candleCache.Get(ctx, instrumentUID, from, to, interval)
-	if cacheErr != nil {
-		l.Warn("candle cache get failed, falling through", "error", cacheErr)
+// GetCandlesSkipCache always loads from T-Invest (still writes through to Redis best-effort).
+// Callers that must see the latest session tail or forming bar (e.g. live chart merge) should use this:
+// a cache hit can otherwise return an older slice that does not extend to `to`.
+func (s *Service) GetCandlesSkipCache(
+	ctx context.Context,
+	instrumentUID string,
+	from, to time.Time,
+	interval pb.CandleInterval,
+) ([]Candle, error) {
+	return s.getCandles(ctx, instrumentUID, from, to, interval, true)
+}
+
+func (s *Service) getCandles(
+	ctx context.Context,
+	instrumentUID string,
+	from, to time.Time,
+	interval pb.CandleInterval,
+	skipCache bool,
+) ([]Candle, error) {
+	l := s.logger.WithContext(ctx)
+	if skipCache {
+		l.Info("GetCandles(skip cache)", "instrument_uid", instrumentUID, "from", from, "to", to, "interval", interval.String())
+	} else {
+		l.Info("GetCandles", "instrument_uid", instrumentUID, "from", from, "to", to, "interval", interval.String())
 	}
-	if len(cached) > 0 {
-		l.Info("GetCandles cache hit", "instrument_uid", instrumentUID, "count", len(cached))
-		return cached, nil
+
+	if !skipCache {
+		cached, cacheErr := s.candleCache.Get(ctx, instrumentUID, from, to, interval)
+		if cacheErr != nil {
+			l.Warn("candle cache get failed, falling through", "error", cacheErr)
+		}
+		if len(cached) > 0 {
+			l.Info("GetCandles cache hit", "instrument_uid", instrumentUID, "count", len(cached))
+			return cached, nil
+		}
 	}
 
 	if err := s.rateLimiter.Wait(ctx, "get_candles"); err != nil {
@@ -156,7 +183,6 @@ func (s *Service) GetCandles(
 		})
 	}
 
-	// Store in cache (best-effort, don't fail the request).
 	if putErr := s.candleCache.Put(ctx, instrumentUID, interval, candles); putErr != nil {
 		l.Warn("candle cache put failed", "error", putErr)
 	}
