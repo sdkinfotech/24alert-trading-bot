@@ -247,6 +247,14 @@ strategies:
 
 Подробно о том, как подбирать инструменты: [`docs/INSTRUMENT_SELECTION.md`](INSTRUMENT_SELECTION.md).
 
+## Web Dashboard
+
+Встроенный React SPA для визуализации индикатора, сигналов и торговых событий.
+
+**Доступ:** `http://127.0.0.1:9020/dashboard/` (management порт, через SSH-туннель).
+
+Подробнее: [`docs/STRATEGY_MONITORING.md` → Web Dashboard](STRATEGY_MONITORING.md#web-dashboard).
+
 ## Связанные файлы
 
 | Область | Путь |
@@ -255,6 +263,8 @@ strategies:
 | Оркестрация | `internal/strategy/runner.go` |
 | Исполнения, метрики, watchdog-хелперы | `internal/strategy/runner_exec.go`, `runner_api.go` |
 | HTTP админка | `internal/strategy/admin.go` |
+| Web Dashboard (SPA) | `web/strategy-dashboard/` |
+| Dashboard embed | `internal/strategy/dashboard.go` |
 | Журнал | `internal/journal/` |
 | Ledger | `internal/strategy/ledger/` |
 | Конфиг типов | `pkg/config/config.go` |

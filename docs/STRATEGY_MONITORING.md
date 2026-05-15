@@ -5,6 +5,7 @@
 ## Содержание
 
 - [Быстрый чеклист (5 минут)](#быстрый-чеклист)
+- [Web Dashboard](#web-dashboard)
 - [Логи контейнера](#логи-контейнера)
 - [Management HTTP API](#management-http-api)
 - [Prometheus метрики](#prometheus-метрики)
@@ -30,6 +31,57 @@ ssh adm-srv03-cloud@176.123.160.234
 | Последние сделки | `curl -s 'http://127.0.0.1:9020/instances/iis-vtb-sma/executions?limit=5'` | Массив записей (или null если сделок ещё не было) |
 | Дневной отчёт | `curl -s 'http://127.0.0.1:9020/report/daily?date=2026-05-15'` | Счётчики signals/orders/executions |
 | Ошибки в логах | `docker logs --tail 50 24alert-strategy-runner \| grep -i error` | Пусто — всё хорошо |
+
+## Web Dashboard
+
+Встроенный React SPA-дашборд для визуализации работы стратегии, доступный в браузере.
+
+**URL:** `http://127.0.0.1:9020/dashboard/` (через SSH-туннель: `http://localhost:9020/dashboard/`)
+
+### Что показывает
+
+- **Indicator Chart** — свечной график цены инструмента (OHLC) с наложенными линиями Fast SMA и Slow SMA. Маркеры сигналов: зелёная стрелка вверх = buy, красная стрелка вниз = sell. Счётчик сигналов с момента запуска.
+- **Trade Event Log** — хронологическая лента событий (signals → orders → executions) с цветовой кодировкой и фильтрами по типу.
+- **Stats Panel** — Total/Realized/Unrealized PnL, текущая позиция, дневная статистика.
+- **Instance Selector** — выбор инстанса, статус (running/stopped).
+
+Автообновление каждые 30 секунд.
+
+### Доступ
+
+**Через SSH-туннель (рекомендуется):**
+```bash
+ssh -L 9020:127.0.0.1:9020 adm-srv03-cloud@176.123.160.234
+# Затем открыть http://localhost:9020/dashboard/
+```
+
+**Dev-режим (локальная разработка):**
+```bash
+cd web/strategy-dashboard
+npm run dev
+# Vite проксирует API-запросы на http://127.0.0.1:9020
+```
+
+### API-эндпоинты для дашборда
+
+Помимо существующих (`/instances`, `/instances/{id}/pnl`, `/instances/{id}/ledger`, `/instances/{id}/executions`, `/report/daily`), добавлены:
+
+| Эндпоинт | Описание |
+|----------|----------|
+| `GET /instances/{id}/indicator` | Данные индикатора: свечи с OHLC + Fast/Slow SMA, история сигналов |
+| `GET /instances/{id}/signals?limit=N` | История сигналов из журнала |
+| `GET /instances/{id}/events?limit=N` | Объединённый таймлайн (signals + orders + executions) |
+
+### Сборка
+
+```bash
+make dashboard-build   # npm ci + npm run build + copy to go:embed
+go build ./cmd/strategy-runner  # пересобрать бинарник с новым SPA
+```
+
+### Технологии
+
+React 19 + TypeScript + Vite + Tailwind CSS + TradingView Lightweight Charts v5. SPA встроен в Go-бинарник через `go:embed`.
 
 ## Логи контейнера
 
