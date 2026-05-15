@@ -26,10 +26,13 @@ export interface CandlePoint {
   high: number;
   low: number;
   close: number;
-  fast_sma: number;
-  slow_sma: number;
-  range_high: number;
-  range_low: number;
+  fast_sma?: number;
+  slow_sma?: number;
+  range_high?: number;
+  range_low?: number;
+  /** Level Bounce: primary support / resistance at this bar */
+  support?: number;
+  resistance?: number;
 }
 
 export interface SignalPoint {
@@ -43,8 +46,8 @@ export interface IndicatorData {
   instance_id?: string;
   instrument_uid?: string;
   strategy_type?: string;
-  fast_period: number;
-  slow_period: number;
+  fast_period?: number;
+  slow_period?: number;
   position: number;
   candles: CandlePoint[];
   signals: SignalPoint[];
@@ -52,6 +55,10 @@ export interface IndicatorData {
   range_low?: number;
   range_formed?: boolean;
   current_day?: string;
+  /** Level Bounce: all support / resistance levels (from daily stack) */
+  support?: number[];
+  resistance?: number[];
+  atr?: number;
 }
 
 export interface SignalRecord {
