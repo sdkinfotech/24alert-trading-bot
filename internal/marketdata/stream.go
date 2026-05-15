@@ -24,6 +24,12 @@ const (
 	SubLastPrice
 )
 
+// candleStreamWaitClose must match T-Invest SubscribeCandle(waiting_close).
+// false streams every in-bar tick (high volume); our fan-out used non-blocking sends and could
+// drop candles, leaving the strategy chart hours behind the exchange.
+// true emits one candle per interval when the bar has closed (correct for strategy OnCandle).
+const candleStreamWaitClose = true
+
 func (s SubscriptionType) String() string {
 	switch s {
 	case SubCandles:
@@ -113,7 +119,7 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 		return nil, fmt.Errorf("SubscribeCandles: max subscriptions (%d) reached", sm.maxSubscriptions())
 	}
 
-	ch, err := sm.stream.SubscribeCandle([]string{instrumentUID}, interval, false, nil)
+	ch, err := sm.stream.SubscribeCandle([]string{instrumentUID}, interval, candleStreamWaitClose, nil)
 	if err != nil {
 		return nil, fmt.Errorf("SubscribeCandles: %w", err)
 	}
@@ -121,7 +127,7 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 	sm.subscriptions[key] = struct{}{}
 	sm.candleChs = append(sm.candleChs, ch)
 
-	fanOut := make(chan *pb.Candle, 64)
+	fanOut := make(chan *pb.Candle, 256)
 	sm.candleSubs = append(sm.candleSubs, fanOut)
 
 	// TODO: add WaitGroup for stream goroutines
@@ -258,7 +264,7 @@ func (sm *StreamManager) UnsubscribeCandles(instrumentUID string, interval pb.Su
 	}
 
 	if sm.stream != nil {
-		if err := sm.stream.UnSubscribeCandle([]string{instrumentUID}, interval, false, nil); err != nil {
+		if err := sm.stream.UnSubscribeCandle([]string{instrumentUID}, interval, candleStreamWaitClose, nil); err != nil {
 			return fmt.Errorf("UnsubscribeCandles: %w", err)
 		}
 	}
@@ -444,7 +450,7 @@ func (sm *StreamManager) resubscribeAll() error {
 			if _, err := sm.stream.SubscribeCandle(
 				[]string{key.InstrumentUID},
 				key.CandleInterval,
-				false,
+				candleStreamWaitClose,
 				nil,
 			); err != nil {
 				return err
@@ -491,9 +497,11 @@ func (sm *StreamManager) forwardCandles(ctx context.Context, src <-chan *pb.Cand
 			if c != nil && c.GetClose() != nil {
 				sm.prices.SetLastPrice(c.GetInstrumentUid(), quotationToFloat(c.GetClose()))
 			}
+			// Never drop: losing candles desyncs the strategy from the exchange session (evening bars missing on chart).
 			select {
+			case <-ctx.Done():
+				return
 			case dst <- c:
-			default:
 			}
 		}
 	}
@@ -510,8 +518,9 @@ func (sm *StreamManager) forwardOrderbooks(ctx context.Context, src <-chan *pb.O
 				return
 			}
 			select {
+			case <-ctx.Done():
+				return
 			case dst <- ob:
-			default:
 			}
 		}
 	}
@@ -531,8 +540,9 @@ func (sm *StreamManager) forwardTrades(ctx context.Context, src <-chan *pb.Trade
 				sm.prices.SetLastPrice(t.GetInstrumentUid(), quotationToFloat(t.GetPrice()))
 			}
 			select {
+			case <-ctx.Done():
+				return
 			case dst <- t:
-			default:
 			}
 		}
 	}
@@ -552,8 +562,9 @@ func (sm *StreamManager) forwardLastPrices(ctx context.Context, src <-chan *pb.L
 				sm.prices.SetLastPrice(lp.GetInstrumentUid(), quotationToFloat(lp.GetPrice()))
 			}
 			select {
+			case <-ctx.Done():
+				return
 			case dst <- lp:
-			default:
 			}
 		}
 	}

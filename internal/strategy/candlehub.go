@@ -60,7 +60,7 @@ func (h *CandleHub) Subscribe(parentCtx context.Context, instrumentUID string, i
 		h.groups[key] = g
 		go g.run(subCtx, src)
 	}
-	out := make(chan Candle, 128)
+	out := make(chan Candle, 512)
 	g.mu.Lock()
 	g.subs = append(g.subs, out)
 	g.mu.Unlock()
@@ -113,12 +113,9 @@ func (g *candleGroup) run(ctx context.Context, src <-chan *pb.Candle) {
 			g.mu.Unlock()
 			for _, ch := range subs {
 				select {
+				case <-ctx.Done():
+					return
 				case ch <- sc:
-				default:
-					if g.hub.logger != nil {
-						g.hub.logger.Warn("CandleHub: subscriber slow, dropping candle",
-							"instrument_uid", g.key.instrumentUID)
-					}
 				}
 			}
 		}
@@ -134,7 +131,8 @@ func pbCandleToStrategy(c *pb.Candle) Candle {
 		Close:         quotationToFloat(c.GetClose()),
 		Volume:        c.GetVolume(),
 		Time:          c.GetTime().AsTime(),
-		IsComplete:    false, // streaming candle; runner merges interval boundaries
+		// Stream Candle proto has no is_complete; runner marks bars complete on interval change.
+		IsComplete: false,
 	}
 }
 
