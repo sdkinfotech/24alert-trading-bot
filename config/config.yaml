@@ -161,7 +161,7 @@ strategies:
       account_id: "2001673385"
       instruments:
         - "e6123145-9665-43e0-8413-cd61b8aa9b13"
-      enabled: true
+      enabled: false  # disabled: backtest showed consistent losses on Sber
       params:
         interval: "15min"
         range_candles: "2"
