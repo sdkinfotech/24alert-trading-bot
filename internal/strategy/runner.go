@@ -287,6 +287,12 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 		return fmt.Errorf("instance %q: no instruments", inst.ID)
 	}
 
+	// Daily warmup: some strategies (e.g. Level Bounce) need daily bars
+	// for S/R levels before the intraday data starts flowing.
+	if dwh, ok := st.(DailyWarmupHint); ok {
+		r.warmupDaily(ctx, inst, dwh)
+	}
+
 	// Warmup: prefetch historical candles so the strategy is ready immediately.
 	// Use the larger of WarmupCandles (for trading) and ChartCandles (for visualization).
 	var lastWarmupTimes map[string]time.Time
@@ -430,6 +436,40 @@ func (r *Runner) warmupStrategy(
 			"last_candle", last.Format(time.RFC3339))
 	}
 	return result
+}
+
+// warmupDaily fetches daily candles and feeds them to the strategy via OnDailyCandle.
+func (r *Runner) warmupDaily(ctx context.Context, inst config.StrategyInstanceConfig, dwh DailyWarmupHint) {
+	needed := dwh.DailyWarmupCandles()
+	if needed <= 0 {
+		return
+	}
+	lookback := time.Duration(float64(needed)*1.5+5) * 24 * time.Hour
+	now := time.Now()
+	from := now.Add(-lookback)
+	for _, uid := range inst.Instruments {
+		candles, err := r.mdSvc.GetCandles(ctx, uid, from, now, pb.CandleInterval_CANDLE_INTERVAL_DAY)
+		if err != nil {
+			r.logger.Warn("daily warmup: GetCandles failed", "instance", inst.ID, "uid", uid, "error", err)
+			continue
+		}
+		if len(candles) > needed {
+			candles = candles[len(candles)-needed:]
+		}
+		for _, mc := range candles {
+			dwh.OnDailyCandle(Candle{
+				InstrumentUID: uid,
+				Open:          mc.Open,
+				High:          mc.High,
+				Low:           mc.Low,
+				Close:         mc.Close,
+				Volume:        mc.Volume,
+				Time:          mc.Time,
+				IsComplete:    true,
+			})
+		}
+		r.logger.Info("daily warmup complete", "instance", inst.ID, "uid", uid, "fed", len(candles))
+	}
 }
 
 func (r *Runner) estimateCost(sig Signal, markPrice float64) float64 {

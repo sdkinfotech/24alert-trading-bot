@@ -28,3 +28,13 @@ type WarmupHint interface {
 type ChartHint interface {
 	ChartCandles() int
 }
+
+// DailyWarmupHint is optionally implemented by strategies that need
+// daily (1D) candle history for computing support/resistance levels,
+// ATR, or other multi-day indicators. The runner fetches the requested
+// number of daily bars and feeds them via OnDailyCandle before the
+// intraday warmup.
+type DailyWarmupHint interface {
+	DailyWarmupCandles() int
+	OnDailyCandle(candle Candle)
+}

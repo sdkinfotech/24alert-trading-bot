@@ -169,6 +169,22 @@ strategies:
         cutoff_hour: "18"
         cutoff_min: "45"
         timezone: "Europe/Moscow"
+    - id: iis-mgnt-lb
+      type: level_bounce
+      account_id: "2001673385"
+      instruments:
+        - "ca845f68-6c43-44bc-b584-330d2a1e5eb7"
+      enabled: true
+      params:
+        interval: "15min"
+        atr_mult: "0.4"
+        sl_mult: "0.5"
+        tp_mult: "1.5"
+        level_days: "10"
+        quantity: "1"
+        cutoff_hour: "18"
+        cutoff_min: "30"
+        timezone: "Europe/Moscow"
 
 # Redis (candle cache)
 redis:
