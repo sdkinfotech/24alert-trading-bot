@@ -4,32 +4,36 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
-	"strings"
 )
 
 //go:embed dashboard_dist/*
 var dashboardFS embed.FS
 
-// DashboardHandler returns an http.Handler serving the embedded SPA under /dashboard/.
-// Falls back to index.html for client-side routing.
+// DashboardHandler returns an http.Handler serving the embedded SPA.
+// The caller is responsible for stripping any path prefix before calling.
+// Unknown paths fall back to index.html for client-side routing.
 func DashboardHandler() http.Handler {
 	sub, err := fs.Sub(dashboardFS, "dashboard_dist")
 	if err != nil {
 		return http.NotFoundHandler()
 	}
-	fileServer := http.FileServer(http.FS(sub))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/dashboard")
-		if path == "" || path == "/" {
-			path = "/index.html"
+		path := r.URL.Path
+		if path == "/" || path == "" {
+			path = "index.html"
+		} else if path[0] == '/' {
+			path = path[1:]
 		}
-		// Try serving the file; if not found, serve index.html for SPA routing
-		if _, err := fs.Stat(sub, strings.TrimPrefix(path, "/")); err != nil {
-			r.URL.Path = "/index.html"
+
+		f, err := sub.Open(path)
+		if err != nil {
+			path = "index.html"
 		} else {
-			r.URL.Path = path
+			f.Close()
 		}
-		fileServer.ServeHTTP(w, r)
+
+		r.URL.Path = "/" + path
+		http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 	})
 }

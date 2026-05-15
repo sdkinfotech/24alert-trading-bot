@@ -167,5 +167,8 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		_ = json.NewEncoder(w).Encode(rows)
 	})
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))
+	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/dashboard/", http.StatusMovedPermanently)
+	})
 	return corsMiddleware(mux)
 }
