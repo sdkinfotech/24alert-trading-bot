@@ -15,12 +15,21 @@ interface Props {
   data: IndicatorData | null;
 }
 
+function isORB(data: IndicatorData): boolean {
+  return data.strategy_type === 'orb_breakout' ||
+    (data.range_high != null && data.range_high > 0);
+}
+
+function hasSMA(data: IndicatorData): boolean {
+  return data.candles.some((c) => c.fast_sma > 0 || c.slow_sma > 0);
+}
+
 export function IndicatorChart({ data }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const fastRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const slowRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const line1Ref = useRef<ISeriesApi<'Line'> | null>(null);
+  const line2Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers> | null>(null);
 
   useEffect(() => {
@@ -50,8 +59,9 @@ export function IndicatorChart({ data }: Props) {
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
     });
-    fastRef.current = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: 'Fast SMA' });
-    slowRef.current = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, title: 'Slow SMA' });
+
+    line1Ref.current = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
+    line2Ref.current = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2 });
 
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
@@ -66,7 +76,7 @@ export function IndicatorChart({ data }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!data || !candleRef.current || !fastRef.current || !slowRef.current) return;
+    if (!data || !candleRef.current || !line1Ref.current || !line2Ref.current) return;
 
     const toUnix = (t: string) => Math.floor(new Date(t).getTime() / 1000) as any;
 
@@ -79,15 +89,57 @@ export function IndicatorChart({ data }: Props) {
     }));
     candleRef.current.setData(candles);
 
-    const fastData = data.candles
-      .filter((c) => c.fast_sma > 0)
-      .map((c) => ({ time: toUnix(c.time), value: c.fast_sma }));
-    fastRef.current.setData(fastData);
+    const orbMode = isORB(data);
+    const smaMode = hasSMA(data);
 
-    const slowData = data.candles
-      .filter((c) => c.slow_sma > 0)
-      .map((c) => ({ time: toUnix(c.time), value: c.slow_sma }));
-    slowRef.current.setData(slowData);
+    if (orbMode) {
+      const rangeHighData = data.candles
+        .filter((c) => c.range_high > 0)
+        .map((c) => ({ time: toUnix(c.time), value: c.range_high }));
+      line1Ref.current.setData(rangeHighData);
+      line1Ref.current.applyOptions({
+        color: '#22c55e',
+        lineWidth: 2,
+        lineStyle: 2, // dashed
+        title: 'Range High',
+      } as any);
+
+      const rangeLowData = data.candles
+        .filter((c) => c.range_low > 0)
+        .map((c) => ({ time: toUnix(c.time), value: c.range_low }));
+      line2Ref.current.setData(rangeLowData);
+      line2Ref.current.applyOptions({
+        color: '#ef4444',
+        lineWidth: 2,
+        lineStyle: 2,
+        title: 'Range Low',
+      } as any);
+    } else if (smaMode) {
+      const fastData = data.candles
+        .filter((c) => c.fast_sma > 0)
+        .map((c) => ({ time: toUnix(c.time), value: c.fast_sma }));
+      line1Ref.current.setData(fastData);
+      line1Ref.current.applyOptions({
+        color: '#3b82f6',
+        lineWidth: 2,
+        lineStyle: 0,
+        title: 'Fast SMA',
+      } as any);
+
+      const slowData = data.candles
+        .filter((c) => c.slow_sma > 0)
+        .map((c) => ({ time: toUnix(c.time), value: c.slow_sma }));
+      line2Ref.current.setData(slowData);
+      line2Ref.current.applyOptions({
+        color: '#f59e0b',
+        lineWidth: 2,
+        lineStyle: 0,
+        title: 'Slow SMA',
+      } as any);
+    } else {
+      line1Ref.current.setData([]);
+      line2Ref.current.setData([]);
+    }
 
     if (data.signals.length > 0 && candleRef.current) {
       const markers = data.signals.map((s) => ({
@@ -120,11 +172,17 @@ export function IndicatorChart({ data }: Props) {
         ? 'text-red-400'
         : 'text-gray-400';
 
+  const orbMode = data ? isORB(data) : false;
+
+  const headerLabel = orbMode
+    ? `ORB (Range ${data?.range_formed ? 'formed' : 'forming'}: ${data?.range_high?.toFixed(2) ?? '?'} / ${data?.range_low?.toFixed(2) ?? '?'})`
+    : `SMA(${data?.fast_period ?? '?'}/${data?.slow_period ?? '?'})`;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2 px-1">
         <div className="text-sm text-gray-400">
-          SMA({data?.fast_period ?? '?'}/{data?.slow_period ?? '?'}) &middot;{' '}
+          {headerLabel} &middot;{' '}
           Signals: <span className="text-white font-medium">{total}</span>{' '}
           <span className="text-green-400">({buyCount} buy</span> /{' '}
           <span className="text-red-400">{sellCount} sell)</span>

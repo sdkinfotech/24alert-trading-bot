@@ -219,7 +219,15 @@ strategies:
 
 ### Встроенные (`internal/strategy`, регистрация в `Registry`)
 
-- **`sma_crossover`** — пересечение быстрой/медленной SMA по завершённым свечам; параметры `fast_period`, `slow_period`, `quantity`, `interval` (см. `internal/strategy/sma`).
+| Тип | Пакет | Описание | Параметры |
+|-----|-------|----------|-----------|
+| `sma_crossover` | `internal/strategy/sma` | Пересечение быстрой/медленной SMA по завершённым свечам | `fast_period`, `slow_period`, `quantity`, `interval` |
+| `orb_breakout` | `internal/strategy/orb` | Intraday Opening Range Breakout: вход при пробое диапазона открытия, выход до конца сессии | `range_candles`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
+
+**`orb_breakout` — Opening Range Breakout:**
+1. **Наблюдение (первые N свечей):** Запоминает High и Low первых `range_candles` свечей дня — формирует "opening range".
+2. **Торговля:** При закрытии свечи выше Range High → BUY; ниже Range Low → SELL. При пробое в обратную сторону — разворот позиции (2x qty).
+3. **Закрытие (EOD):** После `cutoff_hour`:`cutoff_min` все позиции закрываются рыночным ордером, новые не открываются. На новый день — полный сброс.
 
 Контракт интерфейса: `internal/strategy/strategy.go` (`OnCandle`, `OnExecution`, …). Опционально: `internal/strategy/stateful.go` (`Snapshot` / `Restore`).
 

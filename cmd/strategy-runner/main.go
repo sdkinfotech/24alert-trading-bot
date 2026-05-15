@@ -23,6 +23,7 @@ import (
 	"github.com/24alert/trading-bot/internal/risk/checker"
 	"github.com/24alert/trading-bot/internal/strategy"
 	"github.com/24alert/trading-bot/internal/strategy/grpcadapter"
+	"github.com/24alert/trading-bot/internal/strategy/orb"
 	"github.com/24alert/trading-bot/internal/strategy/sma"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
@@ -67,8 +68,10 @@ func applyCLIStrategyOverride(cfg *config.Config, o runOpts) error {
 		inst.Endpoint = ep
 	case "sma_crossover":
 		// defaults for fast/slow come from strategy Configure
+	case "orb_breakout":
+		// defaults for range_candles/cutoff come from strategy Configure
 	default:
-		return fmt.Errorf("unsupported --strategy-type %q (use sma_crossover or grpc)", typ)
+		return fmt.Errorf("unsupported --strategy-type %q (use sma_crossover, orb_breakout, or grpc)", typ)
 	}
 	cfg.Strategies.Instances = []config.StrategyInstanceConfig{inst}
 	return nil
@@ -179,6 +182,7 @@ func run(o runOpts) error {
 
 	reg := strategy.NewRegistry()
 	sma.RegisterBuiltins(reg)
+	orb.RegisterBuiltins(reg)
 
 	deps := strategy.RunnerDeps{
 		GRPC: func(endpoint string, timeout time.Duration) (strategy.Strategy, error) {

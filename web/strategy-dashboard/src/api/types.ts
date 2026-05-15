@@ -28,6 +28,8 @@ export interface CandlePoint {
   close: number;
   fast_sma: number;
   slow_sma: number;
+  range_high: number;
+  range_low: number;
 }
 
 export interface SignalPoint {
@@ -40,11 +42,16 @@ export interface SignalPoint {
 export interface IndicatorData {
   instance_id?: string;
   instrument_uid?: string;
+  strategy_type?: string;
   fast_period: number;
   slow_period: number;
   position: number;
   candles: CandlePoint[];
   signals: SignalPoint[];
+  range_high?: number;
+  range_low?: number;
+  range_formed?: boolean;
+  current_day?: string;
 }
 
 export interface SignalRecord {
