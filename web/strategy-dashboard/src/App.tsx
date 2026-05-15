@@ -13,10 +13,28 @@ import { EventLog } from './components/EventLog';
 import { StatsPanel } from './components/StatsPanel';
 import { InstanceSelector } from './components/InstanceSelector';
 import { AiChatPanel } from './components/AiChatPanel';
+import { SystemGuidePage } from './components/SystemGuidePage';
 
 const REFRESH_MS = 30_000;
 
+type MainTab = 'monitor' | 'guide';
+
+function tabFromHash(): MainTab {
+  const h = window.location.hash.slice(1).toLowerCase();
+  if (h === 'guide' || h === 'about' || h === 'справка') return 'guide';
+  return 'monitor';
+}
+
+function applyTabToURL(t: MainTab) {
+  const base = window.location.pathname + window.location.search;
+  window.history.replaceState(null, '', t === 'guide' ? `${base}#guide` : base);
+}
+
 export default function App() {
+  const [tab, setTab] = useState<MainTab>(() =>
+    typeof window !== 'undefined' && tabFromHash() === 'guide' ? 'guide' : 'monitor'
+  );
+  const [guidePageURL, setGuidePageURL] = useState('');
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selected, setSelected] = useState('');
   const [indicator, setIndicator] = useState<IndicatorData | null>(null);
@@ -68,47 +86,109 @@ export default function App() {
   }, [loadInstances]);
 
   useEffect(() => {
+    setGuidePageURL(`${window.location.origin}${window.location.pathname}#guide`);
+  }, []);
+
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const selectTab = useCallback((t: MainTab) => {
+    setTab(t);
+    applyTabToURL(t);
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'monitor') return;
     loadData();
     const timer = setInterval(loadData, REFRESH_MS);
     return () => clearInterval(timer);
-  }, [loadData]);
+  }, [loadData, tab]);
 
   return (
     <div className="min-h-screen p-4 max-w-7xl mx-auto">
-      <header className="flex items-center justify-between mb-6">
-        <div>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+        <div className="space-y-3 min-w-0">
           <h1 className="text-xl font-bold text-white">24alert Strategy Dashboard</h1>
-          {(() => {
-            const cur = instances.find((i) => i.id === selected);
-            if (!cur) {
+          <div
+            className="inline-flex rounded-lg border border-gray-800 bg-gray-900/80 p-0.5"
+            role="tablist"
+            aria-label="Разделы"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'monitor'}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                tab === 'monitor'
+                  ? 'bg-gray-800 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+              onClick={() => selectTab('monitor')}
+            >
+              Мониторинг
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'guide'}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                tab === 'guide'
+                  ? 'bg-gray-800 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+              onClick={() => selectTab('guide')}
+            >
+              О системе
+            </button>
+          </div>
+          {guidePageURL && (
+            <p className="text-xs text-gray-500">
+              Справка по прямой ссылке:{' '}
+              <a
+                href="#guide"
+                className="text-amber-400/90 hover:text-amber-300 underline underline-offset-2 font-mono break-all"
+                onClick={(e) => {
+                  e.preventDefault();
+                  selectTab('guide');
+                }}
+              >
+                {guidePageURL}
+              </a>
+            </p>
+          )}
+          {tab === 'monitor' &&
+            (() => {
+              const cur = instances.find((i) => i.id === selected);
+              if (!cur) {
+                return (
+                  <p className="text-xs text-gray-500">
+                    Автообновление каждые {REFRESH_MS / 1000} с
+                    {lastUpdate && (
+                      <> · последнее: {lastUpdate.toLocaleTimeString('ru-RU')}</>
+                    )}
+                  </p>
+                );
+              }
               return (
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Auto-refresh every {REFRESH_MS / 1000}s
-                  {lastUpdate && (
-                    <> &middot; last: {lastUpdate.toLocaleTimeString('ru-RU')}</>
+                <p className="text-xs text-gray-500">
+                  {cur.tickers && (
+                    <>
+                      <span className="text-amber-400 font-semibold">{cur.tickers}</span>
+                      {' · '}
+                    </>
                   )}
+                  <span className="text-gray-400">{cur.type}</span>
+                  {' · '}
+                  автообновление {REFRESH_MS / 1000} с
+                  {lastUpdate && <> · последнее: {lastUpdate.toLocaleTimeString('ru-RU')}</>}
                 </p>
               );
-            }
-            return (
-              <p className="text-xs text-gray-500 mt-0.5">
-                {cur.tickers && (
-                  <>
-                    <span className="text-amber-400 font-semibold">{cur.tickers}</span>
-                    {' · '}
-                  </>
-                )}
-                <span className="text-gray-400">{cur.type}</span>
-                {' · '}
-                Auto-refresh {REFRESH_MS / 1000}s
-                {lastUpdate && (
-                  <> &middot; last: {lastUpdate.toLocaleTimeString('ru-RU')}</>
-                )}
-              </p>
-            );
-          })()}
+            })()}
         </div>
-        {instances.length > 0 && (
+        {tab === 'monitor' && instances.length > 0 && (
           <InstanceSelector
             instances={instances}
             selected={selected}
@@ -117,24 +197,32 @@ export default function App() {
         )}
       </header>
 
-      {error && (
+      {tab === 'monitor' && error && (
         <div className="bg-red-900/40 border border-red-700 rounded-lg p-3 mb-4 text-sm text-red-300">
           {error}
         </div>
       )}
 
-      <section className="mb-6">
-        <IndicatorChart key={selected} data={indicator} />
-      </section>
+      {tab === 'monitor' ? (
+        <>
+          <section className="mb-6">
+            <IndicatorChart key={selected} data={indicator} />
+          </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <EventLog events={events} />
-        </div>
-        <div>
-          <StatsPanel pnl={pnl} ledger={ledger} daily={daily} />
-        </div>
-      </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <EventLog events={events} />
+            </div>
+            <div>
+              <StatsPanel pnl={pnl} ledger={ledger} daily={daily} />
+            </div>
+          </div>
+        </>
+      ) : (
+        <section className="rounded-xl border border-gray-800 bg-gray-900/40 p-6 mb-6">
+          <SystemGuidePage />
+        </section>
+      )}
 
       <AiChatPanel />
     </div>
