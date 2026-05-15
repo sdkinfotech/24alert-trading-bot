@@ -145,11 +145,12 @@ strategies:
       bot_token: ""
       chat_id: ""
   instances:
+    # SMA instance id kept for continuity; instrument is VTBR (UID from T-Invest shares).
     - id: iis-vtb-sma
       type: sma_crossover
       account_id: "2001673385"
       instruments:
-        - "962e2a95-02a9-4171-abd7-aa198dbe643a"
+        - "8e2b0325-0292-4654-8a18-4f63ed3b0e09"
       enabled: true
       params:
         interval: "1h"

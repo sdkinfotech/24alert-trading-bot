@@ -16,6 +16,7 @@ var (
 var aliases = map[string]string{
 	"sber":        "e6123145-9665-43e0-8413-cd61b8aa9b13",
 	"gazp":        "962e2a95-02a9-4171-abd7-aa198dbe643a",
+	"vtbr":        "8e2b0325-0292-4654-8a18-4f63ed3b0e09",
 	"lkoh":        "4fba23fc-e34a-42f4-a987-4c1e8e9d66ba",
 	"kzu6":        "3da86f70-25a7-4092-bc1b-05cf84dad9fe",
 	"gold_call":   "66f3eea6-35f2-4347-8f1d-8f082588801c",

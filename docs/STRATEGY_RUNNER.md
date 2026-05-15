@@ -246,7 +246,7 @@ strategies:
 Полный сценарий, выполненный 2026-05-15:
 
 1. **Счёт:** ИИС `2001673385`, баланс 2 000 RUB, маржа недоступна.
-2. **Инструмент:** ВТБ (VTBR) `962e2a95-02a9-4171-abd7-aa198dbe643a`, ~122 RUB/лот, лот = 1 акция.
+2. **Инструмент:** ВТБ (VTBR) `8e2b0325-0292-4654-8a18-4f63ed3b0e09`, ~122 RUB/лот, лот = 1 акция. (UID `962e2a95-…` в старых черновиках — это **GAZP**, не путать.)
 3. **Критерии подбора:** цена лота вписывается в баланс; тысячи лотов в стакане; `api_trade_available: true`; спред 1 коп.
 4. **Конфигурация:** `config/config.yaml` → `strategies.instances` с `iis-vtb-sma`, `quantity: 1`, `interval: 1h`.
 5. **Watchdog:** `max_drawdown_percent: 10`, `max_daily_loss_rub: 500`, `pause_on_drawdown: true`.
