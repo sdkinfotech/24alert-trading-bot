@@ -2,7 +2,7 @@
   "title": "24alert Strategy Runner",
   "uid": "24alert-strategy",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "timezone": "Europe/Moscow",
@@ -12,26 +12,14 @@
   "templating": {
     "list": [
       {
-        "name": "datasource",
-        "type": "datasource",
-        "query": "prometheus",
-        "current": { "text": "Prometheus", "value": "Prometheus" }
-      },
-      {
         "name": "instance",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(alert24_strategy_total_pnl_rub, instance)",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(alert24_strategy_total_pnl_rub, exported_instance)",
         "refresh": 2,
         "multi": true,
         "includeAll": true,
         "current": { "text": "All", "value": "$__all" }
-      },
-      {
-        "name": "loki",
-        "type": "datasource",
-        "query": "loki",
-        "current": { "text": "Loki", "value": "Loki" }
       }
     ]
   },
@@ -47,11 +35,11 @@
       "type": "stat",
       "title": "Total PnL (RUB)",
       "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_total_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_total_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -82,11 +70,11 @@
       "type": "stat",
       "title": "Realized PnL",
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_realized_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_realized_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -117,11 +105,11 @@
       "type": "stat",
       "title": "Unrealized PnL",
       "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_unrealized_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_unrealized_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -152,11 +140,11 @@
       "type": "stat",
       "title": "Win Rate",
       "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_win_rate{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_win_rate{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -189,11 +177,11 @@
       "type": "stat",
       "title": "Drawdown %",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_drawdown_percent{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_drawdown_percent{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -224,11 +212,11 @@
       "type": "stat",
       "title": "Net Position (shares)",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_position_qty_shares{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }} / {{ instrument }}",
+          "expr": "alert24_strategy_position_qty_shares{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }} / {{ instrument }}",
           "refId": "A"
         }
       ],
@@ -265,21 +253,21 @@
       "type": "timeseries",
       "title": "Total PnL over time",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_total_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "total {{ instance }}",
+          "expr": "alert24_strategy_total_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "total {{ exported_instance }}",
           "refId": "A"
         },
         {
-          "expr": "alert24_strategy_realized_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "realized {{ instance }}",
+          "expr": "alert24_strategy_realized_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "realized {{ exported_instance }}",
           "refId": "B"
         },
         {
-          "expr": "alert24_strategy_unrealized_pnl_rub{instance=~\"$instance\"}",
-          "legendFormat": "unrealized {{ instance }}",
+          "expr": "alert24_strategy_unrealized_pnl_rub{exported_instance=~\"$instance\"}",
+          "legendFormat": "unrealized {{ exported_instance }}",
           "refId": "C"
         }
       ],
@@ -308,11 +296,11 @@
       "type": "timeseries",
       "title": "Position Qty over time",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_position_qty_shares{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }} / {{ instrument }}",
+          "expr": "alert24_strategy_position_qty_shares{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }} / {{ instrument }}",
           "refId": "A"
         }
       ],
@@ -349,16 +337,16 @@
       "type": "timeseries",
       "title": "Signals rate (buy / sell)",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(alert24_strategy_signals_total{instance=~\"$instance\", direction=\"buy\"}[$__rate_interval])",
-          "legendFormat": "buy {{ instance }}",
+          "expr": "rate(alert24_strategy_signals_total{exported_instance=~\"$instance\", direction=\"buy\"}[$__rate_interval])",
+          "legendFormat": "buy {{ exported_instance }}",
           "refId": "A"
         },
         {
-          "expr": "rate(alert24_strategy_signals_total{instance=~\"$instance\", direction=\"sell\"}[$__rate_interval])",
-          "legendFormat": "sell {{ instance }}",
+          "expr": "rate(alert24_strategy_signals_total{exported_instance=~\"$instance\", direction=\"sell\"}[$__rate_interval])",
+          "legendFormat": "sell {{ exported_instance }}",
           "refId": "B"
         }
       ],
@@ -393,11 +381,11 @@
       "type": "timeseries",
       "title": "Orders rate by status",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(alert24_strategy_orders_total{instance=~\"$instance\"}[$__rate_interval])",
-          "legendFormat": "{{ status }} {{ instance }}",
+          "expr": "rate(alert24_strategy_orders_total{exported_instance=~\"$instance\"}[$__rate_interval])",
+          "legendFormat": "{{ status }} {{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -423,11 +411,11 @@
       "type": "stat",
       "title": "Wins",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 15 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_trades_total{instance=~\"$instance\", result=\"win\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_trades_total{exported_instance=~\"$instance\", result=\"win\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -454,11 +442,11 @@
       "type": "stat",
       "title": "Losses",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 15 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_trades_total{instance=~\"$instance\", result=\"loss\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_trades_total{exported_instance=~\"$instance\", result=\"loss\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -485,11 +473,11 @@
       "type": "stat",
       "title": "Total Signals",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 19 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(alert24_strategy_signals_total{instance=~\"$instance\"}) by (instance)",
-          "legendFormat": "{{ instance }}",
+          "expr": "sum(alert24_strategy_signals_total{exported_instance=~\"$instance\"}) by (exported_instance)",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -516,11 +504,11 @@
       "type": "stat",
       "title": "Total Orders",
       "gridPos": { "h": 4, "w": 4, "x": 20, "y": 19 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "sum(alert24_strategy_orders_total{instance=~\"$instance\"}) by (instance)",
-          "legendFormat": "{{ instance }}",
+          "expr": "sum(alert24_strategy_orders_total{exported_instance=~\"$instance\"}) by (exported_instance)",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -556,21 +544,21 @@
       "title": "Slippage (bps)",
       "description": "Signed slippage vs reference price at signal time. Negative = better than expected.",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(alert24_strategy_slippage_bps_bucket{instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "p50 {{ instance }}",
+          "expr": "histogram_quantile(0.50, rate(alert24_strategy_slippage_bps_bucket{exported_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "p50 {{ exported_instance }}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.90, rate(alert24_strategy_slippage_bps_bucket{instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "p90 {{ instance }}",
+          "expr": "histogram_quantile(0.90, rate(alert24_strategy_slippage_bps_bucket{exported_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "p90 {{ exported_instance }}",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(alert24_strategy_slippage_bps_bucket{instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "p99 {{ instance }}",
+          "expr": "histogram_quantile(0.99, rate(alert24_strategy_slippage_bps_bucket{exported_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "p99 {{ exported_instance }}",
           "refId": "C"
         }
       ],
@@ -599,16 +587,16 @@
       "type": "timeseries",
       "title": "Evaluation Duration (p50 / p99)",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(alert24_strategy_evaluation_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "p50 {{ instance }}",
+          "expr": "histogram_quantile(0.50, rate(alert24_strategy_evaluation_duration_seconds_bucket{exported_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "p50 {{ exported_instance }}",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(alert24_strategy_evaluation_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "p99 {{ instance }}",
+          "expr": "histogram_quantile(0.99, rate(alert24_strategy_evaluation_duration_seconds_bucket{exported_instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "p99 {{ exported_instance }}",
           "refId": "B"
         }
       ],
@@ -636,11 +624,11 @@
       "title": "Reconcile Mismatches",
       "description": "Times broker position drifted from runner ledger.",
       "gridPos": { "h": 4, "w": 4, "x": 16, "y": 24 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_reconcile_mismatch_total{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_reconcile_mismatch_total{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -671,11 +659,11 @@
       "type": "timeseries",
       "title": "Drawdown % over time",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "alert24_strategy_drawdown_percent{instance=~\"$instance\"}",
-          "legendFormat": "{{ instance }}",
+          "expr": "alert24_strategy_drawdown_percent{exported_instance=~\"$instance\"}",
+          "legendFormat": "{{ exported_instance }}",
           "refId": "A"
         }
       ],
@@ -719,7 +707,7 @@
       "type": "logs",
       "title": "Strategy Runner Logs",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 37 },
-      "datasource": { "type": "loki", "uid": "${loki}" },
+      "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
           "expr": "{service=\"strategy-runner\"} |= \"\"",
