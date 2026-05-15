@@ -127,6 +127,36 @@ strategy:
   # Initial configuration (strategy-specific)
   config: {}
 
+# Strategy runner (optional): separate process, candles → signals → risk → orders
+strategies:
+  runner_port: 9020
+  metrics_port: 9120
+  evaluation_timeout_ms: 1000
+  journal_path: "data/strategy_journal.db"
+  watchdog:
+    enabled: true
+    check_interval_sec: 60
+    max_drawdown_percent: 10
+    max_daily_loss_rub: 500
+    pause_on_drawdown: true
+    stuck_order_minutes: 30
+  notifications:
+    telegram:
+      bot_token: ""
+      chat_id: ""
+  instances:
+    - id: iis-vtb-sma
+      type: sma_crossover
+      account_id: "2001673385"
+      instruments:
+        - "962e2a95-02a9-4171-abd7-aa198dbe643a"
+      enabled: true
+      params:
+        interval: "1h"
+        fast_period: "5"
+        slow_period: "20"
+        quantity: "1"
+
 # Feature flags
 features:
   # Enable order intent validation through risk service

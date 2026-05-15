@@ -78,7 +78,7 @@ func (s *Service) ValidateOrderIntent(ctx context.Context, intent OrderIntent) (
 		resp.Allowed = false
 	}
 
-	r = s.positionChecker.Check(ctx, intent.AccountID, intent.InstrumentUID, intent.Quantity)
+	r = s.positionChecker.Check(ctx, intent.AccountID, intent.InstrumentUID, intent.Direction, intent.Quantity)
 	resp.Checks = append(resp.Checks, toRiskCheckResult(r))
 	if !r.Passed {
 		resp.Allowed = false

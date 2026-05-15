@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package github.com.24alert.trading.marketdata.v1;
+package alert24.trading.marketdata.v1;
 
 option go_package = "github.com/24alert/trading-bot/gen/go/marketdata/v1";
 
@@ -46,10 +46,10 @@ message GetCandlesRequest {
 
 message Candle {
   int64 time_us = 1;
-  github.com.24alert.trading.common.v1.Quotation open = 2;
-  github.com.24alert.trading.common.v1.Quotation high = 3;
-  github.com.24alert.trading.common.v1.Quotation low = 4;
-  github.com.24alert.trading.common.v1.Quotation close = 5;
+  alert24.trading.common.v1.Quotation open = 2;
+  alert24.trading.common.v1.Quotation high = 3;
+  alert24.trading.common.v1.Quotation low = 4;
+  alert24.trading.common.v1.Quotation close = 5;
   int64 volume = 6;
 }
 
@@ -70,7 +70,7 @@ message OrderBook {
 }
 
 message PriceLevel {
-  github.com.24alert.trading.common.v1.Quotation price = 1;
+  alert24.trading.common.v1.Quotation price = 1;
   int64 quantity = 2;
 }
 
@@ -84,7 +84,7 @@ message GetLastPricesResponse {
 
 message LastPrice {
   string instrument_uid = 1;
-  github.com.24alert.trading.common.v1.Quotation price = 2;
+  alert24.trading.common.v1.Quotation price = 2;
   int64 time_us = 3;
 }
 
@@ -98,7 +98,7 @@ message GetClosePricesResponse {
 
 message ClosePrice {
   string instrument_uid = 1;
-  github.com.24alert.trading.common.v1.Quotation price = 2;
+  alert24.trading.common.v1.Quotation price = 2;
   int64 time_us = 3;
 }
 
@@ -153,9 +153,9 @@ message MarketDataEvent {
 
 message Trade {
   string instrument_uid = 1;
-  github.com.24alert.trading.common.v1.Quotation price = 2;
+  alert24.trading.common.v1.Quotation price = 2;
   int64 quantity = 3;
-  github.com.24alert.trading.common.v1.OrderDirection direction = 4;
+  alert24.trading.common.v1.OrderDirection direction = 4;
   int64 time_us = 5;
   string trade_id = 6;
 }

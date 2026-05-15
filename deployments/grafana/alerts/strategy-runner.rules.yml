@@ -1,0 +1,11 @@
+groups:
+  - name: 24alert-strategy
+    rules:
+      - alert: StrategyRunnerHighDrawdown
+        expr: alert24_strategy_drawdown_percent > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Strategy drawdown high (instance {{ $labels.instance }})"
+          description: "Drawdown {{ $value }}% exceeds 15% for 5m"

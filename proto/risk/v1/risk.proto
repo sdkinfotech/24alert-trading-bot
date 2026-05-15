@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-package github.com.24alert.trading.risk.v1;
+package alert24.trading.risk.v1;
 
 option go_package = "github.com/24alert/trading-bot/gen/go/risk/v1";
 
 import "common/v1/types.proto";
 
 service RiskService {
-  rpc ValidateOrderIntent(github.com.24alert.trading.common.v1.OrderIntent) returns (RiskResponse);
+  rpc ValidateOrderIntent(alert24.trading.common.v1.OrderIntent) returns (RiskResponse);
   rpc GetRiskStatus(GetRiskStatusRequest) returns (RiskStatus);
   rpc ResetCircuitBreaker(ResetCircuitBreakerRequest) returns (ResetCircuitBreakerResponse);
 }
@@ -20,7 +20,7 @@ message RiskStatus {
   int32 failure_count = 2;
   int64 cooldown_expires_at_us = 3;
   int32 active_positions_count = 4;
-  github.com.24alert.trading.common.v1.Quotation margin_level = 5;
+  alert24.trading.common.v1.Quotation margin_level = 5;
   bool margin_call_active = 6;
   int64 evaluated_at_us = 7;
 }

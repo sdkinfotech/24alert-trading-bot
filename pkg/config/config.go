@@ -18,6 +18,7 @@ type Config struct {
 	RateLimits       map[string]int         `mapstructure:"rate_limits"`
 	MarketDataStream MarketDataStreamConfig `mapstructure:"market_data_stream"`
 	Strategy         StrategyConfig         `mapstructure:"strategy"`
+	Strategies       StrategiesRunnerConfig `mapstructure:"strategies"`
 	Features         FeaturesConfig         `mapstructure:"features"`
 }
 
@@ -78,6 +79,49 @@ type StrategyConfig struct {
 	Endpoint            string                 `mapstructure:"endpoint"`
 	EvaluationTimeoutMs int                    `mapstructure:"evaluation_timeout_ms"`
 	Config              map[string]interface{} `mapstructure:"config"`
+}
+
+// StrategiesRunnerConfig configures the standalone strategy-runner process.
+type StrategiesRunnerConfig struct {
+	RunnerPort          int                       `mapstructure:"runner_port"`
+	MetricsPort         int                       `mapstructure:"metrics_port"`
+	EvaluationTimeoutMS int                       `mapstructure:"evaluation_timeout_ms"`
+	JournalPath         string                    `mapstructure:"journal_path"`
+	Watchdog            WatchdogRunnerConfig      `mapstructure:"watchdog"`
+	Notifications       NotificationsRunnerConfig `mapstructure:"notifications"`
+	Instances           []StrategyInstanceConfig  `mapstructure:"instances"`
+}
+
+// WatchdogRunnerConfig configures periodic self-checks in strategy-runner.
+type WatchdogRunnerConfig struct {
+	Enabled            bool    `mapstructure:"enabled"`
+	CheckIntervalSec   int     `mapstructure:"check_interval_sec"`
+	MaxDrawdownPercent float64 `mapstructure:"max_drawdown_percent"`
+	MaxDailyLossRub    float64 `mapstructure:"max_daily_loss_rub"`
+	PauseOnDrawdown    bool    `mapstructure:"pause_on_drawdown"`
+	StuckOrderMinutes  int     `mapstructure:"stuck_order_minutes"`
+}
+
+// NotificationsRunnerConfig configures outbound notifications from strategy-runner.
+type NotificationsRunnerConfig struct {
+	Telegram TelegramNotifyConfig `mapstructure:"telegram"`
+}
+
+// TelegramNotifyConfig Telegram bot notifications.
+type TelegramNotifyConfig struct {
+	BotToken string `mapstructure:"bot_token"`
+	ChatID   string `mapstructure:"chat_id"`
+}
+
+// StrategyInstanceConfig is one running strategy bound to an account and instruments.
+type StrategyInstanceConfig struct {
+	ID           string            `mapstructure:"id"`
+	Type         string            `mapstructure:"type"`
+	AccountID    string            `mapstructure:"account_id"`
+	Instruments  []string          `mapstructure:"instruments"`
+	Enabled      bool              `mapstructure:"enabled"`
+	Params       map[string]string `mapstructure:"params"`
+	Endpoint     string            `mapstructure:"endpoint"` // for type "grpc"
 }
 
 // FeaturesConfig contains feature flags

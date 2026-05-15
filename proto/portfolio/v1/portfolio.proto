@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package github.com.24alert.trading.portfolio.v1;
+package alert24.trading.portfolio.v1;
 
 option go_package = "github.com/24alert/trading-bot/gen/go/portfolio/v1";
 
@@ -29,11 +29,11 @@ message Position {
   string instrument_uid = 1;
   int64 quantity = 2;
   bool available_for_sale = 3;
-  github.com.24alert.trading.common.v1.Quotation current_price = 4;
-  github.com.24alert.trading.common.v1.MoneyValue pnl = 5;
-  github.com.24alert.trading.common.v1.MoneyValue pnl_percent = 6;
-  github.com.24alert.trading.common.v1.MoneyValue blocked_quantity = 7;
-  github.com.24alert.trading.common.v1.MoneyValue expected_yield = 8;
+  alert24.trading.common.v1.Quotation current_price = 4;
+  alert24.trading.common.v1.MoneyValue pnl = 5;
+  alert24.trading.common.v1.MoneyValue pnl_percent = 6;
+  alert24.trading.common.v1.MoneyValue blocked_quantity = 7;
+  alert24.trading.common.v1.MoneyValue expected_yield = 8;
   int64 last_update_us = 9;
 }
 
@@ -45,15 +45,15 @@ message Portfolio {
   string account_id = 1;
   repeated Position positions = 2;
   repeated Balance balances = 3;
-  github.com.24alert.trading.common.v1.MoneyValue total_amount_portfolio = 4;
+  alert24.trading.common.v1.MoneyValue total_amount_portfolio = 4;
   int64 timestamp_us = 5;
 }
 
 message Balance {
   string currency = 1;
-  github.com.24alert.trading.common.v1.Quotation balance = 2;
-  github.com.24alert.trading.common.v1.Quotation blocked = 3;
-  github.com.24alert.trading.common.v1.Quotation free = 4;
+  alert24.trading.common.v1.Quotation balance = 2;
+  alert24.trading.common.v1.Quotation blocked = 3;
+  alert24.trading.common.v1.Quotation free = 4;
 }
 
 message GetWithdrawLimitsRequest {
@@ -67,8 +67,8 @@ message WithdrawLimits {
 }
 
 message OperationLimit {
-  github.com.24alert.trading.common.v1.MoneyValue current_limit = 1;
-  github.com.24alert.trading.common.v1.MoneyValue max_limit = 2;
+  alert24.trading.common.v1.MoneyValue current_limit = 1;
+  alert24.trading.common.v1.MoneyValue max_limit = 2;
   int64 updated_at_us = 3;
 }
 
@@ -98,8 +98,8 @@ message Operation {
   string instrument_uid = 3;
   OperationType operation_type = 4;
   int64 quantity = 5;
-  github.com.24alert.trading.common.v1.MoneyValue price = 6;
-  github.com.24alert.trading.common.v1.MoneyValue total_amount = 7;
+  alert24.trading.common.v1.MoneyValue price = 6;
+  alert24.trading.common.v1.MoneyValue total_amount = 7;
   int64 executed_at_us = 8;
   string status = 9;
 }
@@ -144,10 +144,10 @@ message GetMarginAttributesRequest {
 
 message MarginAttributes {
   string account_id = 1;
-  github.com.24alert.trading.common.v1.MoneyValue liquid_portfolio = 2;
-  github.com.24alert.trading.common.v1.MoneyValue starting_margin_req = 3;
-  github.com.24alert.trading.common.v1.MoneyValue minimal_margin_req = 4;
-  github.com.24alert.trading.common.v1.MoneyValue funds_sufficiency_level = 5;
+  alert24.trading.common.v1.MoneyValue liquid_portfolio = 2;
+  alert24.trading.common.v1.MoneyValue starting_margin_req = 3;
+  alert24.trading.common.v1.MoneyValue minimal_margin_req = 4;
+  alert24.trading.common.v1.MoneyValue funds_sufficiency_level = 5;
   bool amount_call = 6;
   int64 timestamp_us = 7;
 }

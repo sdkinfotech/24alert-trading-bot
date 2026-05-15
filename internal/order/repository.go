@@ -116,3 +116,37 @@ func (r *Repository) GetJournal() []ExecutionRecord {
 	copy(result, r.journal)
 	return result
 }
+
+// ExecutionsForOrder returns all execution records appended for the given order ID (FIFO order).
+func (r *Repository) ExecutionsForOrder(orderID string) []ExecutionRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var out []ExecutionRecord
+	for i := range r.journal {
+		if r.journal[i].OrderID == orderID {
+			out = append(out, r.journal[i])
+		}
+	}
+	return out
+}
+
+// WeightedAvgExecutionPrice returns volume-weighted average price and total executed lots from the journal.
+func (r *Repository) WeightedAvgExecutionPrice(orderID string) (avg float64, totalQty int64) {
+	execs := r.ExecutionsForOrder(orderID)
+	if len(execs) == 0 {
+		return 0, 0
+	}
+	var sum float64
+	for _, e := range execs {
+		if e.Qty <= 0 {
+			continue
+		}
+		sum += e.Price * float64(e.Qty)
+		totalQty += e.Qty
+	}
+	if totalQty == 0 {
+		return 0, 0
+	}
+	return sum / float64(totalQty), totalQty
+}

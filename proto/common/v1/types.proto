@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package github.com.24alert.trading.common.v1;
+package alert24.trading.common.v1;
 
 option go_package = "github.com/24alert/trading-bot/gen/go/common/v1";
 
@@ -120,9 +120,33 @@ message StrategyInfo {
   repeated string supported_instruments = 4;
 }
 
+// StrategyCandlePoint is a single candle snapshot for external strategy plugins.
+message StrategyCandlePoint {
+  int64 time_us = 1;
+  Quotation open = 2;
+  Quotation high = 3;
+  Quotation low = 4;
+  Quotation close = 5;
+  int64 volume = 6;
+  bool is_complete = 7;
+}
+
+// OrderbookLevel is one bid or ask row in MarketState.
+message OrderbookLevel {
+  int32 depth_rank = 1;
+  Quotation price = 2;
+  int64 quantity = 3;
+}
+
 // MarketState for strategy evaluation input
 message MarketState {
   repeated Quotation last_prices = 1;
   repeated int64 volumes = 2;
   int64 timestamp_us = 3;
+  // Primary instrument this state refers to (optional).
+  string instrument_uid = 4;
+  // Recent closed / in-progress candles for the instrument.
+  repeated StrategyCandlePoint candles = 5;
+  repeated OrderbookLevel bids = 6;
+  repeated OrderbookLevel asks = 7;
 }

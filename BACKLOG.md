@@ -24,6 +24,7 @@
 | TASK-015 | Performance Optimization | MEDIUM | M | Backlog | Phase 2 |
 | TASK-016 | Security Audit & Hardening | HIGH | M | Backlog | Phase 2 |
 | TASK-017 | Disaster Recovery & Backup | HIGH | L | Backlog | Phase 2 |
+| TASK-019 | OrderBook WebSocket Stream (gateway + nginx TLS) | HIGH | M | **Done** | Phase 2 |
 
 ---
 
@@ -82,6 +83,28 @@
 **Dependencies**: TASK-004 (CI/CD)
 
 **Roles**: DevOps (K8s), Backend (optimizations), Tech-lead (architecture)
+
+---
+
+### TASK-019: OrderBook WebSocket Stream (gateway + nginx TLS)
+
+**Status**: **Done** (2026-04-17) | **Priority**: HIGH | **Complexity**: M | **Effort**: 1–2 дня
+
+**Description**: Публичный WebSocket-endpoint на gateway, транслирующий T-Invest `OrderBookStream` в унифицированный JSON для внешних потребителей (в первую очередь Traderbook TB-036, плотности стакана).
+
+**Scope** (выполнено):
+- `internal/gateway/handlers/stream.go` — новый handler `StreamOrderBook` с протоколом JSON `{type: snapshot|ping|error, uid, depth, bids[], asks[], ts}` (типы `StreamOrderBookMsg`, `StreamLevel`).
+- Регистрация маршрута `GET /api/v1/stream/orderbook` рядом с существующим `/stream/candles`.
+- Unit-тесты: `internal/gateway/handlers/stream_orderbook_test.go` (4 кейса: валидация параметров + сериализация snapshot/ping).
+- Деплой на srv03-cloud (176.123.160.234): gateway → `127.0.0.1:18080`, nginx 8080/tcp (TLS, Let's Encrypt DNS-01, IP-ACL).
+- Публичный URL: `wss://gateway.24alert.ru:8080/api/v1/stream/orderbook` (whitelist IP потребителей).
+- Документация: `docs/STREAM_ORDERBOOK.md` (контракт, операции, траблшутинг).
+
+**Consumers**: Traderbook `services/market-data` (подписка на 5 UID в первой фазе, запланированы 50 → 200 после недельного наблюдения).
+
+**Dependencies**: TASK-003 (gateway production), токены T-Invest.
+
+**Roles**: Backend (handler + tests), DevOps (nginx, TLS, DNS, ACL), Tester (wss smoke), Tech-lead (review).
 
 ---
 

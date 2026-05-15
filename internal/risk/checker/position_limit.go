@@ -3,6 +3,7 @@ package checker
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // PositionLimitChecker ensures that the new order would not push the total
@@ -19,7 +20,7 @@ func NewPositionLimitChecker(pq PortfolioQuerier, maxLots int) *PositionLimitChe
 	}
 }
 
-func (c *PositionLimitChecker) Check(ctx context.Context, accountID, instrumentUID string, quantity int64) *RiskCheckResult {
+func (c *PositionLimitChecker) Check(ctx context.Context, accountID, instrumentUID, direction string, quantity int64) *RiskCheckResult {
 	result := &RiskCheckResult{Name: "position_limit"}
 
 	positions, err := c.portfolio.GetPositions(ctx, accountID)
@@ -37,16 +38,21 @@ func (c *PositionLimitChecker) Check(ctx context.Context, accountID, instrumentU
 		}
 	}
 
-	newTotal := currentQty + float64(quantity)
-	if newTotal > float64(c.maxLots) {
+	delta := float64(quantity)
+	if strings.EqualFold(strings.TrimSpace(direction), "sell") {
+		delta = -float64(quantity)
+	}
+	newTotal := currentQty + delta
+	maxF := float64(c.maxLots)
+	if newTotal > maxF || newTotal < -maxF {
 		result.Passed = false
-		result.Reason = fmt.Sprintf("position limit exceeded: current %.0f + order %d = %.0f, max %d",
-			currentQty, quantity, newTotal, c.maxLots)
+		result.Reason = fmt.Sprintf("position limit exceeded: current %.4f + delta %.4f = %.4f, max ±%d",
+			currentQty, delta, newTotal, c.maxLots)
 		return result
 	}
 
 	result.Passed = true
-	result.Reason = fmt.Sprintf("within limit: current %.0f + order %d = %.0f, max %d",
-		currentQty, quantity, newTotal, c.maxLots)
+	result.Reason = fmt.Sprintf("within limit: current %.4f + delta %.4f = %.4f, max ±%d",
+		currentQty, delta, newTotal, c.maxLots)
 	return result
 }

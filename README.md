@@ -19,6 +19,18 @@ A modular Go trading bot built on T-Invest (Tinkoff Investments) API with micros
 strategy-plugin (:9010) ─── external gRPC server (contract defined, not implemented)
 ```
 
+### Strategies (`strategy-runner`)
+
+The **`strategy-runner`** binary (`cmd/strategy-runner`) runs configured strategy **instances** in a separate process: shared T-Invest **market data candles** → `Strategy.OnCandle` → **risk** (`ValidateOrderIntent` with real portfolio / market-data queriers) → **orders** (`PostOrder`). Optional **gRPC** strategies use the same contract as `proto/strategy/v1/strategy.proto`.
+
+**Полная документация (конфиг, API, журнал, ledger, watchdog, метрики):** [`docs/STRATEGY_RUNNER.md`](docs/STRATEGY_RUNNER.md).
+
+- **Config:** `strategies:` in `config/config.yaml` (`runner_port`, `metrics_port`, `journal_path`, `watchdog`, `notifications.telegram`, `instances[]` with `id`, `type`, `account_id`, `instruments`, `enabled`, `params`, and `endpoint` for `type: grpc`). Enable SQLite audit trail with `features.enable_order_journal`.
+- **Management HTTP:** `GET /health`, `GET /instances`, `POST /instances/{id}/start`, `POST /instances/{id}/stop`, `GET /instances/{id}/pnl`, `GET /instances/{id}/ledger`, `GET /instances/{id}/executions?limit=`, `GET /report/daily?date=` on `runner_port` (default **9020**).
+- **Prometheus:** dedicated port **9120** (`/metrics` on that listener).
+- **Built-in example:** `sma_crossover` (`internal/strategy/sma`).
+- **Docker:** service `strategy-runner` in `deployments/docker-compose.yaml`.
+
 ## Quick Start
 
 ### Prerequisites
@@ -194,15 +206,21 @@ TINVEST_SANDBOX=false    # ← переключает на боевой конт
 │   ├── marketdata-svc/
 │   ├── portfolio-svc/
 │   ├── risk-svc/
-│   └── gateway/
+│   ├── gateway/
+│   └── strategy-runner/       # Standalone strategies process
 ├── internal/                  # Service implementations
 │   ├── order/                # Order service logic
 │   ├── marketdata/           # MarketData service logic
 │   ├── portfolio/            # Portfolio service logic
 │   ├── risk/                 # Risk service logic
+│   ├── strategy/             # Strategy runner core + admin HTTP
+│   ├── journal/              # SQLite trade journal (runner)
 │   └── gateway/              # REST handlers + CLI
 ├── gen/                       # Generated protobuf code (after make proto-gen)
-├── docs/                      # Generated Swagger
+├── docs/                      # Markdown + Swagger helpers
+│   ├── STRATEGY_RUNNER.md    # strategy-runner: config, API, observability
+│   ├── STREAM_ORDERBOOK.md
+│   └── TRADING_API.md
 ├── deployments/               # Docker, K8s, etc
 ├── Makefile                   # Build targets
 ├── go.mod                     # Go module definition
@@ -317,6 +335,10 @@ make clean
 ```
 
 ## API Reference
+
+### Strategy runner (management HTTP)
+
+Отдельный listener (по умолчанию порт **9020**), не путать с gateway. Список путей и настройки: [`docs/STRATEGY_RUNNER.md`](docs/STRATEGY_RUNNER.md).
 
 ### REST Endpoints (v1)
 

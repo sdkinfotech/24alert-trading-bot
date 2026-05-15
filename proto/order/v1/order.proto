@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package github.com.24alert.trading.order.v1;
+package alert24.trading.order.v1;
 
 option go_package = "github.com/24alert/trading-bot/gen/go/order/v1";
 
@@ -23,19 +23,19 @@ message PostOrderRequest {
   string account_id = 1;
   string instrument_uid = 2;
   int64 quantity = 3;
-  github.com.24alert.trading.common.v1.OrderDirection direction = 4;
+  alert24.trading.common.v1.OrderDirection direction = 4;
   string client_order_id = 5;                           // UUID, max 36 chars, idempotent
-  github.com.24alert.trading.common.v1.OrderType order_type = 6;
-  github.com.24alert.trading.common.v1.Quotation price = 7;  // for LIMIT orders
-  github.com.24alert.trading.common.v1.OrderExecutionType execution_type = 8;
+  alert24.trading.common.v1.OrderType order_type = 6;
+  alert24.trading.common.v1.Quotation price = 7;  // for LIMIT orders
+  alert24.trading.common.v1.OrderExecutionType execution_type = 8;
   map<string, string> metadata = 9;
 }
 
 message PostOrderResponse {
   string order_id = 1;
-  github.com.24alert.trading.common.v1.OrderStatus status = 2;
+  alert24.trading.common.v1.OrderStatus status = 2;
   int64 filled_qty = 3;
-  github.com.24alert.trading.common.v1.Quotation executed_price = 4;
+  alert24.trading.common.v1.Quotation executed_price = 4;
   int64 created_at_us = 5;
   string message = 6;
 }
@@ -47,7 +47,7 @@ message CancelOrderRequest {
 
 message CancelOrderResponse {
   string order_id = 1;
-  github.com.24alert.trading.common.v1.OrderStatus status = 2;
+  alert24.trading.common.v1.OrderStatus status = 2;
   int64 cancelled_at_us = 3;
 }
 
@@ -56,7 +56,7 @@ message ReplaceOrderRequest {
   string order_id = 2;
   string new_client_order_id = 3;
   int64 quantity = 4;
-  github.com.24alert.trading.common.v1.Quotation price = 5;
+  alert24.trading.common.v1.Quotation price = 5;
 }
 
 message GetOrdersRequest {
@@ -76,12 +76,12 @@ message OrderState {
   string order_id = 1;
   string account_id = 2;
   string instrument_uid = 3;
-  github.com.24alert.trading.common.v1.OrderDirection direction = 4;
+  alert24.trading.common.v1.OrderDirection direction = 4;
   int64 requested_qty = 5;
   int64 filled_qty = 6;
-  github.com.24alert.trading.common.v1.OrderStatus status = 7;
-  github.com.24alert.trading.common.v1.Quotation average_price = 8;
-  github.com.24alert.trading.common.v1.Quotation initial_price = 9;
+  alert24.trading.common.v1.OrderStatus status = 7;
+  alert24.trading.common.v1.Quotation average_price = 8;
+  alert24.trading.common.v1.Quotation initial_price = 9;
   int64 created_at_us = 10;
   int64 updated_at_us = 11;
   repeated ExecutionInfo fills = 12;
@@ -90,7 +90,7 @@ message OrderState {
 message ExecutionInfo {
   string execution_id = 1;
   int64 qty = 2;
-  github.com.24alert.trading.common.v1.Quotation price = 3;
+  alert24.trading.common.v1.Quotation price = 3;
   int64 executed_at_us = 4;
 }
 
@@ -105,7 +105,7 @@ message TradeEvent {
   string account_id = 3;
   string instrument_uid = 4;
   int64 qty = 5;
-  github.com.24alert.trading.common.v1.Quotation price = 6;
+  alert24.trading.common.v1.Quotation price = 6;
   int64 executed_at_us = 7;
   int64 subscription_id = 8;
 }
@@ -114,17 +114,17 @@ message PostStopOrderRequest {
   string account_id = 1;
   string instrument_uid = 2;
   int64 quantity = 3;
-  github.com.24alert.trading.common.v1.OrderDirection direction = 4;
+  alert24.trading.common.v1.OrderDirection direction = 4;
   string client_order_id = 5;
-  github.com.24alert.trading.common.v1.StopOrderType stop_type = 6;
-  github.com.24alert.trading.common.v1.Quotation stop_price = 7;
-  github.com.24alert.trading.common.v1.OrderType order_type = 8;  // market/limit
-  github.com.24alert.trading.common.v1.Quotation price = 9;       // for limit
+  alert24.trading.common.v1.StopOrderType stop_type = 6;
+  alert24.trading.common.v1.Quotation stop_price = 7;
+  alert24.trading.common.v1.OrderType order_type = 8;  // market/limit
+  alert24.trading.common.v1.Quotation price = 9;       // for limit
 }
 
 message PostStopOrderResponse {
   string stop_order_id = 1;
-  github.com.24alert.trading.common.v1.OrderStatus status = 2;
+  alert24.trading.common.v1.OrderStatus status = 2;
   int64 created_at_us = 3;
 }
 
@@ -147,10 +147,10 @@ message StopOrderState {
   string account_id = 2;
   string instrument_uid = 3;
   int64 quantity = 4;
-  github.com.24alert.trading.common.v1.OrderDirection direction = 5;
-  github.com.24alert.trading.common.v1.StopOrderType stop_type = 6;
-  github.com.24alert.trading.common.v1.Quotation stop_price = 7;
-  github.com.24alert.trading.common.v1.OrderStatus status = 8;
+  alert24.trading.common.v1.OrderDirection direction = 5;
+  alert24.trading.common.v1.StopOrderType stop_type = 6;
+  alert24.trading.common.v1.Quotation stop_price = 7;
+  alert24.trading.common.v1.OrderStatus status = 8;
   int64 created_at_us = 9;
 }
 

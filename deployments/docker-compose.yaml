@@ -153,6 +153,30 @@ services:
       retries: 3
       start_period: 10s
 
+  strategy-runner:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: strategy-runner
+    container_name: 24alert-strategy-runner
+    ports:
+      - "127.0.0.1:9020:9020"
+      - "127.0.0.1:9120:9120"
+    env_file:
+      - .env
+    environment:
+      - TINVEST_SANDBOX=${TINVEST_SANDBOX:-true}
+      - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
+      - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus:v3.4.0
     container_name: 24alert-prometheus-agent

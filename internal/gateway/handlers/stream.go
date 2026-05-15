@@ -113,7 +113,7 @@ func (h *StreamHandlers) StreamCandles(w http.ResponseWriter, r *http.Request) {
 
 		go func() {
 			defer func() {
-				_ = h.sm.Unsubscribe(uid, marketdata.SubCandles)
+				_ = h.sm.UnsubscribeCandles(uid, pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_ONE_MINUTE)
 			}()
 			for {
 				select {
@@ -268,7 +268,7 @@ func (h *StreamHandlers) StreamOrderBook(w http.ResponseWriter, r *http.Request)
 
 		go func() {
 			defer func() {
-				_ = h.sm.Unsubscribe(uid, marketdata.SubOrderbook)
+				_ = h.sm.UnsubscribeOrderbook(uid, depth)
 			}()
 			for {
 				select {

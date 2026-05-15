@@ -16,6 +16,6 @@ RUN curl -fsSL -o /usr/local/share/ca-certificates/russian-trusted-root.crt \
 WORKDIR /app
 COPY --from=builder /app/bin/service .
 COPY config/ ./config/
-EXPOSE 8080 9001 9002 9003 9004 9101 9102 9103 9104
+EXPOSE 8080 9001 9002 9003 9004 9020 9120 9101 9102 9103 9104
 ENTRYPOINT ["./service"]
 CMD ["--config", "config/config.yaml"]

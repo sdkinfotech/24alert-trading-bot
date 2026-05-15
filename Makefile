@@ -44,6 +44,7 @@ build:
 	go build -o bin/portfolio-svc ./cmd/portfolio-svc
 	go build -o bin/risk-svc ./cmd/risk-svc
 	go build -o bin/gateway ./cmd/gateway
+	go build -o bin/strategy-runner ./cmd/strategy-runner
 	@echo "Build complete! Binaries in ./bin/"
 
 build-all: proto-gen build

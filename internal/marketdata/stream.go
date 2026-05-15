@@ -43,6 +43,10 @@ func (s SubscriptionType) String() string {
 type subscriptionKey struct {
 	InstrumentUID    string
 	SubscriptionType SubscriptionType
+	// CandleInterval is set for SubCandles (must not be UNSPECIFIED).
+	CandleInterval pb.SubscriptionInterval
+	// OrderbookDepth is set for SubOrderbook (must match SubscribeOrderbook depth).
+	OrderbookDepth int32
 }
 
 // StreamManager manages MarketDataStream connections to T-Invest.
@@ -94,9 +98,16 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 		return nil, fmt.Errorf("SubscribeCandles: %w", err)
 	}
 
-	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: SubCandles}
+	if interval == pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_UNSPECIFIED {
+		return nil, fmt.Errorf("SubscribeCandles: subscription interval must be specified")
+	}
+	key := subscriptionKey{
+		InstrumentUID:    instrumentUID,
+		SubscriptionType: SubCandles,
+		CandleInterval:   interval,
+	}
 	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeCandles: already subscribed to candles for %s", instrumentUID)
+		return nil, fmt.Errorf("SubscribeCandles: already subscribed to candles for %s at interval %s", instrumentUID, interval.String())
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeCandles: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -116,7 +127,7 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 	// TODO: add WaitGroup for stream goroutines
 	go sm.forwardCandles(ctx, ch, fanOut)
 
-	sm.logger.Info("SubscribeCandles", "instrument_uid", instrumentUID, "total_subs", len(sm.subscriptions))
+	sm.logger.Info("SubscribeCandles", "instrument_uid", instrumentUID, "interval", interval.String(), "total_subs", len(sm.subscriptions))
 	return fanOut, nil
 }
 
@@ -129,9 +140,16 @@ func (sm *StreamManager) SubscribeOrderbook(ctx context.Context, instrumentUID s
 		return nil, fmt.Errorf("SubscribeOrderbook: %w", err)
 	}
 
-	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: SubOrderbook}
+	if depth <= 0 {
+		depth = 10
+	}
+	key := subscriptionKey{
+		InstrumentUID:    instrumentUID,
+		SubscriptionType: SubOrderbook,
+		OrderbookDepth:   depth,
+	}
 	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeOrderbook: already subscribed to orderbook for %s", instrumentUID)
+		return nil, fmt.Errorf("SubscribeOrderbook: already subscribed to orderbook for %s depth %d", instrumentUID, depth)
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeOrderbook: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -225,10 +243,67 @@ func (sm *StreamManager) SubscribeLastPrice(ctx context.Context, instrumentUID s
 	return fanOut, nil
 }
 
-// Unsubscribe removes a subscription for a specific instrument and type.
+// UnsubscribeCandles removes a candle subscription for the given instrument and interval.
+func (sm *StreamManager) UnsubscribeCandles(instrumentUID string, interval pb.SubscriptionInterval) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	key := subscriptionKey{
+		InstrumentUID:    instrumentUID,
+		SubscriptionType: SubCandles,
+		CandleInterval:   interval,
+	}
+	if _, exists := sm.subscriptions[key]; !exists {
+		return fmt.Errorf("UnsubscribeCandles: no subscription for %s interval %s", instrumentUID, interval.String())
+	}
+
+	if sm.stream != nil {
+		if err := sm.stream.UnSubscribeCandle([]string{instrumentUID}, interval, false, nil); err != nil {
+			return fmt.Errorf("UnsubscribeCandles: %w", err)
+		}
+	}
+
+	delete(sm.subscriptions, key)
+	sm.logger.Info("UnsubscribeCandles", "instrument_uid", instrumentUID, "interval", interval.String(), "total_subs", len(sm.subscriptions))
+	return nil
+}
+
+// UnsubscribeOrderbook removes an order book subscription for the given instrument and depth.
+func (sm *StreamManager) UnsubscribeOrderbook(instrumentUID string, depth int32) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if depth <= 0 {
+		depth = 10
+	}
+	key := subscriptionKey{
+		InstrumentUID:    instrumentUID,
+		SubscriptionType: SubOrderbook,
+		OrderbookDepth:   depth,
+	}
+	if _, exists := sm.subscriptions[key]; !exists {
+		return fmt.Errorf("UnsubscribeOrderbook: no subscription for %s depth %d", instrumentUID, depth)
+	}
+
+	if sm.stream != nil {
+		if err := sm.stream.UnSubscribeOrderBook([]string{instrumentUID}, depth); err != nil {
+			return fmt.Errorf("UnsubscribeOrderbook: %w", err)
+		}
+	}
+
+	delete(sm.subscriptions, key)
+	sm.logger.Info("UnsubscribeOrderbook", "instrument_uid", instrumentUID, "depth", depth, "total_subs", len(sm.subscriptions))
+	return nil
+}
+
+// Unsubscribe removes a subscription for trades or last price (instrument-level only).
 func (sm *StreamManager) Unsubscribe(instrumentUID string, subType SubscriptionType) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	if subType == SubCandles || subType == SubOrderbook {
+		return fmt.Errorf("Unsubscribe: use UnsubscribeCandles or UnsubscribeOrderbook for type %s", subType.String())
+	}
 
 	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: subType}
 	if _, exists := sm.subscriptions[key]; !exists {
@@ -238,14 +313,12 @@ func (sm *StreamManager) Unsubscribe(instrumentUID string, subType SubscriptionT
 	if sm.stream != nil {
 		var err error
 		switch subType {
-		case SubCandles:
-			err = sm.stream.UnSubscribeCandle([]string{instrumentUID}, pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_UNSPECIFIED, false, nil)
-		case SubOrderbook:
-			err = sm.stream.UnSubscribeOrderBook([]string{instrumentUID}, 0)
 		case SubTrades:
 			err = sm.stream.UnSubscribeTrade([]string{instrumentUID}, pb.TradeSourceType_TRADE_SOURCE_UNSPECIFIED, false)
 		case SubLastPrice:
 			err = sm.stream.UnSubscribeLastPrice([]string{instrumentUID})
+		default:
+			return fmt.Errorf("Unsubscribe: unsupported type %s", subType.String())
 		}
 		if err != nil {
 			return fmt.Errorf("Unsubscribe: %w", err)
@@ -370,14 +443,18 @@ func (sm *StreamManager) resubscribeAll() error {
 		case SubCandles:
 			if _, err := sm.stream.SubscribeCandle(
 				[]string{key.InstrumentUID},
-				pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_UNSPECIFIED,
+				key.CandleInterval,
 				false,
 				nil,
 			); err != nil {
 				return err
 			}
 		case SubOrderbook:
-			if _, err := sm.stream.SubscribeOrderBook([]string{key.InstrumentUID}, 10); err != nil {
+			depth := key.OrderbookDepth
+			if depth <= 0 {
+				depth = 10
+			}
+			if _, err := sm.stream.SubscribeOrderBook([]string{key.InstrumentUID}, depth); err != nil {
 				return err
 			}
 		case SubTrades:

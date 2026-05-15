@@ -116,7 +116,7 @@ func TestPositionLimitChecker_WithinLimit(t *testing.T) {
 		{InstrumentUID: "uid1", Quantity: 5},
 	}}
 	c := NewPositionLimitChecker(pq, 10)
-	r := c.Check(context.Background(), "acc1", "uid1", 3)
+	r := c.Check(context.Background(), "acc1", "uid1", "buy", 3)
 	if !r.Passed {
 		t.Fatalf("expected passed, reason: %s", r.Reason)
 	}
@@ -127,16 +127,28 @@ func TestPositionLimitChecker_ExceedsLimit(t *testing.T) {
 		{InstrumentUID: "uid1", Quantity: 8},
 	}}
 	c := NewPositionLimitChecker(pq, 10)
-	r := c.Check(context.Background(), "acc1", "uid1", 5)
+	r := c.Check(context.Background(), "acc1", "uid1", "buy", 5)
 	if r.Passed {
 		t.Fatal("expected failed: 8+5=13 > 10")
+	}
+}
+
+func TestPositionLimitChecker_SellReduces(t *testing.T) {
+	pq := &mockPortfolio{positions: []PositionInfo{
+		{InstrumentUID: "uid1", Quantity: 8},
+	}}
+	c := NewPositionLimitChecker(pq, 10)
+	// Old buggy logic would treat sell as +5 lots → 13 > 10 and reject.
+	r := c.Check(context.Background(), "acc1", "uid1", "sell", 5)
+	if !r.Passed {
+		t.Fatalf("expected passed after sell reduces position, reason: %s", r.Reason)
 	}
 }
 
 func TestPositionLimitChecker_NoExistingPosition(t *testing.T) {
 	pq := &mockPortfolio{positions: []PositionInfo{}}
 	c := NewPositionLimitChecker(pq, 10)
-	r := c.Check(context.Background(), "acc1", "uid1", 5)
+	r := c.Check(context.Background(), "acc1", "uid1", "buy", 5)
 	if !r.Passed {
 		t.Fatalf("expected passed for new position, reason: %s", r.Reason)
 	}
@@ -145,7 +157,7 @@ func TestPositionLimitChecker_NoExistingPosition(t *testing.T) {
 func TestPositionLimitChecker_Error(t *testing.T) {
 	pq := &mockPortfolio{posErr: errors.New("timeout")}
 	c := NewPositionLimitChecker(pq, 10)
-	r := c.Check(context.Background(), "acc1", "uid1", 1)
+	r := c.Check(context.Background(), "acc1", "uid1", "buy", 1)
 	if r.Passed {
 		t.Fatal("expected failed on error")
 	}
