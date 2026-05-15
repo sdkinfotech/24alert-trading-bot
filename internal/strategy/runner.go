@@ -33,6 +33,7 @@ type RunnerDeps struct {
 // Runner orchestrates strategy instances: market data → signals → risk → orders.
 type Runner struct {
 	cfg           *config.Config
+	configPath    string
 	strategiesCfg config.StrategiesRunnerConfig
 	reg           *Registry
 	deps          RunnerDeps
@@ -82,6 +83,7 @@ type instanceRuntime struct {
 // NewRunner constructs a strategy runner.
 func NewRunner(
 	cfg *config.Config,
+	configPath string,
 	strategiesCfg config.StrategiesRunnerConfig,
 	reg *Registry,
 	deps RunnerDeps,
@@ -105,6 +107,7 @@ func NewRunner(
 	}
 	return &Runner{
 		cfg:           cfg,
+		configPath:    configPath,
 		strategiesCfg: strategiesCfg,
 		reg:           reg,
 		deps:          deps,
@@ -615,6 +618,102 @@ func (r *Runner) StopAll() {
 	for _, id := range ids {
 		r.StopInstance(id)
 	}
+}
+
+// ReloadConfig re-reads config.yaml from disk, diffs strategy instances,
+// stops removed/changed ones, and starts new/changed ones.
+func (r *Runner) ReloadConfig(ctx context.Context) (added, removed, changed int, err error) {
+	newCfg, err := config.LoadStrategiesOnly(r.configPath)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("reload config: %w", err)
+	}
+
+	oldMap := make(map[string]config.StrategyInstanceConfig, len(r.strategiesCfg.Instances))
+	for _, inst := range r.strategiesCfg.Instances {
+		oldMap[inst.ID] = inst
+	}
+	newMap := make(map[string]config.StrategyInstanceConfig, len(newCfg.Instances))
+	for _, inst := range newCfg.Instances {
+		newMap[inst.ID] = inst
+	}
+
+	// Stop instances removed from config or whose params changed.
+	for id, oldInst := range oldMap {
+		newInst, exists := newMap[id]
+		if !exists {
+			if r.InstanceRunning(id) {
+				r.StopInstance(id)
+			}
+			removed++
+			continue
+		}
+		if instanceChanged(oldInst, newInst) {
+			if r.InstanceRunning(id) {
+				r.StopInstance(id)
+			}
+			changed++
+		}
+	}
+
+	// Prefetch instruments for any new UIDs.
+	r.strategiesCfg = *newCfg
+	r.mu.Lock()
+	r.byID = make(map[string]config.StrategyInstanceConfig, len(newCfg.Instances))
+	for _, inst := range newCfg.Instances {
+		r.byID[inst.ID] = inst
+	}
+	r.mu.Unlock()
+
+	if err := r.prefetchInstruments(ctx); err != nil {
+		r.logger.Warn("reload: prefetch instruments: some failures", "error", err)
+	}
+
+	// Start new or changed instances that are enabled.
+	for _, inst := range newCfg.Instances {
+		if !inst.Enabled {
+			continue
+		}
+		if r.InstanceRunning(inst.ID) {
+			continue
+		}
+		oldInst, existed := oldMap[inst.ID]
+		if !existed {
+			added++
+		} else if instanceChanged(oldInst, inst) {
+			// already counted in changed above
+		} else {
+			continue // unchanged and already running or disabled
+		}
+		if err := r.startInstance(ctx, inst); err != nil {
+			r.logger.Error("reload: start instance failed", "id", inst.ID, "error", err)
+		}
+	}
+
+	r.logger.Info("config reloaded", "added", added, "removed", removed, "changed", changed)
+	return added, removed, changed, nil
+}
+
+func instanceChanged(a, b config.StrategyInstanceConfig) bool {
+	if a.Type != b.Type || a.AccountID != b.AccountID || a.Enabled != b.Enabled || a.Endpoint != b.Endpoint {
+		return true
+	}
+	if len(a.Instruments) != len(b.Instruments) {
+		return true
+	}
+	for i := range a.Instruments {
+		if a.Instruments[i] != b.Instruments[i] {
+			return true
+		}
+	}
+	if len(a.Params) != len(b.Params) {
+		return true
+	}
+	for k, v := range a.Params {
+		if b.Params[k] != v {
+			return true
+		}
+	}
+	return false
 }
 
 // InstanceIDs returns configured instance ids (from file order).

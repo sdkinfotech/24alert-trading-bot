@@ -1,0 +1,3 @@
+# No external dependencies — uses only stdlib (urllib, json, argparse, zoneinfo).
+# If future strategies need numpy:
+# numpy>=1.26

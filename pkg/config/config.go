@@ -193,6 +193,27 @@ func Load(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadStrategiesOnly reads config.yaml and returns only the strategies section,
+// without validating the T-Invest token. Used for hot-reload at runtime.
+func LoadStrategiesOnly(configPath string) (*StrategiesRunnerConfig, error) {
+	v := viper.New()
+	if configPath == "" {
+		configPath = "config/config.yaml"
+	}
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
+
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+
+	cfg := &Config{}
+	if err := v.Unmarshal(cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+	return &cfg.Strategies, nil
+}
+
 // IsSandbox returns true when TINVEST_SANDBOX env var is "true" or "1".
 func IsSandbox() bool {
 	v := os.Getenv("TINVEST_SANDBOX")

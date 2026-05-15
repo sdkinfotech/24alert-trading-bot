@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "mcp-market": {
+      "type": "http",
+      "url": "http://mcp-market:3041/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:MCP_MARKET_BEARER}"
+      }
+    },
+    "mcp-24alert": {
+      "type": "http",
+      "url": "http://mcp-24alert:3042/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:MCP_24ALERT_BEARER}"
+      }
+    },
+    "mcp-vault": {
+      "type": "http",
+      "url": "http://mcp-vault:3043/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:MCP_VAULT_BEARER}"
+      }
+    }
+  }
+}

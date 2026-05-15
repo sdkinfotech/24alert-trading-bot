@@ -188,6 +188,8 @@ services:
       - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - REDIS_ADDR=redis:6379
+    volumes:
+      - ../config/config.yaml:/app/config/config.yaml
     networks:
       - trading-bot-net
     restart: unless-stopped
@@ -196,6 +198,68 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  ai-scanner:
+    build:
+      context: ..
+      dockerfile: deployments/ai-scanner/Dockerfile
+    container_name: 24alert-ai-scanner
+    env_file:
+      - .env
+    environment:
+      - CURSOR_API_KEY=${CURSOR_API_KEY}
+      - MCP_MARKET_BEARER=${MCP_MARKET_BEARER}
+      - MCP_24ALERT_BEARER=${MCP_24ALERT_BEARER}
+      - MCP_VAULT_BEARER=${MCP_VAULT_BEARER}
+      - SCAN_POSTMARKET_CRON=${SCAN_POSTMARKET_CRON:-50 18 * * 1-5}
+      - SCAN_PREMARKET_CRON=${SCAN_PREMARKET_CRON:-50 9 * * 1-5}
+      - SCAN_HEALTH_CRON=${SCAN_HEALTH_CRON:-0 */4 * * *}
+      - STRATEGY_RUNNER_URL=http://strategy-runner:9020
+      - GATEWAY_URL=http://gateway:8080
+    volumes:
+      - ./ai-scanner/workspace/.cursor:/workspace/.cursor:ro
+      - ./ai-scanner/workspace/system-prompt.md:/workspace/system-prompt.md:ro
+      - ./ai-scanner/run-scan.sh:/etc/scanner/run-scan.sh:ro
+      - ../scripts/ai-scanner:/opt/ai-scanner:ro
+      - ../config/config.yaml:/app/config/config.yaml
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+      strategy-runner:
+        condition: service_started
+    profiles:
+      - ai-scanner
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
+        echo "Europe/Moscow" > /etc/timezone
+        umask 077
+        cat > /run/ai-scanner-env.sh <<ENVEOF
+        export HOME=/root
+        export PATH="/root/.local/bin:$${PATH}"
+        export CURSOR_API_KEY="$${CURSOR_API_KEY}"
+        export MCP_MARKET_BEARER="$${MCP_MARKET_BEARER}"
+        export MCP_24ALERT_BEARER="$${MCP_24ALERT_BEARER}"
+        export MCP_VAULT_BEARER="$${MCP_VAULT_BEARER}"
+        export STRATEGY_RUNNER_URL="$${STRATEGY_RUNNER_URL}"
+        export GATEWAY_URL="$${GATEWAY_URL}"
+        ENVEOF
+        chmod 600 /run/ai-scanner-env.sh
+        cp /etc/scanner/run-scan.sh /usr/local/bin/run-scan.sh
+        chmod +x /usr/local/bin/run-scan.sh
+        printf '%s root . /run/ai-scanner-env.sh; /usr/local/bin/run-scan.sh post-market >> /proc/1/fd/1 2>&1\n' "$${SCAN_POSTMARKET_CRON}" > /etc/cron.d/ai-scanner
+        printf '%s root . /run/ai-scanner-env.sh; /usr/local/bin/run-scan.sh pre-market >> /proc/1/fd/1 2>&1\n' "$${SCAN_PREMARKET_CRON}" >> /etc/cron.d/ai-scanner
+        printf '%s root . /run/ai-scanner-env.sh; /usr/local/bin/run-scan.sh health >> /proc/1/fd/1 2>&1\n' "$${SCAN_HEALTH_CRON}" >> /etc/cron.d/ai-scanner
+        printf '\n' >> /etc/cron.d/ai-scanner
+        chmod 644 /etc/cron.d/ai-scanner
+        echo "=== crontab ==="
+        cat /etc/cron.d/ai-scanner
+        echo "=== ai-scanner ready ==="
+        exec /usr/sbin/cron -f
 
   prometheus:
     image: prom/prometheus:v3.4.0

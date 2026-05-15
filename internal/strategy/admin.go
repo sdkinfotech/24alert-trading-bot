@@ -65,6 +65,20 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		r.StopInstance(id)
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /config/reload", func(w http.ResponseWriter, _ *http.Request) {
+		added, removed, changed, err := r.ReloadConfig(parent)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":  "ok",
+			"added":   added,
+			"removed": removed,
+			"changed": changed,
+		})
+	})
 	mux.HandleFunc("GET /instances/{id}/pnl", func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
 		rl, un, tot, ok := r.InstancePNL(id)

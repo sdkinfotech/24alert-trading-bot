@@ -237,6 +237,7 @@ func run(o runOpts) error {
 
 	runner := strategy.NewRunner(
 		cfg,
+		o.configPath,
 		cfg.Strategies,
 		reg,
 		deps,
