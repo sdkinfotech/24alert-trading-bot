@@ -241,7 +241,11 @@ func (c *Crossover) Restore(blob []byte) error {
 	return nil
 }
 
+// WarmupCandles returns the number of historical bars needed for the slow SMA.
+func (c *Crossover) WarmupCandles() int { return c.slowN }
+
 var _ strategy.StatefulStrategy = (*Crossover)(nil)
+var _ strategy.WarmupHint = (*Crossover)(nil)
 
 func smaTail(xs []float64, n int) float64 {
 	if len(xs) < n || n <= 0 {

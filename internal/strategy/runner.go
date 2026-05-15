@@ -18,6 +18,8 @@ import (
 	"github.com/24alert/trading-bot/pkg/metrics"
 	"github.com/24alert/trading-bot/pkg/notify/telegram"
 	"github.com/24alert/trading-bot/pkg/tinvest"
+
+	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
 // GRPCStrategyBuilder builds a gRPC-backed Strategy for a given endpoint (optional).
@@ -285,6 +287,12 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 		return fmt.Errorf("instance %q: no instruments", inst.ID)
 	}
 
+	// Warmup: prefetch historical candles so the strategy is ready immediately.
+	var lastWarmupTimes map[string]time.Time
+	if wh, ok := st.(WarmupHint); ok {
+		lastWarmupTimes = r.warmupStrategy(ctx, inst, st, wh, interval)
+	}
+
 	ictx, cancel := context.WithCancel(ctx)
 	rt := &instanceRuntime{id: inst.ID, account: inst.AccountID, strat: st, cancel: cancel}
 
@@ -303,6 +311,7 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 			st.Stop()
 			return fmt.Errorf("subscribe candles %s: %w", uid, err)
 		}
+		warmupCutoff := lastWarmupTimes[uid]
 		rt.wg.Add(1)
 		go func() {
 			defer cleanup()
@@ -315,6 +324,10 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 				case c, ok := <-ch:
 					if !ok {
 						return
+					}
+					// Deduplicate: skip candles already fed during warmup.
+					if !warmupCutoff.IsZero() && !c.Time.After(warmupCutoff) {
+						continue
 					}
 					prev, has := pending[c.InstrumentUID]
 					if has && prev.Time.Equal(c.Time) {
@@ -341,6 +354,76 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 
 	r.logger.Info("strategy instance started", "id", inst.ID, "type", inst.Type, "account", inst.AccountID)
 	return nil
+}
+
+// warmupStrategy fetches historical candles and feeds them to the strategy,
+// discarding any generated signals. Returns the timestamp of the last warmup
+// candle per instrument for deduplication with the live stream.
+func (r *Runner) warmupStrategy(
+	ctx context.Context,
+	inst config.StrategyInstanceConfig,
+	st Strategy,
+	wh WarmupHint,
+	subInterval pb.SubscriptionInterval,
+) map[string]time.Time {
+	needed := wh.WarmupCandles()
+	if needed <= 0 {
+		return nil
+	}
+
+	candleInterval, err := SubscriptionToCandleInterval(subInterval)
+	if err != nil {
+		r.logger.Warn("warmup: cannot map interval", "instance", inst.ID, "error", err)
+		return nil
+	}
+
+	dur := IntervalDuration(subInterval)
+	// Request 20% extra to account for gaps (weekends, non-trading hours).
+	lookback := time.Duration(float64(needed)*1.2+2) * dur
+	now := time.Now()
+	from := now.Add(-lookback)
+
+	result := make(map[string]time.Time)
+	for _, uid := range inst.Instruments {
+		candles, err := r.mdSvc.GetCandles(ctx, uid, from, now, candleInterval)
+		if err != nil {
+			r.logger.Warn("warmup: GetCandles failed", "instance", inst.ID, "uid", uid, "error", err)
+			continue
+		}
+		if len(candles) == 0 {
+			r.logger.Info("warmup: no historical candles", "instance", inst.ID, "uid", uid)
+			continue
+		}
+
+		// Take only the last `needed` candles.
+		if len(candles) > needed {
+			candles = candles[len(candles)-needed:]
+		}
+
+		fed := 0
+		for _, mc := range candles {
+			sc := Candle{
+				InstrumentUID: uid,
+				Open:          mc.Open,
+				High:          mc.High,
+				Low:           mc.Low,
+				Close:         mc.Close,
+				Volume:        mc.Volume,
+				Time:          mc.Time,
+				IsComplete:    true,
+			}
+			_ = st.OnCandle(sc) // fills buffers; signals discarded
+			fed++
+		}
+
+		last := candles[len(candles)-1].Time
+		result[uid] = last
+		r.logger.Info("warmup complete",
+			"instance", inst.ID, "uid", uid,
+			"fed", fed, "needed", needed,
+			"last_candle", last.Format(time.RFC3339))
+	}
+	return result
 }
 
 func (r *Runner) estimateCost(sig Signal, markPrice float64) float64 {

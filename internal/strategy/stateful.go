@@ -13,3 +13,11 @@ type StatefulStrategy interface {
 type IndicatorProvider interface {
 	IndicatorData() interface{}
 }
+
+// WarmupHint is optionally implemented by strategies that benefit from
+// historical candle prefetch on startup. The runner calls GetCandles to
+// load this many completed bars before subscribing to the live stream,
+// so the strategy can produce signals immediately without a cold start.
+type WarmupHint interface {
+	WarmupCandles() int
+}

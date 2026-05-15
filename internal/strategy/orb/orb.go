@@ -355,9 +355,14 @@ func (b *Breakout) Restore(blob []byte) error {
 	return nil
 }
 
+// WarmupCandles returns the number of historical bars needed to form the
+// opening range so the strategy is ready to trade after a restart.
+func (b *Breakout) WarmupCandles() int { return b.rangeCandles }
+
 var (
 	_ strategy.StatefulStrategy  = (*Breakout)(nil)
 	_ strategy.IndicatorProvider = (*Breakout)(nil)
+	_ strategy.WarmupHint        = (*Breakout)(nil)
 )
 
 func intFrom(m map[string]string, key string, def int) int {
