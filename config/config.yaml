@@ -153,8 +153,8 @@ strategies:
       enabled: true
       params:
         interval: "1h"
-        fast_period: "5"
-        slow_period: "20"
+        fast_period: "12"
+        slow_period: "27"
         quantity: "1"
     - id: iis-sber-orb
       type: orb_breakout
@@ -167,7 +167,7 @@ strategies:
         range_candles: "2"
         quantity: "1"
         cutoff_hour: "18"
-        cutoff_min: "30"
+        cutoff_min: "45"
         timezone: "Europe/Moscow"
 
 # Redis (candle cache)
