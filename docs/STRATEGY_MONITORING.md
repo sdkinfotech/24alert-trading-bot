@@ -266,20 +266,78 @@ rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"
 
 ## Grafana дашборд
 
+**URL:** `http://213.171.27.217:3535/d/24alert-strategy/24alert-strategy-runner`
+
 Артефакт: `deployments/grafana/dashboards/strategy-overview.json`.
+Дашборд провиженирован в папку **24alert** на мониторинговом сервере (`/opt/monitoring/grafana/dashboards-24alert/strategy-runner.json`), автоматически обновляется при изменении файла.
 
-Панели:
-- **Total PnL (RUB)** — graph: `alert24_strategy_total_pnl_rub`
-- **Signals / Orders rate** — graph: `rate(alert24_strategy_signals_total[5m])`, `rate(alert24_strategy_orders_total[5m])`
-- **Drawdown %** — graph: `alert24_strategy_drawdown_percent`
+### Панели
 
-Для импорта: Grafana UI → Dashboards → Import → загрузить JSON. Datasource: Prometheus, scraping с `strategy-runner:9120`.
+**Row 1 — Ключевые числа (stat)**
+
+| Панель | Метрика | Пороги |
+|--------|---------|--------|
+| Total PnL (RUB) | `alert24_strategy_total_pnl_rub` | красный < 0, зелёный > 0 |
+| Realized PnL | `alert24_strategy_realized_pnl_rub` | красный < 0, зелёный > 0 |
+| Unrealized PnL | `alert24_strategy_unrealized_pnl_rub` | красный < 0, зелёный > 0 |
+| Win Rate | `alert24_strategy_win_rate` | красный < 40%, зелёный > 55% |
+| Drawdown % | `alert24_strategy_drawdown_percent` | зелёный < 5%, жёлтый < 10%, красный > 10% |
+| Net Position (shares) | `alert24_strategy_position_qty_shares` | нейтральный |
+
+**Row 2 — PnL и позиции (timeseries)**
+
+- **Total PnL over time** — total/realized/unrealized на одном графике.
+- **Position Qty over time** — чистая позиция по инструменту.
+
+**Row 3 — Торговая активность**
+
+- **Signals rate (buy/sell)** — столбчатая диаграмма, зелёный = buy, красный = sell.
+- **Orders rate by status** — submitted / risk_rejected / post_error.
+- **Wins** / **Losses** — stat-панели с абсолютными числами.
+- **Total Signals** / **Total Orders** — stat-панели.
+
+**Row 4 — Качество исполнения**
+
+- **Slippage (bps)** — p50/p90/p99 проскальзывания.
+- **Evaluation Duration (p50/p99)** — время выполнения OnCandle/gRPC Evaluate.
+- **Reconcile Mismatches** — дрейфы ledger vs брокер (зелёный = 0, красный > 5).
+- **Drawdown % over time** — с пунктирными линиями порогов.
+
+**Row 5 — Логи (Loki)**
+
+- **Strategy Runner Logs** — `{service="strategy-runner"}`, фильтрация по уровню.
+
+### Переменные
+
+- `$instance` — фильтр по инстансу стратегии (label `exported_instance`), поддерживает мульти-выбор и All.
+
+### Как обновить дашборд
+
+Два способа:
+
+**1. Файл-провижининг (рекомендуется):**
+```bash
+# Локально: отредактировать JSON
+# Скопировать на мониторинг-сервер:
+scp deployments/grafana/dashboards/strategy-overview.json \
+  admin-cloud-srv-01@213.171.27.217:/tmp/strategy-runner.json
+ssh admin-cloud-srv-01@213.171.27.217 \
+  "sudo cp /tmp/strategy-runner.json /opt/monitoring/grafana/dashboards-24alert/strategy-runner.json"
+# Grafana подхватит изменения за 30 секунд
+```
+
+**2. Через UI (быстрые правки):**
+- Открыть http://213.171.27.217:3535/d/24alert-strategy
+- Отредактировать панель
+- Сохранить дашборд
+- Экспортировать JSON обратно в репо
 
 ### Алерты (Alertmanager)
 
 Файл: `deployments/grafana/alerts/strategy-runner.rules.yml`.
+Развёрнут на мониторинг-сервере в `/opt/monitoring/prometheus/rules/strategy-runner.yml`.
 
-Пример правила:
+Текущие правила:
 ```yaml
 - alert: StrategyRunnerHighDrawdown
   expr: alert24_strategy_drawdown_percent > 15
@@ -289,6 +347,23 @@ rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"
   annotations:
     summary: "Strategy drawdown high (instance {{ $labels.instance }})"
 ```
+
+### Мониторинговый стек
+
+Prometheus agent и Promtail запущены на сервере 24alert (`docker compose --profile monitoring up -d`):
+
+| Контейнер | Роль |
+|-----------|------|
+| `24alert-prometheus-agent` | Scrape метрик со всех сервисов → remote_write на `213.171.27.217:9191` |
+| `24alert-promtail` | Сбор Docker-логов → отправка в Loki на `213.171.27.217:3100` |
+
+Scrape targets (config: `config/prometheus-agent.yaml`):
+- gateway:8080
+- order-svc:9101
+- marketdata-svc:9102
+- portfolio-svc:9103
+- risk-svc:9104
+- **strategy-runner:9120**
 
 ## Telegram уведомления
 
