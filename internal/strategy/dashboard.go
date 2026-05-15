@@ -2,15 +2,18 @@ package strategy
 
 import (
 	"embed"
+	"io"
 	"io/fs"
+	"mime"
 	"net/http"
+	"path/filepath"
 )
 
 //go:embed dashboard_dist/*
 var dashboardFS embed.FS
 
 // DashboardHandler returns an http.Handler serving the embedded SPA.
-// The caller is responsible for stripping any path prefix before calling.
+// The caller must strip any path prefix before this handler is called.
 // Unknown paths fall back to index.html for client-side routing.
 func DashboardHandler() http.Handler {
 	sub, err := fs.Sub(dashboardFS, "dashboard_dist")
@@ -28,12 +31,31 @@ func DashboardHandler() http.Handler {
 
 		f, err := sub.Open(path)
 		if err != nil {
+			f, err = sub.Open("index.html")
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
 			path = "index.html"
-		} else {
-			f.Close()
+		}
+		defer f.Close()
+
+		stat, err := f.Stat()
+		if err != nil || stat.IsDir() {
+			http.NotFound(w, r)
+			return
 		}
 
-		r.URL.Path = "/" + path
-		http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+		ct := mime.TypeByExtension(filepath.Ext(path))
+		if ct != "" {
+			w.Header().Set("Content-Type", ct)
+		}
+
+		if rs, ok := f.(io.ReadSeeker); ok {
+			http.ServeContent(w, r, path, stat.ModTime(), rs)
+		} else {
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.Copy(w, f)
+		}
 	})
 }
