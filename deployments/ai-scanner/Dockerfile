@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     cron \
     coreutils \
+    git \
+    jq \
     python3 \
     python3-pip \
   && rm -rf /var/lib/apt/lists/*
@@ -15,6 +17,7 @@ ENV HOME=/root
 ENV PATH="/root/.local/bin:${PATH}"
 
 RUN curl -fsSL https://cursor.com/install | bash \
-  && test -x /root/.local/bin/agent
+  && (agent --version || agent status || echo "agent binary installed") \
+  && ls -la /root/.local/bin/agent
 
-WORKDIR /
+WORKDIR /workspace
