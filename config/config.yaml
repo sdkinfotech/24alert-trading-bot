@@ -156,19 +156,6 @@ strategies:
         fast_period: "12"
         slow_period: "27"
         quantity: "1"
-    - id: iis-sber-orb
-      type: orb_breakout
-      account_id: "2001673385"
-      instruments:
-        - "e6123145-9665-43e0-8413-cd61b8aa9b13"
-      enabled: false  # disabled: backtest showed consistent losses on Sber
-      params:
-        interval: "15min"
-        range_candles: "2"
-        quantity: "1"
-        cutoff_hour: "18"
-        cutoff_min: "45"
-        timezone: "Europe/Moscow"
     - id: iis-mgnt-lb
       type: level_bounce
       account_id: "2001673385"

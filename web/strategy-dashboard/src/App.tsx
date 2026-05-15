@@ -29,9 +29,10 @@ export default function App() {
   const loadInstances = useCallback(async () => {
     try {
       const list = await api.instances();
-      setInstances(list ?? []);
-      if (list?.length && (!selected || !list.find((i) => i.id === selected))) {
-        setSelected(list[0].id);
+      const enabled = (list ?? []).filter((i) => i.enabled_in_config);
+      setInstances(enabled);
+      if (enabled.length && (!selected || !enabled.find((i) => i.id === selected))) {
+        setSelected(enabled[0].id);
       }
       setError(null);
     } catch (e: any) {
@@ -76,12 +77,35 @@ export default function App() {
       <header className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-white">24alert Strategy Dashboard</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Auto-refresh every {REFRESH_MS / 1000}s
-            {lastUpdate && (
-              <> &middot; last: {lastUpdate.toLocaleTimeString('ru-RU')}</>
-            )}
-          </p>
+          {(() => {
+            const cur = instances.find((i) => i.id === selected);
+            if (!cur) {
+              return (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Auto-refresh every {REFRESH_MS / 1000}s
+                  {lastUpdate && (
+                    <> &middot; last: {lastUpdate.toLocaleTimeString('ru-RU')}</>
+                  )}
+                </p>
+              );
+            }
+            return (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {cur.tickers && (
+                  <>
+                    <span className="text-amber-400 font-semibold">{cur.tickers}</span>
+                    {' · '}
+                  </>
+                )}
+                <span className="text-gray-400">{cur.type}</span>
+                {' · '}
+                Auto-refresh {REFRESH_MS / 1000}s
+                {lastUpdate && (
+                  <> &middot; last: {lastUpdate.toLocaleTimeString('ru-RU')}</>
+                )}
+              </p>
+            );
+          })()}
         </div>
         {instances.length > 0 && (
           <InstanceSelector

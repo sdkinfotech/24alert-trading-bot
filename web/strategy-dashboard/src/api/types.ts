@@ -1,6 +1,8 @@
 export interface Instance {
   id: string;
   type: string;
+  /** MOEX tickers from instrument cache (comma-separated if several UIDs). */
+  tickers?: string;
   account_id: string;
   enabled_in_config: boolean;
   running: boolean;

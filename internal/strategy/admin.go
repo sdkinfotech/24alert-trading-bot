@@ -33,6 +33,7 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		type row struct {
 			ID            string `json:"id"`
 			Type          string `json:"type"`
+			Tickers       string `json:"tickers,omitempty"`
 			AccountID     string `json:"account_id"`
 			EnabledConfig bool   `json:"enabled_in_config"`
 			Running       bool   `json:"running"`
@@ -42,6 +43,7 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 			out = append(out, row{
 				ID:            inst.ID,
 				Type:          inst.Type,
+				Tickers:       r.InstanceTickers(inst),
 				AccountID:     inst.AccountID,
 				EnabledConfig: inst.Enabled,
 				Running:       r.InstanceRunning(inst.ID),

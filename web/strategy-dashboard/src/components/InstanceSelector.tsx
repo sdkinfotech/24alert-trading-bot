@@ -16,6 +16,7 @@ export function InstanceSelector({ instances, selected, onSelect }: Props) {
       >
         {instances.map((inst) => (
           <option key={inst.id} value={inst.id}>
+            {inst.tickers ? `${inst.tickers} · ` : ''}
             {inst.id} ({inst.type})
           </option>
         ))}
@@ -33,6 +34,12 @@ export function InstanceSelector({ instances, selected, onSelect }: Props) {
             </span>
             <span className="text-gray-600">|</span>
             <span className="text-gray-500">Account: {inst.account_id}</span>
+            {inst.tickers && (
+              <>
+                <span className="text-gray-600">|</span>
+                <span className="text-amber-400 font-medium">{inst.tickers}</span>
+              </>
+            )}
           </div>
         ) : null,
       )}

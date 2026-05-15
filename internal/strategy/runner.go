@@ -214,6 +214,22 @@ func (r *Runner) prefetchInstruments(ctx context.Context) error {
 	return firstErr
 }
 
+// InstanceTickers returns comma-separated MOEX tickers for the instance's instruments
+// (from InstrumentByUid prefetch). Empty if metadata is not yet in cache.
+func (r *Runner) InstanceTickers(inst config.StrategyInstanceConfig) string {
+	var parts []string
+	for _, uid := range inst.Instruments {
+		uid = strings.TrimSpace(uid)
+		if uid == "" {
+			continue
+		}
+		if inf, ok := r.instrCache.GetInstrument(uid); ok && inf.Ticker != "" {
+			parts = append(parts, inf.Ticker)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
 func (r *Runner) uniqueAccounts(enabledOnly bool) []string {
 	seen := make(map[string]struct{})
 	var out []string
