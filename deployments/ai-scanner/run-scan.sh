@@ -16,15 +16,6 @@ if [ -z "${CURSOR_API_KEY:-}" ] || [ "${CURSOR_API_KEY}" = "stub" ]; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=missing_env CURSOR_API_KEY" >&2
   exit 3
 fi
-if [ "$KIND" = "post-market" ]; then
-  for v in MCP_MARKET_BEARER MCP_24ALERT_BEARER MCP_VAULT_BEARER; do
-    eval "val=\${$v:-}"
-    if [ -z "$val" ]; then
-      echo "[$(date -Iseconds)] ai-scanner kind=$KIND WARN missing_env $v (MCP tools unavailable)" >&2
-    fi
-  done
-fi
-
 WS="/workspace"
 if [ ! -d "$WS" ] || [ ! -f "$WS/system-prompt.md" ]; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=bad_workspace $WS" >&2
@@ -53,7 +44,6 @@ case "$KIND" in
 esac
 
 export CURSOR_API_KEY
-export MCP_MARKET_BEARER MCP_24ALERT_BEARER MCP_VAULT_BEARER
 
 AGENT_MODEL="${AI_SCANNER_MODEL:-composer-2}"
 

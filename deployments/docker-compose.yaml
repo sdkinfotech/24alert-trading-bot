@@ -211,9 +211,6 @@ services:
     environment:
       - CURSOR_API_KEY=${CURSOR_API_KEY}
       - AI_SCANNER_MODEL=${AI_SCANNER_MODEL:-composer-2}
-      - MCP_MARKET_BEARER=${MCP_MARKET_BEARER}
-      - MCP_24ALERT_BEARER=${MCP_24ALERT_BEARER}
-      - MCP_VAULT_BEARER=${MCP_VAULT_BEARER}
       - SCAN_POSTMARKET_CRON=${SCAN_POSTMARKET_CRON:-0 2 * * 2-6}
       - SCAN_PREMARKET_CRON=${SCAN_PREMARKET_CRON:-50 9 * * 1-5}
       - SCAN_HEALTH_CRON=${SCAN_HEALTH_CRON:-0 */4 * * *}
@@ -246,9 +243,6 @@ services:
         export PATH="/root/.local/bin:$${PATH}"
         export CURSOR_API_KEY="$${CURSOR_API_KEY}"
         export AI_SCANNER_MODEL="$${AI_SCANNER_MODEL}"
-        export MCP_MARKET_BEARER="$${MCP_MARKET_BEARER}"
-        export MCP_24ALERT_BEARER="$${MCP_24ALERT_BEARER}"
-        export MCP_VAULT_BEARER="$${MCP_VAULT_BEARER}"
         export STRATEGY_RUNNER_URL="$${STRATEGY_RUNNER_URL}"
         export GATEWAY_URL="$${GATEWAY_URL}"
         ENVEOF
