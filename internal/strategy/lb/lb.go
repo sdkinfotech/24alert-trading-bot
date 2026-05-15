@@ -437,7 +437,7 @@ func (b *Bounce) Snapshot() ([]byte, error) {
 		Support: b.support, Resistance: b.resistance, ATR: b.atr,
 		DailyHighs: b.dailyHighs, DailyLows: b.dailyLows, DailyTRs: b.dailyTRs,
 		PrevClose: b.prevClose,
-		Pos: b.pos, EntryPrice: b.entryPrice,
+		Pos:       b.pos, EntryPrice: b.entryPrice,
 		StopLoss: b.stopLoss, TakeProfit: b.takeProfit,
 		CurrentDay: b.currentDay, EodSent: b.eodSent,
 		History: b.history, Signals: b.signals,

@@ -123,7 +123,10 @@ func autoDetectAccount() (string, error) {
 
 func prettyJSON(data json.RawMessage) {
 	var buf bytes.Buffer
-	json.Indent(&buf, data, "", "  ")
+	if err := json.Indent(&buf, data, "", "  "); err != nil {
+		fmt.Println(string(data))
+		return
+	}
 	fmt.Println(buf.String())
 }
 

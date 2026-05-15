@@ -35,7 +35,9 @@ var accountsCmd = &cobra.Command{
 			Status string `json:"status"`
 			Access string `json:"access_level"`
 		}
-		json.Unmarshal(data, &accs)
+		if err := json.Unmarshal(data, &accs); err != nil {
+			fatal("parse accounts: %v", err)
+		}
 		fmt.Printf("%-15s %-25s %-30s %-15s %s\n", "ID", "NAME", "TYPE", "STATUS", "ACCESS")
 		for _, a := range accs {
 			fmt.Printf("%-15s %-25s %-30s %-15s %s\n",
@@ -56,16 +58,18 @@ var positionsCmd = &cobra.Command{
 			fatal("%v", err)
 		}
 		var positions []struct {
-			UID       string  `json:"instrument_uid"`
-			Type      string  `json:"instrument_type"`
-			Qty       float64 `json:"quantity"`
-			AvgPrice  float64 `json:"average_price"`
-			CurPrice  float64 `json:"current_price"`
-			Yield     float64 `json:"expected_yield"`
-			Currency  string  `json:"currency"`
-			Blocked   bool    `json:"blocked"`
+			UID      string  `json:"instrument_uid"`
+			Type     string  `json:"instrument_type"`
+			Qty      float64 `json:"quantity"`
+			AvgPrice float64 `json:"average_price"`
+			CurPrice float64 `json:"current_price"`
+			Yield    float64 `json:"expected_yield"`
+			Currency string  `json:"currency"`
+			Blocked  bool    `json:"blocked"`
 		}
-		json.Unmarshal(data, &positions)
+		if err := json.Unmarshal(data, &positions); err != nil {
+			fatal("parse positions: %v", err)
+		}
 		if len(positions) == 0 {
 			fmt.Println("No open positions")
 			return
@@ -99,7 +103,9 @@ var portfolioCmd = &cobra.Command{
 			Futures    float64 `json:"total_amount_futures"`
 			Yield      float64 `json:"expected_yield"`
 		}
-		json.Unmarshal(data, &p)
+		if err := json.Unmarshal(data, &p); err != nil {
+			fatal("parse portfolio: %v", err)
+		}
 
 		total := p.Shares + p.Bonds + p.ETF + p.Currencies + p.Futures
 		fmt.Printf("Shares:     %12.2f RUB\n", p.Shares)
@@ -128,7 +134,9 @@ var marginCmd = &cobra.Command{
 			Level    float64 `json:"funds_sufficiency_level"`
 			Missing  float64 `json:"amount_of_missing"`
 		}
-		json.Unmarshal(data, &m)
+		if err := json.Unmarshal(data, &m); err != nil {
+			fatal("parse margin: %v", err)
+		}
 		fmt.Printf("Liquid portfolio:  %12.2f RUB\n", m.Liquid)
 		fmt.Printf("Starting margin:   %12.2f RUB\n", m.Starting)
 		fmt.Printf("Minimal margin:    %12.2f RUB\n", m.Minimal)
@@ -152,7 +160,9 @@ var limitsCmd = &cobra.Command{
 			Blocked  float64 `json:"blocked_amount"`
 			Withdraw float64 `json:"withdraw_amount"`
 		}
-		json.Unmarshal(data, &limits)
+		if err := json.Unmarshal(data, &limits); err != nil {
+			fatal("parse limits: %v", err)
+		}
 		if len(limits) == 0 {
 			fmt.Println("No limits data")
 			return
@@ -203,7 +213,9 @@ Examples:
 			} `json:"operations"`
 			HasNext bool `json:"has_next"`
 		}
-		json.Unmarshal(data, &page)
+		if err := json.Unmarshal(data, &page); err != nil {
+			fatal("parse operations: %v", err)
+		}
 
 		if page.Operations == nil {
 			var ops []struct {
@@ -216,7 +228,7 @@ Examples:
 				Qty      int64     `json:"quantity"`
 				Date     time.Time `json:"date"`
 			}
-			json.Unmarshal(data, &ops)
+			_ = json.Unmarshal(data, &ops)
 			page.Operations = ops
 		}
 
@@ -252,7 +264,9 @@ var riskCmd = &cobra.Command{
 			Threshold int    `json:"threshold"`
 			Cooldown  string `json:"cooldown"`
 		}
-		json.Unmarshal(data, &r)
+		if err := json.Unmarshal(data, &r); err != nil {
+			fatal("parse risk: %v", err)
+		}
 
 		status := "OK"
 		if r.Tripped {

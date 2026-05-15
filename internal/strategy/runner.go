@@ -75,7 +75,7 @@ type Runner struct {
 type instanceRuntime struct {
 	id      string
 	account string
-	strat   Strategy
+	strat   Strategy //nolint:misspell // short for "strategy"
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 }
@@ -326,7 +326,7 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	}
 
 	ictx, cancel := context.WithCancel(ctx)
-	rt := &instanceRuntime{id: inst.ID, account: inst.AccountID, strat: st, cancel: cancel}
+	rt := &instanceRuntime{id: inst.ID, account: inst.AccountID, strat: st, cancel: cancel} //nolint:misspell // short for "strategy"
 
 	r.mu.Lock()
 	r.instances[inst.ID] = rt
@@ -610,7 +610,7 @@ func (r *Runner) StopInstance(id string) {
 			_ = r.journal.SaveStrategyState(context.Background(), id, blob)
 		}
 	}
-	rt.strat.Stop()
+	rt.strat.Stop() //nolint:misspell // short for "strategy"
 	r.ledger.Remove(id)
 	r.mu.Lock()
 	delete(r.instances, id)

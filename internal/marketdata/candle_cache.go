@@ -54,7 +54,7 @@ type cachedCandle struct {
 
 func (r *RedisCandleCache) Get(ctx context.Context, uid string, from, to time.Time, interval pb.CandleInterval) ([]Candle, error) {
 	key := candleKey(uid, interval)
-	results, err := r.rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+	results, err := r.rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{ //nolint:staticcheck // TODO: migrate to ZRangeArgs
 		Min: fmt.Sprintf("%d", from.Unix()),
 		Max: fmt.Sprintf("%d", to.Unix()),
 	}).Result()
@@ -71,15 +71,7 @@ func (r *RedisCandleCache) Get(ctx context.Context, uid string, from, to time.Ti
 		if err := json.Unmarshal([]byte(raw), &cc); err != nil {
 			continue
 		}
-		candles = append(candles, Candle{
-			Open:       cc.Open,
-			High:       cc.High,
-			Low:        cc.Low,
-			Close:      cc.Close,
-			Volume:     cc.Volume,
-			Time:       cc.Time,
-			IsComplete: cc.IsComplete,
-		})
+		candles = append(candles, Candle(cc))
 	}
 	return candles, nil
 }
@@ -91,10 +83,7 @@ func (r *RedisCandleCache) Put(ctx context.Context, uid string, interval pb.Cand
 	key := candleKey(uid, interval)
 	members := make([]redis.Z, 0, len(candles))
 	for _, c := range candles {
-		data, err := json.Marshal(cachedCandle{
-			Open: c.Open, High: c.High, Low: c.Low, Close: c.Close,
-			Volume: c.Volume, Time: c.Time, IsComplete: c.IsComplete,
-		})
+		data, err := json.Marshal(cachedCandle(c))
 		if err != nil {
 			continue
 		}

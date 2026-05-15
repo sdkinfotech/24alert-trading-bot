@@ -48,9 +48,9 @@ func (a *Adapter) ensureConn(ctx context.Context) error {
 	}
 	dctx, dcancel := context.WithTimeout(ctx, 10*time.Second)
 	defer dcancel()
-	conn, err := grpc.DialContext(dctx, a.endpoint,
+	conn, err := grpc.DialContext(dctx, a.endpoint, //nolint:staticcheck // TODO: migrate to grpc.NewClient
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck // needed for synchronous dial
 	)
 	if err != nil {
 		return fmt.Errorf("grpc dial %q: %w", a.endpoint, err)

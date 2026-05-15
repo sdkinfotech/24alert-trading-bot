@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,7 +37,9 @@ var priceCmd = &cobra.Command{
 			UID   string  `json:"instrument_uid"`
 			Price float64 `json:"price"`
 		}
-		json.Unmarshal(data, &prices)
+		if err := json.Unmarshal(data, &prices); err != nil {
+			fatal("parse prices: %v", err)
+		}
 		if len(prices) == 0 {
 			fmt.Println("No price data")
 			return
@@ -64,16 +65,19 @@ Examples:
 			fatal("%v", err)
 		}
 		var book struct {
-			Bids  []struct{ Price float64; Quantity int64 } `json:"bids"`
-			Asks  []struct{ Price float64; Quantity int64 } `json:"asks"`
-			Last  float64                                   `json:"last_price"`
-			Close float64                                   `json:"close_price"`
+			Bids []struct {
+				Price    float64
+				Quantity int64
+			} `json:"bids"`
+			Asks []struct {
+				Price    float64
+				Quantity int64
+			} `json:"asks"`
+			Last  float64 `json:"last_price"`
+			Close float64 `json:"close_price"`
 		}
-		json.Unmarshal(data, &book)
-
-		maxRows := len(book.Asks)
-		if len(book.Bids) > maxRows {
-			maxRows = len(book.Bids)
+		if err := json.Unmarshal(data, &book); err != nil {
+			fatal("parse orderbook: %v", err)
 		}
 
 		fmt.Printf("Last: %.4f  Close: %.4f\n\n", book.Last, book.Close)
@@ -130,7 +134,9 @@ Examples:
 			Time     time.Time `json:"time"`
 			Complete bool      `json:"is_complete"`
 		}
-		json.Unmarshal(data, &candles)
+		if err := json.Unmarshal(data, &candles); err != nil {
+			fatal("parse candles: %v", err)
+		}
 		if len(candles) == 0 {
 			fmt.Println("No candle data")
 			return
@@ -166,7 +172,9 @@ var tradingStatusCmd = &cobra.Command{
 			Market bool   `json:"market_order_available"`
 			API    bool   `json:"api_trade_available"`
 		}
-		json.Unmarshal(data, &s)
+		if err := json.Unmarshal(data, &s); err != nil {
+			fatal("parse trading status: %v", err)
+		}
 
 		status := strings.TrimPrefix(s.Status, "SECURITY_TRADING_STATUS_")
 		fmt.Printf("Status:  %s\n", status)
@@ -181,15 +189,4 @@ func boolIcon(b bool) string {
 		return "YES"
 	}
 	return "NO"
-}
-
-func intArg(args []string, idx int, def int) int {
-	if idx >= len(args) {
-		return def
-	}
-	v, err := strconv.Atoi(args[idx])
-	if err != nil {
-		return def
-	}
-	return v
 }
