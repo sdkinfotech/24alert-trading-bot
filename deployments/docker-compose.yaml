@@ -188,6 +188,8 @@ services:
       - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - REDIS_ADDR=redis:6379
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - AI_CHAT_MODEL=${AI_CHAT_MODEL:-anthropic/claude-sonnet-4}
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
     networks:
@@ -208,10 +210,11 @@ services:
       - .env
     environment:
       - CURSOR_API_KEY=${CURSOR_API_KEY}
+      - AI_SCANNER_MODEL=${AI_SCANNER_MODEL:-composer-2}
       - MCP_MARKET_BEARER=${MCP_MARKET_BEARER}
       - MCP_24ALERT_BEARER=${MCP_24ALERT_BEARER}
       - MCP_VAULT_BEARER=${MCP_VAULT_BEARER}
-      - SCAN_POSTMARKET_CRON=${SCAN_POSTMARKET_CRON:-50 18 * * 1-5}
+      - SCAN_POSTMARKET_CRON=${SCAN_POSTMARKET_CRON:-0 2 * * 2-6}
       - SCAN_PREMARKET_CRON=${SCAN_PREMARKET_CRON:-50 9 * * 1-5}
       - SCAN_HEALTH_CRON=${SCAN_HEALTH_CRON:-0 */4 * * *}
       - STRATEGY_RUNNER_URL=http://strategy-runner:9020
@@ -242,6 +245,7 @@ services:
         export HOME=/root
         export PATH="/root/.local/bin:$${PATH}"
         export CURSOR_API_KEY="$${CURSOR_API_KEY}"
+        export AI_SCANNER_MODEL="$${AI_SCANNER_MODEL}"
         export MCP_MARKET_BEARER="$${MCP_MARKET_BEARER}"
         export MCP_24ALERT_BEARER="$${MCP_24ALERT_BEARER}"
         export MCP_VAULT_BEARER="$${MCP_VAULT_BEARER}"

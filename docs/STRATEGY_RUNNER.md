@@ -263,6 +263,80 @@ strategies:
 
 Подробнее: [`docs/STRATEGY_MONITORING.md` → Web Dashboard](STRATEGY_MONITORING.md#web-dashboard).
 
+## AI Assistant
+
+### Архитектура
+
+Система включает два AI-компонента:
+
+| Компонент | Назначение | Провайдер | Модель |
+|-----------|-----------|-----------|--------|
+| **AI Scanner** (cron) | Автономный анализ рынка, бэктест, управление стратегиями | Cursor Agent CLI | `composer-2` |
+| **AI Chat** (дашборд) | Интерактивный ассистент в дашборде | OpenRouter | `anthropic/claude-sonnet-4` |
+
+### AI Chat в дашборде
+
+Кнопка чата (синий кружок) отображается в правом нижнем углу дашборда. Ассистент видит текущее состояние стратегий, PnL и позиции. Может помочь с:
+- Объяснением текущего состояния стратегий
+- Рекомендациями по параметрам
+- Анализом торговых результатов
+
+API-эндпоинты (strategy-runner :9020):
+- `POST /ai-chat` — отправить сообщение (JSON: `{"message": "..."}`)
+- `POST /ai-chat/reset` — сбросить историю диалога
+- `GET /ai-chat/status` — статус (доступность, модель, cron)
+
+### AI Scanner (автономный)
+
+Docker-контейнер `ai-scanner` выполняет cron-задачи (МСК):
+- **Ночной скан** (02:00 вт-сб) — сканирование рынка, бэктест, отбор и настройка стратегий на следующий торговый день
+- **Pre-market** (09:50 пн-пт) — проверка готовности к торговле, health-check, запуск незапущенных стратегий
+- **Health** (каждые 4ч) — health-check системы
+
+### Управление API-ключами
+
+Все ключи хранятся в `deployments/.env` (не коммитится в git):
+
+```bash
+# === AI Scanner (Cursor Agent CLI) ===
+CURSOR_API_KEY=crsr_...          # Cursor API Key
+AI_SCANNER_MODEL=composer-2      # Модель для автономного агента
+
+# === AI Chat (OpenRouter) ===
+OPENROUTER_API_KEY=sk-or-v1-...  # OpenRouter API Key
+AI_CHAT_MODEL=anthropic/claude-sonnet-4  # Модель для чата
+```
+
+**Как поменять ключи:**
+
+1. **Cursor API Key** — генерируется на https://cursor.com/dashboard/integrations
+   ```bash
+   # На сервере:
+   cd /root/24alert/deployments
+   nano .env                      # изменить CURSOR_API_KEY=crsr_NEW_KEY
+   docker compose --profile ai-scanner up -d ai-scanner  # перезапустить
+   ```
+
+2. **OpenRouter API Key** — генерируется на https://openrouter.ai/keys
+   ```bash
+   cd /root/24alert/deployments
+   nano .env                      # изменить OPENROUTER_API_KEY=sk-or-v1-NEW_KEY
+   docker compose up -d --no-deps strategy-runner  # перезапустить
+   ```
+
+3. **Смена модели чата:**
+   ```bash
+   # Изменить AI_CHAT_MODEL в .env
+   # Доступные модели OpenRouter: https://openrouter.ai/models
+   # Примеры: anthropic/claude-sonnet-4, openai/gpt-4.1, google/gemini-2.5-flash
+   ```
+
+4. **Смена модели Scanner:**
+   ```bash
+   # Изменить AI_SCANNER_MODEL в .env
+   # Доступные модели Cursor: composer-2, claude-4-sonnet-thinking, gpt-5.2
+   ```
+
 ## Связанные файлы
 
 | Область | Путь |
@@ -271,8 +345,10 @@ strategies:
 | Оркестрация | `internal/strategy/runner.go` |
 | Исполнения, метрики, watchdog-хелперы | `internal/strategy/runner_exec.go`, `runner_api.go` |
 | HTTP админка | `internal/strategy/admin.go` |
+| AI Chat handler | `internal/strategy/aichat.go` |
 | Web Dashboard (SPA) | `web/strategy-dashboard/` |
 | Dashboard embed | `internal/strategy/dashboard.go` |
+| AI Scanner | `deployments/ai-scanner/` |
 | Журнал | `internal/journal/` |
 | Ledger | `internal/strategy/ledger/` |
 | Конфиг типов | `pkg/config/config.go` |

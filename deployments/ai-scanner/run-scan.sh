@@ -54,10 +54,13 @@ esac
 export CURSOR_API_KEY
 export MCP_MARKET_BEARER MCP_24ALERT_BEARER MCP_VAULT_BEARER
 
+AGENT_MODEL="${AI_SCANNER_MODEL:-composer-2}"
+
 : > "$MSG_FILE"
 set +e
 timeout 1800 agent -p --force --approve-mcps --trust \
   --workspace "$WS" \
+  --model "$AGENT_MODEL" \
   --output-format text \
   "$PROMPT" >> "$MSG_FILE" 2>&1
 EXIT=$?

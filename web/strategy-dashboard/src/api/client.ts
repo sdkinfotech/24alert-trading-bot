@@ -5,6 +5,8 @@ import type {
   IndicatorData,
   TimelineEvent,
   DailySummary,
+  AiChatResponse,
+  AiChatStatus,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -12,6 +14,16 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok && res.status !== 502) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -24,4 +36,8 @@ export const api = {
     get<TimelineEvent[]>(`/instances/${id}/events?limit=${limit}`),
   daily: (date?: string) =>
     get<DailySummary>(`/report/daily${date ? `?date=${date}` : ''}`),
+  aiChat: (message: string) =>
+    post<AiChatResponse>('/ai-chat', { message }),
+  aiChatReset: () => post<{ status: string }>('/ai-chat/reset', {}),
+  aiChatStatus: () => get<AiChatStatus>('/ai-chat/status'),
 };

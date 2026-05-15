@@ -97,3 +97,16 @@ export interface DailySummary {
   OrdersCount: number;
   ExecutionsCount: number;
 }
+
+export interface AiChatResponse {
+  reply?: string;
+  model?: string;
+  error?: string;
+}
+
+export interface AiChatStatus {
+  available: boolean;
+  model: string;
+  scanner_cron: boolean;
+  cursor_key_set: boolean;
+}

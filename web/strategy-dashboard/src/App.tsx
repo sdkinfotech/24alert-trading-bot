@@ -12,6 +12,7 @@ import { IndicatorChart } from './components/IndicatorChart';
 import { EventLog } from './components/EventLog';
 import { StatsPanel } from './components/StatsPanel';
 import { InstanceSelector } from './components/InstanceSelector';
+import { AiChatPanel } from './components/AiChatPanel';
 
 const REFRESH_MS = 30_000;
 
@@ -134,6 +135,8 @@ export default function App() {
           <StatsPanel pnl={pnl} ledger={ledger} daily={daily} />
         </div>
       </div>
+
+      <AiChatPanel />
     </div>
   );
 }
