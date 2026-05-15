@@ -19,7 +19,15 @@ type Config struct {
 	MarketDataStream MarketDataStreamConfig `mapstructure:"market_data_stream"`
 	Strategy         StrategyConfig         `mapstructure:"strategy"`
 	Strategies       StrategiesRunnerConfig `mapstructure:"strategies"`
+	Redis            RedisConfig            `mapstructure:"redis"`
 	Features         FeaturesConfig         `mapstructure:"features"`
+}
+
+// RedisConfig contains Redis connection settings (used for candle cache).
+type RedisConfig struct {
+	Addr     string `mapstructure:"addr"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
 }
 
 // TInvestConfig contains T-Invest API settings
@@ -145,6 +153,8 @@ func Load(configPath string) (*Config, error) {
 	_ = v.BindEnv("tinvest.endpoint", "TINVEST_ENDPOINT")
 	_ = v.BindEnv("tinvest.sandbox_account_id", "TINVEST_SANDBOX_ACCOUNT_ID")
 	_ = v.BindEnv("logging.level", "LOG_LEVEL")
+	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
+	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
 
 	v.AutomaticEnv()
 	v.SetEnvPrefix("24ALERT")

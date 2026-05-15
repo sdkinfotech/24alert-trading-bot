@@ -288,9 +288,16 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	}
 
 	// Warmup: prefetch historical candles so the strategy is ready immediately.
+	// Use the larger of WarmupCandles (for trading) and ChartCandles (for visualization).
 	var lastWarmupTimes map[string]time.Time
 	if wh, ok := st.(WarmupHint); ok {
-		lastWarmupTimes = r.warmupStrategy(ctx, inst, st, wh, interval)
+		needed := wh.WarmupCandles()
+		if ch, ok2 := st.(ChartHint); ok2 {
+			if cn := ch.ChartCandles(); cn > needed {
+				needed = cn
+			}
+		}
+		lastWarmupTimes = r.warmupStrategy(ctx, inst, st, needed, interval)
 	}
 
 	ictx, cancel := context.WithCancel(ctx)
@@ -363,10 +370,9 @@ func (r *Runner) warmupStrategy(
 	ctx context.Context,
 	inst config.StrategyInstanceConfig,
 	st Strategy,
-	wh WarmupHint,
+	needed int,
 	subInterval pb.SubscriptionInterval,
 ) map[string]time.Time {
-	needed := wh.WarmupCandles()
 	if needed <= 0 {
 		return nil
 	}

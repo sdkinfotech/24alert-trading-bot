@@ -69,6 +69,7 @@ type Service struct {
 	rateLimiter   *tinvest.RateLimiterManager
 	instruments   *InstrumentCache
 	prices        *PriceCache
+	candleCache   CandleCache
 	logger        *logging.Logger
 }
 
@@ -78,17 +79,36 @@ func NewService(
 	instruments *InstrumentCache,
 	prices *PriceCache,
 	logger *logging.Logger,
+	opts ...ServiceOption,
 ) *Service {
-	return &Service{
+	s := &Service{
 		tinvestClient: client,
 		rateLimiter:   rl,
 		instruments:   instruments,
 		prices:        prices,
+		candleCache:   NoopCandleCache{},
 		logger:        logger,
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// ServiceOption configures optional Service dependencies.
+type ServiceOption func(*Service)
+
+// WithCandleCache sets the candle cache implementation.
+func WithCandleCache(cc CandleCache) ServiceOption {
+	return func(s *Service) {
+		if cc != nil {
+			s.candleCache = cc
+		}
 	}
 }
 
 // GetCandles returns historic candles for the given instrument.
+// It uses a cache-through strategy: try Redis first, fall back to T-Invest API.
 func (s *Service) GetCandles(
 	ctx context.Context,
 	instrumentUID string,
@@ -97,6 +117,16 @@ func (s *Service) GetCandles(
 ) ([]Candle, error) {
 	l := s.logger.WithContext(ctx)
 	l.Info("GetCandles", "instrument_uid", instrumentUID, "from", from, "to", to, "interval", interval.String())
+
+	// Try cache first.
+	cached, cacheErr := s.candleCache.Get(ctx, instrumentUID, from, to, interval)
+	if cacheErr != nil {
+		l.Warn("candle cache get failed, falling through", "error", cacheErr)
+	}
+	if len(cached) > 0 {
+		l.Info("GetCandles cache hit", "instrument_uid", instrumentUID, "count", len(cached))
+		return cached, nil
+	}
 
 	if err := s.rateLimiter.Wait(ctx, "get_candles"); err != nil {
 		return nil, fmt.Errorf("GetCandles: rate limit: %w", err)
@@ -124,6 +154,11 @@ func (s *Service) GetCandles(
 			Time:       c.GetTime().AsTime(),
 			IsComplete: c.GetIsComplete(),
 		})
+	}
+
+	// Store in cache (best-effort, don't fail the request).
+	if putErr := s.candleCache.Put(ctx, instrumentUID, interval, candles); putErr != nil {
+		l.Warn("candle cache put failed", "error", putErr)
 	}
 
 	l.Info("GetCandles completed", "instrument_uid", instrumentUID, "count", len(candles))

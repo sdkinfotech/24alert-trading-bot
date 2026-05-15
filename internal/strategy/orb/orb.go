@@ -42,7 +42,7 @@ type IndicatorSnapshot struct {
 	Signals      []SignalPoint `json:"signals"`
 }
 
-const maxHistoryLen = 500
+const maxHistoryLen = 1000
 
 // Breakout implements an Opening Range Breakout intraday strategy.
 //
@@ -359,10 +359,15 @@ func (b *Breakout) Restore(blob []byte) error {
 // opening range so the strategy is ready to trade after a restart.
 func (b *Breakout) WarmupCandles() int { return b.rangeCandles }
 
+// ChartCandles returns the number of historical bars for dashboard visualization.
+// 200 fifteen-minute bars covers ~3.5 trading days with full range context.
+func (b *Breakout) ChartCandles() int { return 200 }
+
 var (
 	_ strategy.StatefulStrategy  = (*Breakout)(nil)
 	_ strategy.IndicatorProvider = (*Breakout)(nil)
 	_ strategy.WarmupHint        = (*Breakout)(nil)
+	_ strategy.ChartHint         = (*Breakout)(nil)
 )
 
 func intFrom(m map[string]string, key string, def int) int {

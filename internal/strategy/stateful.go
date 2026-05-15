@@ -21,3 +21,10 @@ type IndicatorProvider interface {
 type WarmupHint interface {
 	WarmupCandles() int
 }
+
+// ChartHint is optionally implemented by strategies that want more
+// historical bars for dashboard visualization than for trading warmup.
+// The runner fetches max(WarmupCandles, ChartCandles) on startup.
+type ChartHint interface {
+	ChartCandles() int
+}

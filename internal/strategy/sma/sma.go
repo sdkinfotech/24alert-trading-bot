@@ -40,7 +40,7 @@ type IndicatorSnapshot struct {
 	Signals       []SignalPoint `json:"signals"`
 }
 
-const maxHistoryLen = 500
+const maxHistoryLen = 1000
 
 // Crossover implements a minimal SMA crossover on completed candles.
 type Crossover struct {
@@ -244,8 +244,20 @@ func (c *Crossover) Restore(blob []byte) error {
 // WarmupCandles returns the number of historical bars needed for the slow SMA.
 func (c *Crossover) WarmupCandles() int { return c.slowN }
 
+// ChartCandles returns the number of historical bars for dashboard visualization.
+// We want enough history for a full month of hourly candles with SMA lines drawn
+// across most of the chart (not just the last point).
+func (c *Crossover) ChartCandles() int {
+	n := c.slowN * 3
+	if n < 200 {
+		n = 200
+	}
+	return n
+}
+
 var _ strategy.StatefulStrategy = (*Crossover)(nil)
 var _ strategy.WarmupHint = (*Crossover)(nil)
+var _ strategy.ChartHint = (*Crossover)(nil)
 
 func smaTail(xs []float64, n int) float64 {
 	if len(xs) < n || n <= 0 {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
 
 	"github.com/24alert/trading-bot/internal/journal"
@@ -167,7 +168,28 @@ func run(o runOpts) error {
 
 	instrumentCache := marketdata.NewInstrumentCache()
 	priceCache := marketdata.NewPriceCache()
-	mdSvc := marketdata.NewService(tinvestClient, rlm, instrumentCache, priceCache, logger)
+
+	var candleCacheOpt marketdata.ServiceOption
+	if cfg.Redis.Addr != "" {
+		rdb := redis.NewClient(&redis.Options{
+			Addr:     cfg.Redis.Addr,
+			Password: cfg.Redis.Password,
+			DB:       cfg.Redis.DB,
+		})
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			logger.Warn("redis unavailable, candle cache disabled", "addr", cfg.Redis.Addr, "error", err)
+		} else {
+			logger.Info("redis connected, candle cache enabled", "addr", cfg.Redis.Addr)
+			candleCacheOpt = marketdata.WithCandleCache(marketdata.NewRedisCandleCache(rdb))
+			defer rdb.Close()
+		}
+	}
+
+	var mdOpts []marketdata.ServiceOption
+	if candleCacheOpt != nil {
+		mdOpts = append(mdOpts, candleCacheOpt)
+	}
+	mdSvc := marketdata.NewService(tinvestClient, rlm, instrumentCache, priceCache, logger, mdOpts...)
 	streamMgr := marketdata.NewStreamManager(tinvestClient, priceCache, cfg.MarketDataStream, logger)
 
 	portfolioSvc := portfolio.NewService(tinvestClient, rlm, logger)

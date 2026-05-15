@@ -153,6 +153,23 @@ services:
       retries: 3
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    container_name: 24alert-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
   strategy-runner:
     build:
       context: ..
@@ -170,11 +187,14 @@ services:
       - TINVEST_SANDBOX_TOKEN=${TINVEST_SANDBOX_TOKEN}
       - TINVEST_PROD_TOKEN=${TINVEST_PROD_TOKEN}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - REDIS_ADDR=redis:6379
     networks:
       - trading-bot-net
     restart: unless-stopped
     depends_on:
       gateway:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   prometheus:
@@ -213,4 +233,5 @@ networks:
     driver: bridge
 
 volumes:
+  redis-data:
   prometheus-data:
