@@ -182,7 +182,7 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
 	})
-	registerAIChatHandlers(mux, r)
+	registerAIChatHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {

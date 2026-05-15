@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/24alert/trading-bot/internal/journal"
@@ -67,6 +68,40 @@ func (r *Runner) InstanceIndicatorData(id string) (interface{}, bool) {
 // DailyJournalSummary wraps journal daily aggregation.
 func (r *Runner) DailyJournalSummary(ctx context.Context, day time.Time) (journal.DailySummary, error) {
 	return r.journal.DailySummary(ctx, day)
+}
+
+// PortfolioSnapshot returns broker portfolio and positions for the given account.
+func (r *Runner) PortfolioSnapshot(ctx context.Context, accountID string) (portfolioText string) {
+	if r.portfolioSvc == nil || accountID == "" {
+		return ""
+	}
+	info, err := r.portfolioSvc.GetPortfolio(ctx, accountID)
+	if err != nil {
+		return fmt.Sprintf("(portfolio unavailable: %v)", err)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Account: %s\n", accountID)
+	fmt.Fprintf(&b, "Акции: %.2f₽ | Облигации: %.2f₽ | ETF: %.2f₽ | Валюта: %.2f₽ | Фьючерсы: %.2f₽\n",
+		info.TotalAmountShares, info.TotalAmountBonds, info.TotalAmountETF,
+		info.TotalAmountCurrencies, info.TotalAmountFutures)
+	fmt.Fprintf(&b, "Ожидаемая доходность: %.2f₽\n", info.ExpectedYield)
+	if len(info.Positions) > 0 {
+		b.WriteString("Позиции брокера:\n")
+		for _, p := range info.Positions {
+			ticker := p.InstrumentUID[:8]
+			if inf, ok := r.instrCache.GetInstrument(p.InstrumentUID); ok && inf.Ticker != "" {
+				ticker = inf.Ticker
+			}
+			if p.Quantity == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "  %s: %.0f шт, avg=%.2f₽, текущая=%.2f₽, доход=%.2f₽\n",
+				ticker, p.Quantity, p.AveragePrice, p.CurrentPrice, p.ExpectedYield)
+		}
+	} else {
+		b.WriteString("Позиции: нет\n")
+	}
+	return b.String()
 }
 
 func (r *Runner) runWatchdog(ctx context.Context) {
