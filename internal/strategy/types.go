@@ -36,6 +36,9 @@ type Signal struct {
 	Price         float64 // 0 = market (unless order_type says otherwise)
 	OrderType     string  // "market" or "limit"
 	Reason        string
+	// CandleTime is the bar time that produced this signal (for journal / UI).
+	// Zero means the journal may fall back to wall-clock time.
+	CandleTime time.Time
 }
 
 // ExecutionEvent is feedback from the execution layer (fills, cancels, etc.).

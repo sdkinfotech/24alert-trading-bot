@@ -186,6 +186,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        reason,
+				CandleTime:    k.Time,
 			}
 			b.recordSignal(k.Time, dir, reason, k.Close)
 			b.pos = 0
@@ -214,6 +215,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 			Quantity:      qty,
 			OrderType:     "market",
 			Reason:        reason,
+			CandleTime:    k.Time,
 		})
 		b.recordSignal(k.Time, "buy", reason, k.Close)
 		b.pos = 1
@@ -230,6 +232,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 			Quantity:      qty,
 			OrderType:     "market",
 			Reason:        reason,
+			CandleTime:    k.Time,
 		})
 		b.recordSignal(k.Time, "sell", reason, k.Close)
 		b.pos = -1

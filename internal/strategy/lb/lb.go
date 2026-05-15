@@ -243,6 +243,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        reason,
+				CandleTime:    k.Time,
 			}}
 		}
 		return nil
@@ -259,6 +260,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        "stop loss",
+				CandleTime:    k.Time,
 			}}
 		}
 		if k.High >= b.takeProfit {
@@ -270,6 +272,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        "take profit",
+				CandleTime:    k.Time,
 			}}
 		}
 		return nil
@@ -284,6 +287,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        "stop loss",
+				CandleTime:    k.Time,
 			}}
 		}
 		if k.Low <= b.takeProfit {
@@ -295,6 +299,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        "take profit",
+				CandleTime:    k.Time,
 			}}
 		}
 		return nil
@@ -317,6 +322,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        reason,
+				CandleTime:    k.Time,
 			}}
 		}
 	}
@@ -336,6 +342,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				Quantity:      b.qty,
 				OrderType:     "market",
 				Reason:        reason,
+				CandleTime:    k.Time,
 			}}
 		}
 	}

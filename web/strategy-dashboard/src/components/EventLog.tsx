@@ -50,7 +50,7 @@ export function EventLog({ events }: Props) {
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <h2 className="text-lg font-semibold">Trade Events</h2>
         <div className="flex gap-1 ml-auto">
           {['all', 'signal', 'order', 'execution'].map((t) => (
@@ -68,6 +68,9 @@ export function EventLog({ events }: Props) {
           ))}
         </div>
       </div>
+      <p className="text-xs text-gray-500 mb-3">
+        Время — метка свечи биржи (UTC), в колонке показывается в часовом поясе браузера. Совпадает с осью графика.
+      </p>
       <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1 scrollbar-thin">
         {filtered.length === 0 && (
           <div className="text-gray-500 text-sm py-4 text-center">No events yet</div>

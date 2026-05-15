@@ -262,7 +262,7 @@ func protoSignalToLocal(ps *commonv1.Signal) strategy.Signal {
 		dir = strings.ToLower(strings.TrimPrefix(ps.GetDirection().String(), "ORDER_DIRECTION_"))
 	}
 	px := quotationToFloat(ps.GetPrice())
-	return strategy.Signal{
+	sig := strategy.Signal{
 		InstrumentUID: ps.GetInstrumentUid(),
 		Direction:     dir,
 		Quantity:      ps.GetQuantity(),
@@ -270,6 +270,10 @@ func protoSignalToLocal(ps *commonv1.Signal) strategy.Signal {
 		OrderType:     ot,
 		Reason:        ps.GetReason(),
 	}
+	if ts := ps.GetTimestampUs(); ts > 0 {
+		sig.CandleTime = time.UnixMicro(ts).UTC()
+	}
+	return sig
 }
 
 func quotationToFloat(q *commonv1.Quotation) float64 {

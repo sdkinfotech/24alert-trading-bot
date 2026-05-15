@@ -128,6 +128,16 @@ export function IndicatorChart({ data }: Props) {
     }));
     series.setData(candles);
 
+    const firstBarT = candles.length ? (candles[0].time as number) : 0;
+    const lastBarT = candles.length ? (candles[candles.length - 1].time as number) : 0;
+    /** lightweight-charts only draws markers at existing bar times; clamp into range. */
+    const clampBarTime = (t: number) => {
+      if (!candles.length) return t;
+      if (t < firstBarT) return firstBarT;
+      if (t > lastBarT) return lastBarT;
+      return t;
+    };
+
     const orbMode = isORB(data);
     const smaMode = hasSMA(data);
     const lbMode = isLevelBounce(data);
@@ -216,13 +226,21 @@ export function IndicatorChart({ data }: Props) {
     }
 
     if (data.signals.length > 0) {
-      const markers = data.signals.map((s) => ({
-        time: toUnix(s.time),
-        position: s.direction === 'buy' ? ('belowBar' as const) : ('aboveBar' as const),
-        color: s.direction === 'buy' ? '#22c55e' : '#ef4444',
-        shape: s.direction === 'buy' ? ('arrowUp' as const) : ('arrowDown' as const),
-        text: s.direction.toUpperCase(),
-      }));
+      const markers = data.signals.map((s) => {
+        const rawT = toUnix(s.time) as number;
+        const t = clampBarTime(rawT);
+        const eod = (s.reason ?? '').toLowerCase().includes('eod');
+        const clipped = rawT !== t;
+        let text = s.direction.toUpperCase();
+        if (eod) text = clipped ? `${text} EOD*` : `${text} EOD`;
+        return {
+          time: t as any,
+          position: s.direction === 'buy' ? ('belowBar' as const) : ('aboveBar' as const),
+          color: s.direction === 'buy' ? '#22c55e' : '#ef4444',
+          shape: s.direction === 'buy' ? ('arrowUp' as const) : ('arrowDown' as const),
+          text,
+        };
+      });
       if (markersRef.current) {
         markersRef.current.setMarkers(markers);
       } else {
@@ -282,7 +300,8 @@ export function IndicatorChart({ data }: Props) {
         <p className="text-xs text-gray-500 mb-1 px-1">
           Зелёные пунктиры — поддержка (S1–S3), красные — сопротивление (R1–R3). Позиция справа — внутреннее
           состояние стратегии; в Stats «Positions» — факт по счёту у брокера (может отличаться до исполнения
-          ордеров).
+          ордеров). Маркеры строятся по времени свечи; «EOD*» — сигнал после последней свечи на графике,
+          стрелка показана на последнем баре.
         </p>
       )}
       <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800" />

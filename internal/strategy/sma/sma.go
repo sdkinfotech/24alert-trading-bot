@@ -123,6 +123,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 			Quantity:      c.qty,
 			OrderType:     "market",
 			Reason:        "sma golden cross",
+			CandleTime:    k.Time,
 		}
 		out = append(out, sig)
 		c.recordSignal(k.Time, "buy", "sma golden cross", k.Close)
@@ -134,6 +135,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 			Quantity:      c.qty,
 			OrderType:     "market",
 			Reason:        "sma death cross",
+			CandleTime:    k.Time,
 		}
 		out = append(out, sig)
 		c.recordSignal(k.Time, "sell", "sma death cross", k.Close)

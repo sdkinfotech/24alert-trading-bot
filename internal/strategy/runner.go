@@ -511,7 +511,7 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		dir := strings.ToLower(strings.TrimSpace(sig.Direction))
 		metrics.StrategySignalsTotal.WithLabelValues(rt.id, dir).Inc()
 
-		_ = r.journal.RecordSignal(ctx, journal.SignalRecord{
+		rec := journal.SignalRecord{
 			InstanceID:    rt.id,
 			InstrumentUID: sig.InstrumentUID,
 			Direction:     dir,
@@ -519,7 +519,11 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 			OrderType:     strings.TrimSpace(sig.OrderType),
 			RefPrice:      markPrice,
 			Reason:        sig.Reason,
-		})
+		}
+		if !sig.CandleTime.IsZero() {
+			rec.CreatedAt = sig.CandleTime.UTC()
+		}
+		_ = r.journal.RecordSignal(ctx, rec)
 
 		intent := risk.OrderIntent{
 			AccountID:     rt.account,
@@ -567,6 +571,13 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		})
 		metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "submitted").Inc()
 		r.logger.Info("order submitted from strategy", "instance", rt.id, "order_id", oid)
+	}
+	if len(sigs) > 0 {
+		if ss, ok := rt.strat.(StatefulStrategy); ok {
+			if blob, err := ss.Snapshot(); err == nil && len(blob) > 0 {
+				_ = r.journal.SaveStrategyState(ctx, rt.id, blob)
+			}
+		}
 	}
 }
 
