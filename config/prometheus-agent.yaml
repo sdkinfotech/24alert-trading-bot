@@ -30,6 +30,11 @@ scrape_configs:
       - targets: ["risk-svc:9104"]
     metrics_path: /metrics
 
+  - job_name: "24alert-strategy-runner"
+    static_configs:
+      - targets: ["strategy-runner:9120"]
+    metrics_path: /metrics
+
 # Remote write to central Prometheus on monitoring server.
 # Credentials configured via basic_auth_password_file or inline.
 # Update the URL and password before deploying.
