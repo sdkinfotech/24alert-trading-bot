@@ -97,7 +97,7 @@ func (r *Runner) dispatchExecution(evt order.OrderStateEvent) {
 		Message:       msg,
 	})
 
-	rt.strat.OnExecution(execEvt)
+	rt.strat.OnExecution(execEvt) //nolint:misspell // strat is short for strategy
 	r.updateBizMetrics(iid)
 
 	if evt.Status == order.OrderStatusFilled || evt.Status == order.OrderStatusCancelled ||

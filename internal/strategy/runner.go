@@ -573,7 +573,7 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		r.logger.Info("order submitted from strategy", "instance", rt.id, "order_id", oid)
 	}
 	if len(sigs) > 0 {
-		if ss, ok := rt.strat.(StatefulStrategy); ok {
+		if ss, ok := rt.strat.(StatefulStrategy); ok { //nolint:misspell // strat is short for strategy
 			if blob, err := ss.Snapshot(); err == nil && len(blob) > 0 {
 				_ = r.journal.SaveStrategyState(ctx, rt.id, blob)
 			}
@@ -605,7 +605,7 @@ func (r *Runner) StopInstance(id string) {
 	}
 	rt.cancel()
 	rt.wg.Wait()
-	if ss, ok := rt.strat.(StatefulStrategy); ok {
+	if ss, ok := rt.strat.(StatefulStrategy); ok { //nolint:misspell // strat is short for strategy
 		if blob, err := ss.Snapshot(); err == nil && len(blob) > 0 {
 			_ = r.journal.SaveStrategyState(context.Background(), id, blob)
 		}

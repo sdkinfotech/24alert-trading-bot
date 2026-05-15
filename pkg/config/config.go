@@ -123,13 +123,13 @@ type TelegramNotifyConfig struct {
 
 // StrategyInstanceConfig is one running strategy bound to an account and instruments.
 type StrategyInstanceConfig struct {
-	ID           string            `mapstructure:"id"`
-	Type         string            `mapstructure:"type"`
-	AccountID    string            `mapstructure:"account_id"`
-	Instruments  []string          `mapstructure:"instruments"`
-	Enabled      bool              `mapstructure:"enabled"`
-	Params       map[string]string `mapstructure:"params"`
-	Endpoint     string            `mapstructure:"endpoint"` // for type "grpc"
+	ID          string            `mapstructure:"id"`
+	Type        string            `mapstructure:"type"`
+	AccountID   string            `mapstructure:"account_id"`
+	Instruments []string          `mapstructure:"instruments"`
+	Enabled     bool              `mapstructure:"enabled"`
+	Params      map[string]string `mapstructure:"params"`
+	Endpoint    string            `mapstructure:"endpoint"` // for type "grpc"
 }
 
 // FeaturesConfig contains feature flags

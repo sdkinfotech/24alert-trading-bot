@@ -110,7 +110,9 @@ func placeStop(stopType, direction string, args []string, price float64) {
 	var result struct {
 		StopOrderID string `json:"stop_order_id"`
 	}
-	json.Unmarshal(data, &result)
+	if err := json.Unmarshal(data, &result); err != nil {
+		fatal("parse stop order result: %v", err)
+	}
 	fmt.Printf("Stop order placed: %s\n", result.StopOrderID)
 	fmt.Printf("  Type:      %s\n", stopType)
 	fmt.Printf("  Direction: %s\n", direction)
@@ -139,7 +141,9 @@ var stopsCmd = &cobra.Command{
 			Price     float64 `json:"price"`
 			Status    string  `json:"status"`
 		}
-		json.Unmarshal(data, &orders)
+		if err := json.Unmarshal(data, &orders); err != nil {
+			fatal("parse stop orders: %v", err)
+		}
 		if len(orders) == 0 {
 			fmt.Println("No active stop-orders")
 			return
@@ -170,7 +174,9 @@ var cancelStopCmd = &cobra.Command{
 		var result struct {
 			CancelledAt string `json:"cancelled_at"`
 		}
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+			fatal("parse cancel stop result: %v", err)
+		}
 		fmt.Printf("Stop order %s cancelled at %s\n", args[0], result.CancelledAt)
 	},
 }

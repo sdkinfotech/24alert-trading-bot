@@ -132,7 +132,9 @@ var ordersCmd = &cobra.Command{
 			Price     float64 `json:"price"`
 			Status    string  `json:"status"`
 		}
-		json.Unmarshal(data, &orders)
+		if err := json.Unmarshal(data, &orders); err != nil {
+			fatal("parse orders: %v", err)
+		}
 		if len(orders) == 0 {
 			fmt.Println("No active orders")
 			return
@@ -172,7 +174,9 @@ var cancelCmd = &cobra.Command{
 		var result struct {
 			CancelledAt string `json:"cancelled_at"`
 		}
-		json.Unmarshal(data, &result)
+		if err := json.Unmarshal(data, &result); err != nil {
+			fatal("parse cancel result: %v", err)
+		}
 		fmt.Printf("Order %s cancelled at %s\n", args[0], result.CancelledAt)
 	},
 }
@@ -193,7 +197,9 @@ func printOrderResult(data json.RawMessage) {
 		Direction string  `json:"direction"`
 		Type      string  `json:"order_type"`
 	}
-	json.Unmarshal(data, &r)
+	if err := json.Unmarshal(data, &r); err != nil {
+		fatal("parse order result: %v", err)
+	}
 	fmt.Printf("Order: %s\n", r.OrderID)
 	fmt.Printf("  Status:    %s\n", shortStatus(r.Status))
 	fmt.Printf("  Direction: %s\n", shortDir(r.Direction))

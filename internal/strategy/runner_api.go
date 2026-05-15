@@ -59,7 +59,7 @@ func (r *Runner) InstanceIndicatorData(id string) (interface{}, bool) {
 	if rt == nil {
 		return nil, false
 	}
-	if ip, ok := rt.strat.(IndicatorProvider); ok {
+	if ip, ok := rt.strat.(IndicatorProvider); ok { //nolint:misspell // strat is short for strategy
 		return ip.IndicatorData(), true
 	}
 	return nil, false

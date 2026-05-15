@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	openRouterURL   = "https://openrouter.ai/api/v1/chat/completions"
-	defaultAIModel  = "anthropic/claude-sonnet-4"
-	maxHistoryLen   = 20
+	openRouterURL    = "https://openrouter.ai/api/v1/chat/completions"
+	defaultAIModel   = "anthropic/claude-sonnet-4"
+	maxHistoryLen    = 20
 	aiRequestTimeout = 120 * time.Second
 )
 
