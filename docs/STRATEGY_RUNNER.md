@@ -80,6 +80,7 @@ UID инструмента возьмите из API T-Invest (`InstrumentByUid`
 | `metrics_port` | Порт только с `/metrics` (по умолчанию 9120). |
 | `evaluation_timeout_ms` | Таймаут вызова стратегии (в т.ч. gRPC `Evaluate`). |
 | `journal_path` | Путь к файлу SQLite журнала, если включён `features.enable_order_journal`. Пустой → `data/strategy_journal.db`. |
+| `trading_schedule` | Явные окна отправки ордеров. Production для FORTS использует `10:00–14:00`, `14:05–18:50`, `19:00–23:50 Europe/Moscow` **только Mon-Fri**. Клиринг `14:00–14:05` и выходные заблокированы; вечерняя сессия торгуется. |
 | `watchdog` | Периодические проверки (см. [Watchdog](#watchdog)). |
 | `notifications.telegram` | `bot_token`, `chat_id` для алертов (см. [Telegram](#telegram)). |
 | `instances[]` | Список инстансов (см. ниже). |
@@ -89,7 +90,7 @@ UID инструмента возьмите из API T-Invest (`InstrumentByUid`
 | Поле | Описание |
 |------|-----------|
 | `id` | Уникальный идентификатор инстанса. |
-| `type` | Встроенный тип (например `sma_crossover`) или `grpc`. |
+| `type` | Встроенный тип (`sma_crossover`, `level_bounce`, `orb_breakout`) или `grpc`. |
 | `account_id` | Счёт T-Invest для ордеров. |
 | `instruments` | Список UID инструментов. |
 | `enabled` | Если `false`, инстанс не стартует при запуске процесса. |
@@ -161,13 +162,19 @@ strategies:
 - **signals** — сигналы стратегии (в т.ч. ref price).
 - **orders** — связь `order_id` ↔ инстанс, направление, тип ордера.
 - **executions** — события исполнения (статус, накопленное кол-во лотов, средняя цена).
+- **timeline_events** — краткие операционные события для Web Dashboard, включая `signal_cancelled` с причиной отмены до отправки ордера.
 - **strategy_state** — последний blob от `StatefulStrategy.Snapshot()` по `instance_id`.
 
-Встроенный пример **`sma_crossover`** реализует `StatefulStrategy`: при остановке инстанса состояние сохраняется; при старте — загружается после `Configure`.
+Встроенные стратегии реализуют дополнительные интерфейсы по необходимости: `StatefulStrategy`, `IndicatorProvider`, `WarmupHint`, `DailyWarmupHint`, `SignalDispatchFailureHandler`.
+
+Отменённый сигнал не считается отправленным ордером. Runner пишет:
+
+- application log: `signal cancelled before order dispatch` со stage (`session_guard`, `risk_rejected`, `risk_error`, `post_error`), candle time и кратким объяснением;
+- Web Dashboard Event Log: отдельную строку `Signal cancelled`, где видны исходная причина стратегии (`reason`) и человеческое объяснение (`message`).
 
 ## Ledger, PnL, slippage
 
-- **Ledger** (`internal/strategy/ledger`): позиция в **штуках инструмента** (акции), средняя цена входа, накопленный **realized** PnL в RUB по сделкам закрытия/частичного закрытия (best-effort от цен исполнения).
+- **Ledger** (`internal/strategy/ledger`): позиция в лотах/контрактах инструмента, средняя цена входа, накопленный **realized** PnL в RUB по сделкам закрытия/частичного закрытия (best-effort от цен исполнения).
 - **Unrealized** считается от последних цен (`PriceCache`) и средних входов (`internal/strategy/pnl`).
 - **Slippage (bps)** — относительно опорной цены на момент сигнала (mark или лимитная цена), см. `runner_exec.go`.
 
@@ -222,6 +229,7 @@ strategies:
 | Тип | Пакет | Описание | Параметры |
 |-----|-------|----------|-----------|
 | `sma_crossover` | `internal/strategy/sma` | Пересечение быстрой/медленной SMA по завершённым свечам | `fast_period`, `slow_period`, `quantity`, `interval` |
+| `level_bounce` | `internal/strategy/lb` | Mean reversion от support/resistance уровней с ATR stop/take-profit | `atr_mult`, `sl_mult`, `tp_mult`, `level_days`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 | `orb_breakout` | `internal/strategy/orb` | Intraday Opening Range Breakout: вход при пробое диапазона открытия, выход до конца сессии | `range_candles`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 
 **`orb_breakout` — Opening Range Breakout:**
@@ -241,17 +249,24 @@ strategies:
 - **E2E** тесты в `tests/e2e` требуют доступный gateway по `API_BASE_URL`; для проверки только runner используйте `go test ./internal/... ./pkg/...`.
 - Публичный nginx у продакшена может **не проксировать** большинство REST-путей gateway; управление **strategy-runner** обычно с хоста/VPN по опубликованному порту или SSH-туннелю — согласуйте с вашей схемой деплоя.
 
-## Первый боевой запуск (пример: ВТБ на ИИС)
+## Текущий боевой запуск (futures-only)
 
-Полный сценарий, выполненный 2026-05-15:
+Production на 2026-05-16 работает только с MOEX FORTS futures:
 
-1. **Счёт:** ИИС `2001673385`, баланс 2 000 RUB, маржа недоступна.
-2. **Инструмент:** ВТБ (VTBR) `8e2b0325-0292-4654-8a18-4f63ed3b0e09`, ~122 RUB/лот, лот = 1 акция. (UID `962e2a95-…` в старых черновиках — это **GAZP**, не путать.)
-3. **Критерии подбора:** цена лота вписывается в баланс; тысячи лотов в стакане; `api_trade_available: true`; спред 1 коп.
-4. **Конфигурация:** `config/config.yaml` → `strategies.instances` с `iis-vtb-sma`, `quantity: 1`, `interval: 1h`.
-5. **Watchdog:** `max_drawdown_percent: 10`, `max_daily_loss_rub: 500`, `pause_on_drawdown: true`.
-6. **Деплой:** `git push` → `git pull` на сервере → `docker compose build strategy-runner` → `docker compose up -d`.
-7. **Проверка:** `curl http://127.0.0.1:9020/instances` → `running: true`; логи: `strategy instance started`, `SUBSCRIPTION_STATUS_SUCCESS`.
+| Instance | Type | Instrument | Interval |
+|----------|------|------------|----------|
+| `fut-brent-mini-lb` | `level_bounce` | `BMM6` | `15min` |
+| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` | `1h` |
+| `fut-mechel-lb` | `level_bounce` | `MCM6` | `15min` |
+
+Проверка:
+
+```bash
+curl http://127.0.0.1:9020/instances
+docker logs 24alert-strategy-runner --since 10m
+```
+
+Счёт: ИИС `2001673385`, `quantity=1`. Для фьючерсов PnL/ГО требуют отдельной осторожности: точный учёт стоимости шага и `GetFuturesMargin` ещё не интегрирован.
 
 Подробно о том, как подбирать инструменты: [`docs/INSTRUMENT_SELECTION.md`](INSTRUMENT_SELECTION.md).
 

@@ -134,9 +134,17 @@ strategies:
   evaluation_timeout_ms: 1000
   journal_path: "data/strategy_journal.db"
   trading_schedule:
-    main_start: "10:05"
-    main_end: "18:45"
     timezone: "Europe/Moscow"
+    sessions:
+      - name: "forts_day_before_clearing"
+        start: "10:00"
+        end: "14:00"
+      - name: "forts_day_after_clearing"
+        start: "14:05"
+        end: "18:50"
+      - name: "forts_evening"
+        start: "19:00"
+        end: "23:50"
   watchdog:
     enabled: true
     check_interval_sec: 60
@@ -157,12 +165,12 @@ strategies:
       enabled: true
       params:
         interval: "15min"
-        atr_mult: "0.4"
-        sl_mult: "0.5"
-        tp_mult: "1.5"
+        atr_mult: "0.3"
+        sl_mult: "0.3"
+        tp_mult: "2.0"
         level_days: "10"
         quantity: "1"
-        cutoff_hour: "18"
+        cutoff_hour: "23"
         cutoff_min: "30"
         timezone: "Europe/Moscow"
     - id: fut-gas-mini-sma
@@ -173,8 +181,8 @@ strategies:
       enabled: true
       params:
         interval: "1h"
-        fast_period: "12"
-        slow_period: "27"
+        fast_period: "9"
+        slow_period: "26"
         quantity: "1"
     - id: fut-mechel-lb
       type: level_bounce
@@ -184,12 +192,12 @@ strategies:
       enabled: true
       params:
         interval: "15min"
-        atr_mult: "0.4"
-        sl_mult: "0.5"
-        tp_mult: "1.5"
+        atr_mult: "0.5"
+        sl_mult: "0.7"
+        tp_mult: "1.0"
         level_days: "10"
         quantity: "1"
-        cutoff_hour: "18"
+        cutoff_hour: "23"
         cutoff_min: "30"
         timezone: "Europe/Moscow"
 

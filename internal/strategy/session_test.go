@@ -3,11 +3,29 @@ package strategy
 import (
 	"testing"
 	"time"
+
+	"github.com/24alert/trading-bot/pkg/config"
 )
 
 func mustSchedule(t *testing.T) *TradingSchedule {
 	t.Helper()
 	s, err := NewTradingSchedule("10:00", "18:39", "Europe/Moscow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func mustFortsSchedule(t *testing.T) *TradingSchedule {
+	t.Helper()
+	s, err := NewTradingScheduleFromConfig(config.TradingScheduleConfig{
+		Timezone: "Europe/Moscow",
+		Sessions: []config.TradingSessionConfig{
+			{Name: "forts_day_before_clearing", Start: "10:00", End: "14:00"},
+			{Name: "forts_day_after_clearing", Start: "14:05", End: "18:50"},
+			{Name: "forts_evening", Start: "19:00", End: "23:50"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,5 +153,70 @@ func TestNewTradingSchedule_invalidEnd(t *testing.T) {
 	_, err := NewTradingSchedule("18:00", "10:00", "Europe/Moscow")
 	if err == nil {
 		t.Fatal("end before start should error")
+	}
+}
+
+func TestFortsSchedule_daySession(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 10, 0, 0, 0, loc)
+	if !s.IsMainSession(tm) {
+		t.Fatal("10:00 should be in FORTS day session")
+	}
+}
+
+func TestFortsSchedule_clearingBreak(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 14, 2, 0, 0, loc)
+	if s.IsMainSession(tm) {
+		t.Fatal("14:02 should be blocked by FORTS clearing break")
+	}
+}
+
+func TestFortsSchedule_afterClearing(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 14, 5, 0, 0, loc)
+	if !s.IsMainSession(tm) {
+		t.Fatal("14:05 should be in FORTS day session after clearing")
+	}
+}
+
+func TestFortsSchedule_betweenDayAndEvening(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 18, 55, 0, 0, loc)
+	if s.IsMainSession(tm) {
+		t.Fatal("18:55 should be blocked between FORTS day and evening sessions")
+	}
+}
+
+func TestFortsSchedule_eveningSession(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 21, 30, 0, 0, loc)
+	if !s.IsMainSession(tm) {
+		t.Fatal("21:30 should be in FORTS evening session")
+	}
+}
+
+func TestFortsSchedule_eveningCloseExclusive(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 23, 50, 0, 0, loc)
+	if s.IsMainSession(tm) {
+		t.Fatal("23:50 should NOT be in session (end is exclusive)")
+	}
+}
+
+func TestFortsNextSessionOpen_fromDayBreak(t *testing.T) {
+	s := mustFortsSchedule(t)
+	loc := msk(t)
+	tm := time.Date(2026, 5, 13, 14, 2, 0, 0, loc)
+	next := s.NextSessionOpen(tm)
+	want := time.Date(2026, 5, 13, 14, 5, 0, 0, loc)
+	if !next.Equal(want) {
+		t.Fatalf("next session open: want %v, got %v", want, next)
 	}
 }

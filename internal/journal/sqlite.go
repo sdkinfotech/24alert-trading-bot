@@ -58,6 +58,20 @@ CREATE TABLE IF NOT EXISTS executions (
   avg_price REAL NOT NULL,
   message TEXT
 );
+CREATE TABLE IF NOT EXISTS timeline_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  instance_id TEXT NOT NULL,
+  instrument_uid TEXT,
+  direction TEXT,
+  quantity INTEGER,
+  order_type TEXT,
+  ref_price REAL,
+  reason TEXT,
+  status TEXT,
+  message TEXT
+);
 CREATE TABLE IF NOT EXISTS strategy_state (
   instance_id TEXT PRIMARY KEY,
   ts INTEGER NOT NULL,
@@ -66,6 +80,7 @@ CREATE TABLE IF NOT EXISTS strategy_state (
 CREATE INDEX IF NOT EXISTS idx_exec_instance_ts ON executions(instance_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_instance_ts ON orders(instance_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_signals_instance_ts ON signals(instance_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_timeline_instance_ts ON timeline_events(instance_id, ts DESC);
 `
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
@@ -111,6 +126,19 @@ func (s *SQLite) RecordExecution(ctx context.Context, r ExecutionRecord) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO executions (ts, instance_id, order_id, instrument_uid, status, filled_qty, avg_price, message)
 		VALUES (?,?,?,?,?,?,?,?)`,
 		ts.UnixMilli(), r.InstanceID, r.OrderID, r.InstrumentUID, r.Status, r.FilledQty, r.AvgPrice, r.Message)
+	return err
+}
+
+func (s *SQLite) RecordEvent(ctx context.Context, r EventRecord) error {
+	ts := r.CreatedAt
+	if ts.IsZero() {
+		ts = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO timeline_events
+		(ts, type, instance_id, instrument_uid, direction, quantity, order_type, ref_price, reason, status, message)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		ts.UnixMilli(), r.Type, r.InstanceID, r.InstrumentUID, r.Direction, r.Quantity, r.OrderType,
+		r.RefPrice, r.Reason, r.Status, r.Message)
 	return err
 }
 
@@ -205,9 +233,15 @@ FROM (
   SELECT 'execution' AS type, ts, instance_id, instrument_uid, '' AS direction, 0 AS quantity, '' AS order_type, 0.0 AS ref_price, '' AS reason,
          order_id, status, filled_qty, avg_price, message
   FROM executions WHERE instance_id = ? ORDER BY id DESC LIMIT ?
+) UNION ALL SELECT * FROM (
+  SELECT type, ts, instance_id, COALESCE(instrument_uid, '') AS instrument_uid, COALESCE(direction, '') AS direction,
+         COALESCE(quantity, 0) AS quantity, COALESCE(order_type, '') AS order_type, COALESCE(ref_price, 0.0) AS ref_price,
+         COALESCE(reason, '') AS reason, '' AS order_id, COALESCE(status, '') AS status, 0 AS filled_qty, 0.0 AS avg_price,
+         COALESCE(message, '') AS message
+  FROM timeline_events WHERE instance_id = ? ORDER BY id DESC LIMIT ?
 )
 ORDER BY ts DESC LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, query, instanceID, perTable, instanceID, perTable, instanceID, perTable, limit)
+	rows, err := s.db.QueryContext(ctx, query, instanceID, perTable, instanceID, perTable, instanceID, perTable, instanceID, perTable, limit)
 	if err != nil {
 		return nil, err
 	}

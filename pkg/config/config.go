@@ -102,11 +102,18 @@ type StrategiesRunnerConfig struct {
 }
 
 // TradingScheduleConfig defines when the runner is allowed to submit orders.
-// Outside this window signals are blocked. Format: "HH:MM".
+// Outside these windows signals are blocked. Format: "HH:MM".
 type TradingScheduleConfig struct {
-	MainStart string `mapstructure:"main_start"` // default "10:00"
-	MainEnd   string `mapstructure:"main_end"`   // default "18:39"
-	Timezone  string `mapstructure:"timezone"`   // default "Europe/Moscow"
+	MainStart string                 `mapstructure:"main_start"` // legacy single-window start
+	MainEnd   string                 `mapstructure:"main_end"`   // legacy single-window end
+	Timezone  string                 `mapstructure:"timezone"`   // default "Europe/Moscow"
+	Sessions  []TradingSessionConfig `mapstructure:"sessions"`
+}
+
+type TradingSessionConfig struct {
+	Name  string `mapstructure:"name"`
+	Start string `mapstructure:"start"`
+	End   string `mapstructure:"end"`
 }
 
 // WatchdogRunnerConfig configures periodic self-checks in strategy-runner.

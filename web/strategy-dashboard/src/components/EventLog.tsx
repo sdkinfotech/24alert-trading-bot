@@ -7,12 +7,14 @@ interface Props {
 
 const TYPE_STYLES: Record<string, string> = {
   signal: 'bg-blue-900/50 border-blue-500',
+  signal_cancelled: 'bg-amber-950/40 border-amber-500',
   order: 'bg-gray-800/50 border-gray-500',
   execution: 'bg-emerald-900/30 border-emerald-500',
 };
 
 const TYPE_LABELS: Record<string, string> = {
   signal: 'Signal',
+  signal_cancelled: 'Signal cancelled',
   order: 'Order',
   execution: 'Execution',
 };
@@ -23,6 +25,7 @@ function statusColor(status?: string): string {
   if (s === 'filled') return 'text-green-400';
   if (s === 'partially_filled') return 'text-yellow-400';
   if (s === 'cancelled' || s === 'rejected') return 'text-red-400';
+  if (s.includes('blocked') || s.includes('rejected') || s.includes('error')) return 'text-amber-400';
   if (s === 'submitted' || s === 'new') return 'text-gray-300';
   return 'text-gray-400';
 }
@@ -53,7 +56,7 @@ export function EventLog({ events }: Props) {
       <div className="flex items-center gap-2 mb-1">
         <h2 className="text-lg font-semibold">Trade Events</h2>
         <div className="flex gap-1 ml-auto">
-          {['all', 'signal', 'order', 'execution'].map((t) => (
+          {['all', 'signal', 'signal_cancelled', 'order', 'execution'].map((t) => (
             <button
               key={t}
               onClick={() => setFilter(t)}
@@ -95,9 +98,10 @@ export function EventLog({ events }: Props) {
               )}
             </div>
             <div className="text-xs text-gray-400 mt-0.5">
-              {e.type === 'signal' && (
+              {(e.type === 'signal' || e.type === 'signal_cancelled') && (
                 <>
                   {e.reason} &middot; qty {e.quantity} &middot; ref ₽{e.ref_price?.toFixed(2)}
+                  {e.message && <span className="text-gray-500"> &middot; {e.message}</span>}
                 </>
               )}
               {e.type === 'order' && (

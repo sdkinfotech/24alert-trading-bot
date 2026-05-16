@@ -106,8 +106,7 @@ func NewRunner(
 	if journ == nil {
 		journ = journal.Noop{}
 	}
-	tsCfg := strategiesCfg.TradingSchedule
-	sched, err := NewTradingSchedule(tsCfg.MainStart, tsCfg.MainEnd, tsCfg.Timezone)
+	sched, err := NewTradingScheduleFromConfig(strategiesCfg.TradingSchedule)
 	if err != nil {
 		logger.Warn("invalid trading_schedule config, using MOEX defaults", "error", err)
 		sched, _ = NewTradingSchedule("", "", "")
@@ -537,14 +536,60 @@ func (r *Runner) estimateCost(sig Signal, markPrice float64) float64 {
 	return float64(sig.Quantity) * px * float64(lot)
 }
 
+func (r *Runner) recordSignalCancellation(ctx context.Context, rt *instanceRuntime, sig Signal, markPrice float64, status, message string) {
+	ts := sig.CandleTime
+	if ts.IsZero() {
+		ts = time.Now().UTC()
+	}
+	if err := r.journal.RecordEvent(ctx, journal.EventRecord{
+		Type:          "signal_cancelled",
+		InstanceID:    rt.id,
+		InstrumentUID: sig.InstrumentUID,
+		Direction:     strings.ToLower(strings.TrimSpace(sig.Direction)),
+		Quantity:      sig.Quantity,
+		OrderType:     strings.TrimSpace(sig.OrderType),
+		RefPrice:      markPrice,
+		Reason:        sig.Reason,
+		Status:        status,
+		Message:       message,
+		CreatedAt:     ts.UTC(),
+	}); err != nil {
+		r.logger.Warn("record signal cancellation event failed", "instance", rt.id, "stage", status, "error", err)
+	}
+}
+
+func (r *Runner) sessionBlockMessage(now time.Time) string {
+	if r.schedule == nil {
+		return "signal blocked before order dispatch: trading schedule is not configured"
+	}
+	local := now.In(r.schedule.tz)
+	window := fmt.Sprintf("%s %s", r.schedule.WindowString(), r.schedule.TimezoneName())
+	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
+		return fmt.Sprintf("weekday-only trading schedule blocked signal: %s is %s; weekend futures trading is intentionally disabled due to low liquidity/thin market. Allowed FORTS sessions: Mon-Fri %s",
+			local.Format("2006-01-02 15:04:05"), local.Weekday(), window)
+	}
+	return fmt.Sprintf("FORTS session schedule blocked signal: %s is outside allowed sessions Mon-Fri %s",
+		local.Format("2006-01-02 15:04:05"), window)
+}
+
 func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPrice float64, sigs []Signal) {
 	for _, sig := range sigs {
 		dir := strings.ToLower(strings.TrimSpace(sig.Direction))
 		metrics.StrategySignalsTotal.WithLabelValues(rt.id, dir).Inc()
 
 		if r.schedule != nil && !r.schedule.IsMainSession(time.Now()) {
-			r.logger.Info("signal blocked: outside main trading session",
-				"instance", rt.id, "direction", dir, "reason", sig.Reason)
+			now := time.Now()
+			msg := r.sessionBlockMessage(now)
+			r.logger.Info("signal cancelled before order dispatch",
+				"instance", rt.id,
+				"stage", "session_guard",
+				"status", "cancelled",
+				"direction", dir,
+				"reason", sig.Reason,
+				"message", msg,
+				"candle_time", sig.CandleTime,
+				"checked_at", now.UTC())
+			r.recordSignalCancellation(ctx, rt, sig, markPrice, "session_blocked", msg)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "session_blocked").Inc()
 			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok {
 				fh.OnSignalDispatchFailed(sig, "session_blocked")
@@ -575,7 +620,11 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		}
 		resp, err := r.riskSvc.ValidateOrderIntent(ctx, intent)
 		if err != nil {
-			r.logger.Warn("risk validation error", "instance", rt.id, "error", err)
+			msg := fmt.Sprintf("risk validation failed before order dispatch: %v", err)
+			r.logger.Warn("signal cancelled before order dispatch",
+				"instance", rt.id, "stage", "risk_error", "status", "cancelled",
+				"direction", dir, "reason", sig.Reason, "message", msg, "error", err)
+			r.recordSignalCancellation(ctx, rt, sig, markPrice, "risk_error", msg)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "risk_error").Inc()
 			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
 				fh.OnSignalDispatchFailed(sig, "risk_error")
@@ -583,8 +632,11 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 			continue
 		}
 		if resp == nil || !resp.Allowed {
-			r.logger.Info("risk rejected signal", "instance", rt.id, "instrument", sig.InstrumentUID,
-				"signal_reason", sig.Reason, "risk_detail", formatRiskDenial(resp))
+			msg := fmt.Sprintf("risk rejected signal before order dispatch: %s", formatRiskDenial(resp))
+			r.logger.Info("signal cancelled before order dispatch",
+				"instance", rt.id, "stage", "risk_rejected", "status", "cancelled",
+				"instrument", sig.InstrumentUID, "direction", dir, "reason", sig.Reason, "message", msg)
+			r.recordSignalCancellation(ctx, rt, sig, markPrice, "risk_rejected", msg)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "risk_rejected").Inc()
 			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
 				fh.OnSignalDispatchFailed(sig, "risk_rejected")
@@ -595,7 +647,11 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		req := buildPostOrderRequest(rt.account, sig)
 		postResp, err := r.orderSvc.PostOrder(ctx, req)
 		if err != nil {
-			r.logger.Warn("PostOrder failed", "instance", rt.id, "error", err)
+			msg := fmt.Sprintf("broker/order service rejected order submission after risk approval: %v", err)
+			r.logger.Warn("signal cancelled before broker order",
+				"instance", rt.id, "stage", "post_error", "status", "cancelled",
+				"direction", dir, "reason", sig.Reason, "message", msg, "error", err)
+			r.recordSignalCancellation(ctx, rt, sig, markPrice, "post_error", msg)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "post_error").Inc()
 			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
 				fh.OnSignalDispatchFailed(sig, "post_error")

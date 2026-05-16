@@ -41,6 +41,22 @@ type ExecutionRecord struct {
 	CreatedAt     time.Time
 }
 
+// EventRecord persists runner decisions that do not naturally become orders
+// or executions, such as a signal cancelled by session/risk guards.
+type EventRecord struct {
+	Type          string
+	InstanceID    string
+	InstrumentUID string
+	Direction     string
+	Quantity      int64
+	OrderType     string
+	RefPrice      float64
+	Reason        string
+	Status        string
+	Message       string
+	CreatedAt     time.Time
+}
+
 // TimelineEvent is a unified event for the trade event log.
 type TimelineEvent struct {
 	Type          string  `json:"type"` // "signal", "order", "execution"
@@ -64,6 +80,7 @@ type Journal interface {
 	RecordSignal(ctx context.Context, r SignalRecord) error
 	RecordOrder(ctx context.Context, r OrderRecord) error
 	RecordExecution(ctx context.Context, r ExecutionRecord) error
+	RecordEvent(ctx context.Context, r EventRecord) error
 	ListRecentExecutions(ctx context.Context, instanceID string, limit int) ([]ExecutionRecord, error)
 	ListRecentSignals(ctx context.Context, instanceID string, limit int) ([]SignalRecord, error)
 	ListRecentOrders(ctx context.Context, instanceID string, limit int) ([]OrderRecord, error)
@@ -88,6 +105,7 @@ type Noop struct{}
 func (Noop) RecordSignal(_ context.Context, _ SignalRecord) error       { return nil }
 func (Noop) RecordOrder(_ context.Context, _ OrderRecord) error         { return nil }
 func (Noop) RecordExecution(_ context.Context, _ ExecutionRecord) error { return nil }
+func (Noop) RecordEvent(_ context.Context, _ EventRecord) error         { return nil }
 func (Noop) ListRecentExecutions(_ context.Context, _ string, _ int) ([]ExecutionRecord, error) {
 	return nil, nil
 }

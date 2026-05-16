@@ -42,6 +42,8 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
 python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy level_bounce --optimize --json
 ```
 
+Backtest должен повторять production FORTS guard: Mon-Fri only, `10:00–14:00`, `14:05–18:50`, `19:00–23:50 Europe/Moscow`. Для `level_bounce` вечерний cutoff можно ставить до `23:30`.
+
 ### Файлы
 
 - Читать и редактировать `/app/config/config.yaml` для управления стратегиями.
@@ -73,6 +75,7 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
      ```
    - Выбери лучшую стратегию по Sharpe среди стратегий с положительным PnL.
    - Если сканер вернул низкий `score`, но бэктест проходит пороги — инструмент можно добавлять. Бэктест важнее score.
+   - Отклоняй варианты с `trades < 5` как недостаточно подтверждённые, даже если PnL/Sharpe выглядят красиво.
 
 4. **Принятие решений**
    - Добавить: Sharpe > 1.0, PnL > 0, win_rate > 45%, trades >= 5, profit_factor > 1.3
@@ -125,6 +128,8 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
 - **Только фьючерсы**: запрещено добавлять shares/equities/акции в `config.yaml`. Любой новый инструмент должен иметь `class_code=SPBFUT` и `instrument_type=future`.
 - **Цена контракта**: перед бэктестом проверяй `contract_price = last_price * lot`; не добавляй инструмент, если `contract_price > AI_SCANNER_MAX_CONTRACT_PRICE`.
 - **Score сканера не является решением**: низкий `score` не запрещает бэктест. Окончательное решение принимает только оптимизационный бэктест.
+- **Backtest schedule guard**: учитывать только Mon-Fri и FORTS-окна `10:00–14:00`, `14:05–18:50`, `19:00–23:50 Europe/Moscow`; weekend/out-of-session результаты не применять.
+- **Level Bounce cutoff**: вечерний cutoff допускается до `23:30`.
 - **Максимум 5 одновременных instances** (включая ручные). Считай через `GET /instances`.
 - **Не трогать ручные instances** — ID без префикса `auto-`. Сейчас ручные фьючерсные instances: `fut-brent-mini-lb`, `fut-gas-mini-sma`, `fut-mechel-lb` и любые другие без `auto-`.
 - **Account ID**: `2001673385` (единственный IIS).

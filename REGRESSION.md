@@ -1,76 +1,71 @@
-# Регрессионный чек-лист 24alert-gateway
+# Регрессионный чек-лист 24alert
 
-> Обновлять после каждой задачи, затрагивающей работу сервисов.
-> Последняя ревизия: 2026-04-17 (TASK-007)
+> Last revision: 2026-05-16  
+> Run after changes touching gateway, nginx, strategy-runner, ai-scanner, market data, order flow, or production config.
 
----
+## Critical Path
 
-## 🔴 Критический путь (выполнять ПРИ КАЖДОМ деплое)
+Run on `srv03-cloud` unless stated otherwise.
 
-### Health & Connectivity
-- [ ] `curl https://gateway.24alert.ru:8080/health` → 200 OK, `{"status":"ok"}`
-- [ ] **REST smoke (не через публичный домен):** nginx на `:8080` не проксирует большинство `/api/v1/*` наружу (с публичного URL будет **404**). Проверка REST: с хоста `curl -fsS http://127.0.0.1:18080/api/v1/accounts` (или из Docker-сети потребителя с `ALERT_GATEWAY_URL`).
-- [ ] Все контейнеры healthy: `docker compose -p 24alert ps`
-- [ ] Логи без panic/OOM за последние 5 минут
+### Production Health
 
-### REST API — Аккаунты
-- [ ] `GET /api/v1/accounts` → список счётов (не пустой)
-- [ ] `GET /api/v1/margin/{account_id}` → показатели маржи
+- [ ] `curl -fsS https://gateway.24alert.ru:8080/health` returns OK.
+- [ ] `curl -fsS http://127.0.0.1:18080/health` returns OK on VPS loopback.
+- [ ] `docker compose -f /opt/24alert/deployments/docker-compose.yaml -p 24alert ps` shows expected containers.
+- [ ] `docker logs 24alert-gateway --since 5m` has no panic/OOM/auth loop.
+- [ ] `docker logs 24alert-strategy-runner --since 5m` has no panic/OOM/order loop.
+- [ ] `docker logs 24alert-ai-scanner --since 1h` has no repeated scanner/runtime failure.
 
-### REST API — Ордера
-- [ ] `GET /api/v1/orders?account_id=...` → список активных ордеров
-- [ ] `POST /api/v1/orders` (market buy тестовый инструмент) → 201 Created
-- [ ] `GET /api/v1/orders/{order_id}` → статус размещённого ордера
-- [ ] `DELETE /api/v1/orders/{order_id}` → отмена ордера
-- [ ] `PUT /api/v1/orders/{order_id}` → replace лимитного ордера
+### Public nginx Contract
 
-### REST API — Стоп-ордера
-- [ ] `POST /api/v1/stop-orders` (stop_loss) → 201
-- [ ] `GET /api/v1/stop-orders` → список активных
-- [ ] `DELETE /api/v1/stop-orders/{id}` → отмена
+- [ ] `https://gateway.24alert.ru:8080/health` is public.
+- [ ] Public `https://gateway.24alert.ru:8080/api/v1/accounts` returns nginx 404/blocked behavior, not full REST.
+- [ ] `/api/v1/stream/orderbook` is accessible only from allowlisted IPs.
+- [ ] `https://gateway.24alert.ru:8080/dashboard/` loads strategy dashboard.
+- [ ] `https://gateway.24alert.ru:8080/instances` proxies to strategy-runner.
 
-### REST API — Маркет-дата
-- [ ] `GET /api/v1/candles?instrument_uid=...&interval=1h` → массив свечей
-- [ ] `GET /api/v1/orderbook/{uid}?depth=5` → стакан с bids/asks
-- [ ] `GET /api/v1/prices` → список последних цен
-- [ ] `GET /api/v1/trading-status/{uid}` → статус торгов
+### Gateway REST On VPS
 
-### REST API — Портфель
-- [ ] `GET /api/v1/positions?account_id=...` → текущие позиции
-- [ ] `GET /api/v1/portfolio?account_id=...` → портфель
-- [ ] `GET /api/v1/operations?account_id=...` → история операций
-- [ ] `GET /api/v1/limits?account_id=...` → лимиты вывода
+- [ ] `curl -fsS http://127.0.0.1:18080/api/v1/accounts` returns accounts.
+- [ ] `curl -fsS 'http://127.0.0.1:18080/api/v1/portfolio?account_id=2001673385'` returns portfolio.
+- [ ] `curl -fsS 'http://127.0.0.1:18080/api/v1/candles?instrument_uid=<UID>&interval=15min'` returns candles.
+- [ ] `curl -fsS 'http://127.0.0.1:18080/api/v1/trading-status/<UID>'` returns trading status.
 
-### REST API — Риск
-- [ ] `GET /api/v1/risk/status` → статус circuit breaker
-- [ ] `POST /api/v1/risk/reset` → сброс circuit breaker
+### Strategy Runner
 
-### WebSocket Stream
-- [ ] `WSS /api/v1/stream/orderbook?uids=...` → handshake 101
-- [ ] Получение хотя бы 1 frame типа `snapshot` за 30 секунд
-- [ ] Frame `ping` получен в течение 20 секунд
+- [ ] `curl -fsS http://127.0.0.1:9020/health` returns OK.
+- [ ] `curl -fsS http://127.0.0.1:9020/instances` shows futures instances running.
+- [ ] `curl -fsS 'http://127.0.0.1:9020/instances/fut-gas-mini-sma/indicator'` returns indicator data.
+- [ ] `curl -fsS 'http://127.0.0.1:9020/instances/fut-mechel-lb/events?limit=20'` returns event timeline.
+- [ ] Outside FORTS sessions `10:00–14:00`, `14:05–18:50`, `19:00–23:50 Europe/Moscow`, signals are not sent as live orders.
+- [ ] Clearing break `14:00–14:05 Europe/Moscow` is blocked.
+- [ ] Warmup-only signals do not appear as live dashboard markers.
 
----
+### AI Scanner
 
-## 🟡 По задачам (дополнять при закрытии каждой задачи)
+- [ ] `docker logs 24alert-ai-scanner --since 1h` shows cron/env startup and no repeated failures.
+- [ ] Scanner uses `/api/v1/instruments/futures`, not shares.
+- [ ] `AI_SCANNER_MAX_CONTRACT_PRICE` is set in container env.
+- [ ] Auto changes only affect `auto-fut-*`; manual `fut-*` instances are not changed automatically.
 
-### TASK-007: Закрытие портов
-- [ ] `nmap -p 9001,9002,9003,9004,9090 176.123.160.234` → все closed
-- [ ] Микросервисы доступны локально: `curl http://127.0.0.1:9001/health` и т.д.
-- [ ] Prometheus доступен через SSH-туннель: `curl http://127.0.0.1:9090/api/v1/...`
+### Port Hardening
 
----
+- [ ] Service ports are loopback-only: `9001`, `9002`, `9003`, `9004`, `6379`, `9020`, `9120`.
+- [ ] External access goes through nginx `:8080` only.
+- [ ] If `monitoring` profile is enabled, `9090` must be loopback-only.
 
-## 📋 Процедура прогона
+## Local Checks
 
-1. **Перед деплоем**: снять baseline (записать текущие метрики)
-2. **Сразу после деплоя**: выполнить критический путь (ожидание: всё зелёное)
-3. **Через 5 минут**: повторить критический путь (ловим race conditions, утечки)
-4. **Через 30 минут**: проверить логи на ошибки, метрики на аномалии
-5. **Следующий день**: утренняя проверка после ночного клиринга
+- [ ] `go test ./...` or targeted package tests for the touched area.
+- [ ] `make dashboard-build` if dashboard source changed.
+- [ ] `python scripts/ai-scanner/backtest.py --help` and `python scripts/ai-scanner/scan_market.py --help` if scanner changed.
 
-## Где хранить результаты
+## Reporting
 
-- Результаты прогона: `.tasks/TASK-NNN/tester/handoff.md` → секция "Post-Deploy Verification"
-- Скриншоты/логи: `.tasks/TASK-NNN/artifacts/`
-- Дата и версия коммита обязательно указываются
+Record results in the task handoff or PR description:
+
+- commit SHA;
+- production host;
+- commands run;
+- pass/fail summary;
+- known residual risks.

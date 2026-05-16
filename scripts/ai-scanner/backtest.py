@@ -17,6 +17,11 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 MSK = ZoneInfo("Europe/Moscow")
+TRADING_WINDOWS = [
+    ("forts_day_before_clearing", 10 * 60, 14 * 60),
+    ("forts_day_after_clearing", 14 * 60 + 5, 18 * 60 + 50),
+    ("forts_evening", 19 * 60, 23 * 60 + 50),
+]
 
 
 def fetch_json(url):
@@ -47,6 +52,14 @@ def get_candles(base, uid, interval, days):
             "time": datetime.fromisoformat(r["time"].replace("Z", "+00:00")),
         })
     return candles
+
+
+def is_main_session(t):
+    local = t.astimezone(MSK)
+    if local.weekday() >= 5:
+        return False
+    minutes = local.hour * 60 + local.minute
+    return any(start <= minutes < end for _, start, end in TRADING_WINDOWS)
 
 
 # ─── PnL calculator ───
@@ -138,11 +151,11 @@ def run_sma(candles, fast_n, slow_n):
         prev_fast = sma_tail(prev, fast_n)
         prev_slow = sma_tail(prev, slow_n)
 
-        if prev_fast <= prev_slow and fast > slow and pos <= 0:
+        if prev_fast <= prev_slow and fast > slow and pos <= 0 and is_main_session(c["time"]):
             trades.append({"time": c["time"].isoformat(), "dir": "buy",
                            "price": c["close"], "reason": "golden_cross"})
             pos = 1
-        elif prev_fast >= prev_slow and fast < slow and pos >= 0:
+        elif prev_fast >= prev_slow and fast < slow and pos >= 0 and is_main_session(c["time"]):
             trades.append({"time": c["time"].isoformat(), "dir": "sell",
                            "price": c["close"], "reason": "death_cross"})
             pos = -1
@@ -198,6 +211,7 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
 
     for c in candles_15m:
         t = c["time"].astimezone(MSK)
+        tradable = is_main_session(c["time"])
         day = t.strftime("%Y-%m-%d")
         if day != current_day:
             current_day = day
@@ -205,12 +219,15 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
 
         cutoff = t.replace(hour=cutoff_hour, minute=cutoff_min, second=0, microsecond=0)
         if t >= cutoff:
-            if pos != 0 and not eod_sent:
+            if pos != 0 and not eod_sent and tradable:
                 d = "sell" if pos > 0 else "buy"
                 trades.append({"time": c["time"].isoformat(), "dir": d,
                                "price": c["close"], "reason": "eod"})
                 eod_sent = True
                 pos = 0
+            continue
+
+        if not tradable:
             continue
 
         if pos > 0:
@@ -271,7 +288,7 @@ def optimize_level_bounce(candles_15m, candles_daily):
     for am in [0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
         for sl in [0.3, 0.5, 0.7]:
             for tp in [1.0, 1.5, 2.0]:
-                for ch in [17, 18, 19]:
+                for ch in [17, 18, 23]:
                     for cm in [0, 30]:
                         trades = run_level_bounce(candles_15m, candles_daily,
                                                   am, sl, tp, ch, cm)
@@ -287,6 +304,17 @@ def optimize_level_bounce(candles_15m, candles_daily):
                         if best is None or stats["pnl"] > best["pnl"]:
                             best = entry
     return best, results
+
+
+def schedule_info():
+    return {
+        "timezone": "Europe/Moscow",
+        "sessions": [
+            {"name": name, "start": f"{start // 60:02d}:{start % 60:02d}", "end": f"{end // 60:02d}:{end % 60:02d}"}
+            for name, start, end in TRADING_WINDOWS
+        ],
+        "weekdays_only": True,
+    }
 
 
 def main():
@@ -335,6 +363,7 @@ def main():
                 "strategy": "sma_crossover",
                 "uid": args.uid,
                 "candles": len(candles),
+                "schedule": schedule_info(),
                 "best": best,
                 "top10": top10,
             }
@@ -345,6 +374,7 @@ def main():
                 "strategy": "sma_crossover",
                 "uid": args.uid,
                 "candles": len(candles),
+                "schedule": schedule_info(),
                 "params": {"fast_period": args.fast, "slow_period": args.slow},
                 **stats,
                 "trade_log": trades[-20:],
@@ -370,6 +400,7 @@ def main():
                 "uid": args.uid,
                 "candles_15m": len(candles_15m),
                 "candles_daily": len(candles_daily),
+                "schedule": schedule_info(),
                 "best": best,
                 "top10": top10,
             }
@@ -385,6 +416,7 @@ def main():
                 "uid": args.uid,
                 "candles_15m": len(candles_15m),
                 "candles_daily": len(candles_daily),
+                "schedule": schedule_info(),
                 "params": {
                     "atr_mult": args.atr_mult, "sl_mult": args.sl_mult,
                     "tp_mult": args.tp_mult,

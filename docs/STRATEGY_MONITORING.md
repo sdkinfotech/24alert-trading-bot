@@ -1,6 +1,6 @@
 # Мониторинг стратегии: как отслеживать работу и результаты
 
-Инструкция для оператора `strategy-runner`: логи, HTTP API, Prometheus метрики, Grafana, Telegram.
+Инструкция для оператора `strategy-runner`: логи, HTTP API, Prometheus метрики, dashboard и текущие production futures-инстансы.
 
 ## Содержание
 
@@ -9,8 +9,7 @@
 - [Логи контейнера](#логи-контейнера)
 - [Management HTTP API](#management-http-api)
 - [Prometheus метрики](#prometheus-метрики)
-- [Grafana дашборд](#grafana-дашборд)
-- [Telegram уведомления](#telegram-уведомления)
+- [Prometheus / Grafana](#prometheus--grafana)
 - [Типичные сценарии](#типичные-сценарии)
 
 ## Быстрый чеклист
@@ -26,9 +25,9 @@ ssh adm-srv03-cloud@176.123.160.234
 | Контейнер жив | `docker ps \| grep strategy` | `Up X minutes` |
 | Healthcheck | `curl -s http://127.0.0.1:9020/health` | `{"status":"ok"}` |
 | Инстанс работает | `curl -s http://127.0.0.1:9020/instances` | `"running": true` |
-| PnL | `curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/pnl` | JSON с realized/unrealized/total |
-| Позиции | `curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/ledger` | Карты quantities/avg_prices |
-| Последние сделки | `curl -s 'http://127.0.0.1:9020/instances/iis-vtb-sma/executions?limit=5'` | Массив записей (или null если сделок ещё не было) |
+| PnL | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/pnl` | JSON с realized/unrealized/total |
+| Позиции | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/ledger` | Карты quantities/avg_prices |
+| Последние сделки | `curl -s 'http://127.0.0.1:9020/instances/fut-gas-mini-sma/executions?limit=5'` | Массив записей (или null если сделок ещё не было) |
 | Дневной отчёт | `curl -s 'http://127.0.0.1:9020/report/daily?date=2026-05-15'` | Счётчики signals/orders/executions |
 | Ошибки в логах | `docker logs --tail 50 24alert-strategy-runner \| grep -i error` | Пусто — всё хорошо |
 
@@ -41,7 +40,7 @@ ssh adm-srv03-cloud@176.123.160.234
 ### Что показывает
 
 - **Indicator Chart** — свечной график цены инструмента (OHLC). Для SMA-стратегий отображает линии Fast/Slow SMA; для ORB — горизонтальные пунктирные линии Range High (зелёная) / Range Low (красная). Маркеры сигналов: зелёная стрелка вверх = buy, красная стрелка вниз = sell. Счётчик сигналов с момента запуска.
-- **Trade Event Log** — хронологическая лента событий (signals → orders → executions) с цветовой кодировкой и фильтрами по типу.
+- **Trade Event Log** — хронологическая лента событий (signals → signal cancelled → orders → executions) с цветовой кодировкой и фильтрами по типу. `Signal cancelled` означает, что стратегия сформировала торговую идею, но runner остановил её до заявки: например, weekend/session guard, risk rejection или ошибка отправки.
 - **Stats Panel** — Total/Realized/Unrealized PnL, текущая позиция, дневная статистика.
 - **Instance Selector** — выбор инстанса, статус (running/stopped).
 
@@ -70,7 +69,7 @@ npm run dev
 |----------|----------|
 | `GET /instances/{id}/indicator` | Данные индикатора: свечи с OHLC + Fast/Slow SMA, история сигналов |
 | `GET /instances/{id}/signals?limit=N` | История сигналов из журнала |
-| `GET /instances/{id}/events?limit=N` | Объединённый таймлайн (signals + orders + executions) |
+| `GET /instances/{id}/events?limit=N` | Объединённый таймлайн (signals + signal_cancelled + orders + executions) |
 
 ### Сборка
 
@@ -104,8 +103,8 @@ docker logs --tail 100 24alert-strategy-runner
 | `strategy instance started` | Инстанс успешно стартовал, подписка на свечи активна. |
 | `SUBSCRIPTION_STATUS_SUCCESS` | T-Invest подтвердил подписку на рыночные данные. |
 | `order submitted from strategy` | Стратегия сгенерировала сигнал → risk пропустил → ордер отправлен. |
-| `risk rejected signal` | Risk-сервис отклонил сигнал (лимит позиции, баланс, сессия). |
-| `PostOrder failed` | Ошибка при отправке ордера в T-Invest. |
+| `signal cancelled before order dispatch` | Сигнал отменён до отправки ордера; смотрите поля `stage`, `reason`, `message`, `candle_time`. |
+| `signal cancelled before broker order` | Risk пропустил, но `PostOrder` не прошёл; ордер брокеру не ушёл. |
 | `order_state=FILLED` | Ордер полностью исполнен. |
 | `order_state=PARTIALLY_FILLED` | Ордер частично исполнен. |
 | `order_state=CANCELLED` / `REJECTED` | Ордер отменён / отклонён биржей. |
@@ -125,8 +124,8 @@ docker logs 24alert-strategy-runner 2>&1 | grep '"level":"ERROR"'
 # Предупреждения
 docker logs 24alert-strategy-runner 2>&1 | grep '"level":"WARN"'
 
-# Сигналы и ордера
-docker logs 24alert-strategy-runner 2>&1 | grep -E 'signal|order submitted|PostOrder'
+# Сигналы, отмены и ордера
+docker logs 24alert-strategy-runner 2>&1 | grep -E 'signal|cancelled|order submitted|PostOrder'
 ```
 
 ### Логи с таймстемпами Docker
@@ -149,7 +148,7 @@ curl -s http://127.0.0.1:9020/instances | jq
 ```json
 [
   {
-    "id": "iis-vtb-sma",
+    "id": "fut-gas-mini-sma",
     "type": "sma_crossover",
     "account_id": "2001673385",
     "enabled_in_config": true,
@@ -161,13 +160,13 @@ curl -s http://127.0.0.1:9020/instances | jq
 ### PnL (прибыль/убыток)
 
 ```bash
-curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/pnl | jq
+curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/pnl | jq
 ```
 
 Ответ:
 ```json
 {
-  "instance_id": "iis-vtb-sma",
+  "instance_id": "fut-gas-mini-sma",
   "realized_rub": 0,
   "unrealized_rub": 0,
   "total_rub": 0
@@ -181,13 +180,13 @@ curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/pnl | jq
 ### Позиции (ledger)
 
 ```bash
-curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/ledger | jq
+curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/ledger | jq
 ```
 
 Ответ:
 ```json
 {
-  "instance_id": "iis-vtb-sma",
+  "instance_id": "fut-gas-mini-sma",
   "quantities": {},
   "avg_prices": {},
   "realized_rub": 0
@@ -206,14 +205,14 @@ curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/ledger | jq
 ### Последние исполнения
 
 ```bash
-curl -s 'http://127.0.0.1:9020/instances/iis-vtb-sma/executions?limit=10' | jq
+curl -s 'http://127.0.0.1:9020/instances/fut-gas-mini-sma/executions?limit=10' | jq
 ```
 
 Ответ — массив `ExecutionRecord`:
 ```json
 [
   {
-    "InstanceID": "iis-vtb-sma",
+    "InstanceID": "fut-gas-mini-sma",
     "OrderID": "abc-123",
     "InstrumentUID": "962e2a95-...",
     "Status": "filled",
@@ -252,10 +251,10 @@ curl -s 'http://127.0.0.1:9020/report/daily?date=2026-05-14' | jq
 
 ```bash
 # Остановка
-curl -X POST http://127.0.0.1:9020/instances/iis-vtb-sma/stop
+curl -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/stop
 
 # Запуск (инстанс должен быть в конфиге)
-curl -X POST http://127.0.0.1:9020/instances/iis-vtb-sma/start
+curl -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/start
 ```
 
 ## Prometheus метрики
@@ -293,35 +292,35 @@ curl -s http://127.0.0.1:9120/metrics | grep total_pnl_rub
 
 ```promql
 # Текущий PnL
-alert24_strategy_total_pnl_rub{instance="iis-vtb-sma"}
+alert24_strategy_total_pnl_rub{instance="fut-gas-mini-sma"}
 
 # Скорость сигналов за последний час
-rate(alert24_strategy_signals_total{instance="iis-vtb-sma"}[1h])
+rate(alert24_strategy_signals_total{instance="fut-gas-mini-sma"}[1h])
 
 # Просадка
-alert24_strategy_drawdown_percent{instance="iis-vtb-sma"}
+alert24_strategy_drawdown_percent{instance="fut-gas-mini-sma"}
 
 # Процент прибыльных сделок
-alert24_strategy_win_rate{instance="iis-vtb-sma"}
+alert24_strategy_win_rate{instance="fut-gas-mini-sma"}
 
 # Средний slippage (bps) за последние 24ч
-rate(alert24_strategy_slippage_bps_sum{instance="iis-vtb-sma"}[24h])
-/ rate(alert24_strategy_slippage_bps_count{instance="iis-vtb-sma"}[24h])
+rate(alert24_strategy_slippage_bps_sum{instance="fut-gas-mini-sma"}[24h])
+/ rate(alert24_strategy_slippage_bps_count{instance="fut-gas-mini-sma"}[24h])
 
 # Количество ордеров по статусу
-alert24_strategy_orders_total{instance="iis-vtb-sma"}
+alert24_strategy_orders_total{instance="fut-gas-mini-sma"}
 
 # Risk rejection rate
-rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"}[1h])
-/ rate(alert24_strategy_orders_total{instance="iis-vtb-sma"}[1h])
+rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma",status="risk_rejected"}[1h])
+/ rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma"}[1h])
 ```
 
-## Grafana дашборд
+## Prometheus / Grafana
 
-**URL:** `http://213.171.27.217:3535/d/24alert-strategy/24alert-strategy-runner`
+**Текущий статус:** dedicated strategy Grafana dashboard не развёрнут. Strategy metrics доступны на `127.0.0.1:9120`; общий monitoring-контур описан в Obsidian `24alert/Grafana`.
 
 Артефакт: `deployments/grafana/dashboards/strategy-overview.json`.
-Дашборд провиженирован в папку **24alert** на мониторинговом сервере (`/opt/monitoring/grafana/dashboards-24alert/strategy-runner.json`), автоматически обновляется при изменении файла.
+JSON можно использовать при включении/настройке strategy dashboard в текущем monitoring-контуре.
 
 ### Панели
 
@@ -334,7 +333,7 @@ rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"
 | Unrealized PnL | `alert24_strategy_unrealized_pnl_rub` | красный < 0, зелёный > 0 |
 | Win Rate | `alert24_strategy_win_rate` | красный < 40%, зелёный > 55% |
 | Drawdown % | `alert24_strategy_drawdown_percent` | зелёный < 5%, жёлтый < 10%, красный > 10% |
-| Net Position (shares) | `alert24_strategy_position_qty_shares` | нейтральный |
+| Net Position (lots/contracts) | `alert24_strategy_position_qty_shares` | нейтральный; историческое имя метрики сохраняется |
 
 **Row 2 — PnL и позиции (timeseries)**
 
@@ -355,9 +354,9 @@ rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"
 - **Reconcile Mismatches** — дрейфы ledger vs брокер (зелёный = 0, красный > 5).
 - **Drawdown % over time** — с пунктирными линиями порогов.
 
-**Row 5 — Логи (Loki)**
+**Row 5 — Логи**
 
-- **Strategy Runner Logs** — `{service="strategy-runner"}`, фильтрация по уровню.
+- Production сейчас проверяется через `docker logs 24alert-strategy-runner`; Loki/Promtail есть только как неактивный compose profile `monitoring`.
 
 ### Переменные
 
@@ -365,29 +364,12 @@ rate(alert24_strategy_orders_total{instance="iis-vtb-sma",status="risk_rejected"
 
 ### Как обновить дашборд
 
-Два способа:
-
-**1. Файл-провижининг (рекомендуется):**
-```bash
-# Локально: отредактировать JSON
-# Скопировать на мониторинг-сервер:
-scp deployments/grafana/dashboards/strategy-overview.json \
-  admin-cloud-srv-01@213.171.27.217:/tmp/strategy-runner.json
-ssh admin-cloud-srv-01@213.171.27.217 \
-  "sudo cp /tmp/strategy-runner.json /opt/monitoring/grafana/dashboards-24alert/strategy-runner.json"
-# Grafana подхватит изменения за 30 секунд
-```
-
-**2. Через UI (быстрые правки):**
-- Открыть http://213.171.27.217:3535/d/24alert-strategy
-- Отредактировать панель
-- Сохранить дашборд
-- Экспортировать JSON обратно в репо
+Dedicated strategy Grafana dashboard сейчас не развёрнут в production. Если он понадобится, используйте JSON из `deployments/grafana/dashboards/strategy-overview.json` и подключите его к текущему monitoring-контуру, описанному в Obsidian `24alert/Grafana`.
 
 ### Алерты (Alertmanager)
 
 Файл: `deployments/grafana/alerts/strategy-runner.rules.yml`.
-Развёрнут на мониторинг-сервере в `/opt/monitoring/prometheus/rules/strategy-runner.yml`.
+В репо есть правила, но отдельный production rollout для strategy alerts нужно проверять по текущему monitoring-контуру.
 
 Текущие правила:
 ```yaml
@@ -402,12 +384,12 @@ ssh admin-cloud-srv-01@213.171.27.217 \
 
 ### Мониторинговый стек
 
-Prometheus agent и Promtail запущены на сервере 24alert (`docker compose --profile monitoring up -d`):
+Prometheus agent и Promtail есть в compose profile `monitoring`, но на production сейчас не запущены:
 
 | Контейнер | Роль |
 |-----------|------|
-| `24alert-prometheus-agent` | Scrape метрик со всех сервисов → remote_write на `213.171.27.217:9191` |
-| `24alert-promtail` | Сбор Docker-логов → отправка в Loki на `213.171.27.217:3100` |
+| `24alert-prometheus-agent` | Scrape метрик со всех сервисов → remote_write при настройке |
+| `24alert-promtail` | Сбор Docker-логов → Loki при настройке |
 
 Scrape targets (config: `config/prometheus-agent.yaml`):
 - gateway:8080
@@ -417,16 +399,16 @@ Scrape targets (config: `config/prometheus-agent.yaml`):
 - risk-svc:9104
 - **strategy-runner:9120**
 
-## Telegram уведомления
+## Telegram уведомления (план)
 
 Если в `config/config.yaml` заданы `notifications.telegram.bot_token` и `chat_id`, runner автоматически шлёт сообщения:
 
 | Событие | Пример сообщения |
 |---------|-----------------|
-| Watchdog остановил инстанс (потери) | `strategy-runner: instance iis-vtb-sma stopped (total PnL -520.00 < -500.00 RUB)` |
-| Watchdog остановил инстанс (просадка) | `strategy-runner: instance iis-vtb-sma stopped (drawdown 12.3% > 10.0%)` |
+| Watchdog остановил инстанс (потери) | `strategy-runner: instance fut-gas-mini-sma stopped (total PnL -520.00 < -500.00 RUB)` |
+| Watchdog остановил инстанс (просадка) | `strategy-runner: instance fut-gas-mini-sma stopped (drawdown 12.3% > 10.0%)` |
 | Зависший ордер | `stuck order: account=2001673385 order=abc-123 status=NEW age>30m` |
-| Дрейф ledger | `ledger drift reconciled: instance=iis-vtb-sma instrument=962e... broker_qty=1.0000` |
+| Дрейф ledger | `ledger drift reconciled: instance=fut-gas-mini-sma instrument=962e... broker_qty=1.0000` |
 | Ежедневный отчёт (~18:50 MSK) | `strategy-runner daily (UTC 2026-05-15): signals=3 orders=2 executions=2` |
 
 ## Типичные сценарии
@@ -454,7 +436,7 @@ curl -s http://127.0.0.1:9020/instances | jq '.[].running'
 docker logs --tail 100 24alert-strategy-runner | grep -i 'stop\|error\|watchdog'
 
 # Перезапустить
-curl -X POST http://127.0.0.1:9020/instances/iis-vtb-sma/start
+curl -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/start
 ```
 
 Типичные причины:
@@ -498,9 +480,9 @@ ssh adm-srv03-cloud@176.123.160.234 'echo "=== STATUS ===" && \
   echo "=== INSTANCES ===" && \
   curl -s http://127.0.0.1:9020/instances && echo && \
   echo "=== PNL ===" && \
-  curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/pnl && echo && \
+  curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/pnl && echo && \
   echo "=== LEDGER ===" && \
-  curl -s http://127.0.0.1:9020/instances/iis-vtb-sma/ledger && echo && \
+  curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/ledger && echo && \
   echo "=== DAILY ===" && \
   curl -s "http://127.0.0.1:9020/report/daily?date=$(date -u +%Y-%m-%d)" && echo && \
   echo "=== LAST ERRORS ===" && \
