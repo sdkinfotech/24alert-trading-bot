@@ -32,7 +32,8 @@ curl -s -X POST $STRATEGY_RUNNER_URL/config/reload
 ### Python скрипты
 
 ```bash
-# Сканирование рынка: только фьючерсы, ближайшие контракты по BM/NG/MC, с фильтром цены контракта
+# Сканирование рынка: только фьючерсы, ближайшие контракты по BM/NG/MC.
+# Score используется для сортировки, но не для жёсткого отсева перед бэктестом.
 python3 /opt/ai-scanner/scan_market.py --gateway-url $GATEWAY_URL --top-n 10 \
   --max-contract-price ${AI_SCANNER_MAX_CONTRACT_PRICE:-10000} --json
 
@@ -60,20 +61,23 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
 2. **Сканирование рынка**
    - `python3 /opt/ai-scanner/scan_market.py --gateway-url $GATEWAY_URL --top-n 10 --max-contract-price ${AI_SCANNER_MAX_CONTRACT_PRICE:-10000} --json`
    - Сканер обязан использовать `/api/v1/instruments/futures`, не `/api/v1/instruments/shares`.
-   - Отфильтруй кандидатов: `score > 0.5`, `atr_pct > 0.3%`, `contract_price <= AI_SCANNER_MAX_CONTRACT_PRICE`.
-   - В отчёте явно указывай `ticker`, `uid`, `contract_price`, `currency`, `min_price_increment`.
+   - До бэктеста не отсекай кандидатов по `score` или `atr_pct`: эти метрики только ранжируют очередь проверки.
+   - Обязательные фильтры до бэктеста: `class_code=SPBFUT`, `instrument_type=future`, `contract_price <= AI_SCANNER_MAX_CONTRACT_PRICE`, есть свечи для анализа.
+   - В отчёте явно указывай `ticker`, `uid`, `contract_price`, `currency`, `min_price_increment`, `score`, `atr_pct`, `avg_vol_15m`.
 
 3. **Бэктестинг кандидатов**
-   - Для каждого кандидата из топ-5 прогони оба типа стратегий:
+   - Для каждого кандидата из результата сканера (до `top-n`, обычно до 10) прогони оба типа стратегий:
      ```bash
      python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy sma --optimize --json
      python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy level_bounce --optimize --json
      ```
-   - Выбери лучшую стратегию по Sharpe
+   - Выбери лучшую стратегию по Sharpe среди стратегий с положительным PnL.
+   - Если сканер вернул низкий `score`, но бэктест проходит пороги — инструмент можно добавлять. Бэктест важнее score.
 
 4. **Принятие решений**
-   - Добавить: Sharpe > 1.0, PnL > 0, win_rate > 45%, trades >= 5
-   - Убрать: auto-instances с PnL < -50 RUB за день или Sharpe < 0
+   - Добавить: Sharpe > 1.0, PnL > 0, win_rate > 45%, trades >= 5, profit_factor > 1.3
+   - Если для одного фьючерса проходят обе стратегии — выбрать стратегию с максимальным Sharpe; при близком Sharpe предпочесть меньшую просадку.
+   - Убрать/заменить: auto-instances с PnL < -50 RUB за день, Sharpe < 0, или если новый бэктест показывает худшую стратегию на том же тикере.
    - Не трогать instances без префикса `auto-` (добавлены пользователем)
 
 5. **Обновление конфигурации**
@@ -120,6 +124,7 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
 
 - **Только фьючерсы**: запрещено добавлять shares/equities/акции в `config.yaml`. Любой новый инструмент должен иметь `class_code=SPBFUT` и `instrument_type=future`.
 - **Цена контракта**: перед бэктестом проверяй `contract_price = last_price * lot`; не добавляй инструмент, если `contract_price > AI_SCANNER_MAX_CONTRACT_PRICE`.
+- **Score сканера не является решением**: низкий `score` не запрещает бэктест. Окончательное решение принимает только оптимизационный бэктест.
 - **Максимум 5 одновременных instances** (включая ручные). Считай через `GET /instances`.
 - **Не трогать ручные instances** — ID без префикса `auto-`. Сейчас ручные фьючерсные instances: `fut-brent-mini-lb`, `fut-gas-mini-sma`, `fut-mechel-lb` и любые другие без `auto-`.
 - **Account ID**: `2001673385` (единственный IIS).

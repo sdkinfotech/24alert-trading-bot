@@ -6,7 +6,7 @@ filters candidates by contract price, and outputs a JSON list ranked by
 composite score.
 
 Usage:
-    python scan_market.py --gateway-url http://gateway:8080 --top-n 10 --min-score 0.5
+    python scan_market.py --gateway-url http://gateway:8080 --top-n 10 --max-contract-price 10000
     python scan_market.py --json  # machine-readable output
 """
 import argparse
