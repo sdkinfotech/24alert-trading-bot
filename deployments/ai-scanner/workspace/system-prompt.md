@@ -9,6 +9,7 @@
 - **Config файл**: `/app/config/config.yaml` (bind-mount, общий с strategy-runner)
 - **Python скрипты**: `/opt/ai-scanner/` (scan_market.py, backtest.py)
 - **Справочник**: `/workspace/reference/ai-scanner-reference.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/ai-scanner-reference.md`
+- **Skill чтения логов**: `/workspace/reference/log-reading-skill.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/log-reading-skill.md`
 - **Память агента**: `/workspace/memory/agent-memory.md`
 - **Отчёты**: `/workspace/reports/`
 - **Максимальная цена контракта**: `$AI_SCANNER_MAX_CONTRACT_PRICE` (по умолчанию 10000 RUB/пунктов цены)
@@ -51,6 +52,7 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 
 - Читать и редактировать `/app/config/config.yaml` для управления стратегиями.
 - Перед любым сканом, оптимизацией или изменением config прочитать `/workspace/reference/ai-scanner-reference.md`.
+- Перед ответом на вопросы "что происходит", "почему нет сделки", "что в логах", "что сейчас торгуется" прочитать `/workspace/reference/log-reading-skill.md` и проверить journal endpoints `/instances/<id>/events`.
 - Перед любым решением прочитать `/workspace/memory/agent-memory.md`.
 - После значимого решения, отклонённого кандидата, изменения config или инцидента дописать краткую запись в `/workspace/memory/agent-memory.md`.
 - После каждой правки — обязательно `curl -X POST $STRATEGY_RUNNER_URL/config/reload`.

@@ -55,11 +55,17 @@ func systemPrompt(fullContext string) string {
 - Сигналы: последние 5 сигналов каждой стратегии (направление, цена, причина)
 - Сделки: последние 5 исполнений (статус, объём, цена)
 - Дневная статистика: количество сигналов, ордеров, исполнений за сегодня
+- Глобальное расписание FORTS session guard и причины блокировки сигналов
+- Журнал Trade Events: сигналы, отменённые сигналы, ордера, исполнения
 
 Правила ответа:
 - Отвечай на русском, кратко и по существу
 - Используй конкретные цифры из контекста — не додумывай данные
 - Если данных нет (портфель недоступен, стратегия остановлена) — скажи об этом явно
+- Перед ответом о том, торгуется ли сейчас система, всегда смотри блоки "СИСТЕМНЫЕ ПРАВИЛА", "РАСПИСАНИЕ", "СТРАТЕГИИ" и "ЖУРНАЛ/TRADE EVENTS".
+- Не делай вывод о разрешённых торгах только по cutoff стратегии: cutoff — это EOD-ограничение конкретной стратегии, а не глобальный session guard.
+- Если спрашивают про выходные, отвечай явно: автоторговля по выходным запрещена намеренно из-за низкой ликвидности/тонкого рынка.
+- Если спрашивают про логи, используй Trade Events из контекста как журнал стратегии; если нужны raw Docker/system logs — скажи, что они проверяются операционным skill через docker logs на VPS.
 - Форматируй числа: цены с копейками (123.45₽), количество целым числом
 - Для PnL используй +/- знак и ₽ символ
 
@@ -163,6 +169,8 @@ func callOpenRouter(apiKey, model string, messages []chatMessage) (string, error
 
 func (r *Runner) buildFullContext(ctx context.Context) string {
 	var b strings.Builder
+
+	r.writeSystemFacts(&b)
 
 	// --- Portfolio per unique account ---
 	accounts := make(map[string]bool)
@@ -274,6 +282,24 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 			}
 		}
 
+		// Unified journal timeline (signals, cancellations, orders, executions).
+		if events, err := r.InstanceEvents(ctx, inst.ID, 10); err == nil && len(events) > 0 {
+			b.WriteString("  Журнал/Trade Events (последние 10):\n")
+			for _, ev := range events {
+				ticker := ev.InstrumentUID
+				if len(ticker) > 8 {
+					ticker = ticker[:8]
+				}
+				if inf, ok := r.instrCache.GetInstrument(ev.InstrumentUID); ok && inf.Ticker != "" {
+					ticker = inf.Ticker
+				}
+				fmt.Fprintf(&b, "    %s %s %s %s qty=%d ref=%.2f status=%s reason=%q msg=%q\n",
+					ev.Time, ev.Type, ev.Direction, ticker, ev.Quantity, ev.RefPrice, ev.Status, ev.Reason, ev.Message)
+			}
+		} else {
+			b.WriteString("  Журнал/Trade Events: нет недавних событий\n")
+		}
+
 		b.WriteString("\n")
 	}
 
@@ -288,6 +314,31 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 		b.WriteString("Нет настроенных стратегий\n")
 	}
 	return b.String()
+}
+
+func (r *Runner) writeSystemFacts(b *strings.Builder) {
+	b.WriteString("== СИСТЕМНЫЕ ПРАВИЛА ==\n")
+	b.WriteString("- Production режим: только MOEX FORTS futures; акции/ETF/валюта/облигации в стратегии не добавлять.\n")
+	b.WriteString("- Ручные стратегии без префикса auto- не менять без явной команды пользователя.\n")
+	b.WriteString("- Weekend trading запрещён намеренно: низкая ликвидность и тонкий рынок важнее broker trading-status.\n")
+	b.WriteString("- cutoff_hour/cutoff_min у level_bounce — это EOD-ограничение стратегии, не глобальное расписание торгов.\n\n")
+
+	b.WriteString("== РАСПИСАНИЕ / SESSION GUARD ==\n")
+	nowUTC := time.Now().UTC()
+	fmt.Fprintf(b, "UTC now: %s\n", nowUTC.Format("2006-01-02 15:04:05"))
+	if r.schedule == nil {
+		b.WriteString("TradingSchedule: не настроен; это аварийное состояние, нельзя делать выводы по cutoff.\n\n")
+		return
+	}
+	nowLocal := nowUTC.In(r.schedule.tz)
+	allowed := r.schedule.IsMainSession(nowUTC)
+	fmt.Fprintf(b, "Local now: %s %s (%s)\n", nowLocal.Format("2006-01-02 15:04:05"), r.schedule.TimezoneName(), nowLocal.Weekday())
+	fmt.Fprintf(b, "Allowed sessions: Mon-Fri %s %s\n", r.schedule.WindowString(), r.schedule.TimezoneName())
+	fmt.Fprintf(b, "Trading allowed now: %v\n", allowed)
+	if !allowed {
+		fmt.Fprintf(b, "Next allowed open: %s %s\n", r.schedule.NextSessionOpen(nowUTC).Format("2006-01-02 15:04:05"), r.schedule.TimezoneName())
+	}
+	b.WriteString("Blocked intervals: weekends, clearing break 14:00-14:05 MSK, and gaps outside configured FORTS sessions.\n\n")
 }
 
 func formatIndicatorSummary(data interface{}) string {

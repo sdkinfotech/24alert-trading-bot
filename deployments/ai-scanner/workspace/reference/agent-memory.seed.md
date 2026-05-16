@@ -8,6 +8,7 @@
 - 2026-05-16: Manual production instances are `fut-brent-mini-lb`, `fut-gas-mini-sma`, `fut-mechel-lb`; do not modify them unless the user explicitly asks.
 - 2026-05-16: Current manual params: Brent LB `atr=0.3 sl=0.3 tp=2.0 cutoff=23:30`; Gas SMA `fast=9 slow=26`; Mechel LB `atr=0.5 sl=0.7 tp=1.0 cutoff=23:30`.
 - 2026-05-16: Scanner score is only a ranking hint. Optimized guarded backtest is the decision gate.
+- 2026-05-16: Before answering "what is trading", "why no trade", or "what do logs say", read the log-reading skill and strategy journal events. Do not infer schedule from `cutoff` alone.
 
 ## Append New Lessons Below
 

@@ -16,6 +16,7 @@ docker compose --profile ai-scanner up -d ai-scanner
 - **`CURSOR_API_KEY`** in `deployments/.env` (must not be empty or `stub`). The container exits scans early if the key is missing (`run-scan.sh`).
 - **`agent`** CLI is installed in the image (`deployments/ai-scanner/Dockerfile`).
 - **Reference material:** `/workspace/reference/ai-scanner-reference.md` is mounted read-only and also published by the strategy dashboard at `/dashboard/reference/ai-scanner-reference.md`.
+- **Log-reading skill:** `/workspace/reference/log-reading-skill.md` tells the agent how to read strategy journal endpoints and raw production logs; public copy: `/dashboard/reference/log-reading-skill.md`.
 - **Persistent memory:** `/workspace/memory/agent-memory.md` lives in the `ai-scanner-memory` Docker volume and is seeded from `workspace/reference/agent-memory.seed.md`.
 - **Persistent reports:** `/workspace/reports/` lives in the `ai-scanner-reports` Docker volume.
 - **Futures-only selection:** scanner candidates must come from `/api/v1/instruments/futures`; scanner `score` only ranks candidates. The advisor decides after optimized backtests.
@@ -44,6 +45,7 @@ Cron writes job output to the container’s stdout (see `docker-compose.yaml` `>
 
 ```bash
 docker exec 24alert-ai-scanner sed -n '1,200p' /workspace/reference/ai-scanner-reference.md
+docker exec 24alert-ai-scanner sed -n '1,200p' /workspace/reference/log-reading-skill.md
 docker exec 24alert-ai-scanner sed -n '1,200p' /workspace/memory/agent-memory.md
 docker exec 24alert-ai-scanner ls -la /workspace/reports
 ```
