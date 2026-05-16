@@ -69,9 +69,13 @@ func TestBounce_ResetTradingStateAfterWarmup(t *testing.T) {
 	b.entryPrice = 10
 	b.eodSent = true
 	b.currentDay = "2026-05-01"
+	b.signals = []SignalPoint{{Direction: "buy"}}
 	b.ResetTradingStateAfterWarmup()
 	if b.pos != 0 || b.pendingEntry != 0 || b.pendingExit || b.entryPrice != 0 || b.eodSent || b.currentDay != "" {
 		t.Fatalf("unexpected state after reset: %+v %+v %+v", b.pos, b.pendingEntry, b.currentDay)
+	}
+	if len(b.signals) != 0 {
+		t.Fatalf("warmup signals should be cleared, got %d", len(b.signals))
 	}
 }
 

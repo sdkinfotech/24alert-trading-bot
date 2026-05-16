@@ -210,6 +210,8 @@ func (c *Crossover) Stop() {
 func (c *Crossover) ResetTradingStateAfterWarmup() {
 	c.pos = 0
 	c.pendingEntry = 0
+	// Warmup-replayed crossover signals are not real dispatched signals.
+	c.signals = nil
 }
 
 type smaState struct {

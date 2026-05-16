@@ -147,7 +147,7 @@ func TestORBEndOfDay(t *testing.T) {
 	b.OnCandle(candle(day, 320, 325, 318, 322))
 	b.OnCandle(candle(day.Add(15*time.Minute), 322, 328, 319, 326))
 	b.OnCandle(candle(day.Add(30*time.Minute), 326, 330, 325, 329)) // long pending
-	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})          // confirm long
+	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})        // confirm long
 
 	// EOD candle at 18:30 MSK — should close long position
 	eod := time.Date(2026, 5, 15, 18, 30, 0, 0, msk)
@@ -180,7 +180,7 @@ func TestORBEndOfDayShort(t *testing.T) {
 	b.OnCandle(candle(day, 320, 325, 318, 322))
 	b.OnCandle(candle(day.Add(15*time.Minute), 322, 328, 319, 326))
 	b.OnCandle(candle(day.Add(30*time.Minute), 320, 321, 316, 317)) // short pending
-	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})          // confirm short
+	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})        // confirm short
 
 	eod := time.Date(2026, 5, 15, 18, 30, 0, 0, msk)
 	sigs := b.OnCandle(candle(eod, 315, 316, 314, 315))
@@ -199,7 +199,7 @@ func TestORBNewDayReset(t *testing.T) {
 	b.OnCandle(candle(day1, 320, 325, 318, 322))
 	b.OnCandle(candle(day1.Add(15*time.Minute), 322, 328, 319, 326))
 	b.OnCandle(candle(day1.Add(30*time.Minute), 326, 330, 325, 329)) // long pending
-	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})          // confirm
+	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})         // confirm
 
 	// New day — range/counter resets but position state carries over until explicitly closed
 	day2 := time.Date(2026, 5, 16, 10, 0, 0, 0, msk)
@@ -269,7 +269,7 @@ func TestORBSnapshotRestore(t *testing.T) {
 	b.OnCandle(candle(day, 320, 325, 318, 322))
 	b.OnCandle(candle(day.Add(15*time.Minute), 322, 328, 319, 326))
 	b.OnCandle(candle(day.Add(30*time.Minute), 326, 330, 325, 329)) // long pending
-	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})          // confirm
+	b.OnExecution(strategy.ExecutionEvent{Status: "filled"})        // confirm
 
 	blob, err := b.Snapshot()
 	if err != nil {
@@ -399,10 +399,14 @@ func TestORB_ResetTradingState(t *testing.T) {
 	b.pendingEntry = 1
 	b.pendingExit = true
 	b.eodSent = true
+	b.signals = []SignalPoint{{Direction: "sell"}}
 	b.ResetTradingStateAfterWarmup()
 	if b.pos != 0 || b.pendingEntry != 0 || b.pendingExit || b.eodSent {
 		t.Fatalf("state not fully reset: pos=%d pe=%d px=%v eod=%v",
 			b.pos, b.pendingEntry, b.pendingExit, b.eodSent)
+	}
+	if len(b.signals) != 0 {
+		t.Fatalf("warmup signals should be cleared, got %d", len(b.signals))
 	}
 }
 

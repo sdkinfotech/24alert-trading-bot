@@ -167,9 +167,13 @@ func TestCrossover_ResetTradingState_clearsPending(t *testing.T) {
 	c := New()
 	c.pendingEntry = 1
 	c.pos = 1
+	c.signals = []SignalPoint{{Direction: "buy"}}
 	c.ResetTradingStateAfterWarmup()
 	if c.pos != 0 || c.pendingEntry != 0 {
 		t.Fatalf("want pos=0 pending=0 after reset, got pos=%d pending=%d", c.pos, c.pendingEntry)
+	}
+	if len(c.signals) != 0 {
+		t.Fatalf("warmup signals should be cleared, got %d", len(c.signals))
 	}
 }
 

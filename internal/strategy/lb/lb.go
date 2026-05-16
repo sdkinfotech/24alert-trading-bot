@@ -427,6 +427,9 @@ func (b *Bounce) ResetTradingStateAfterWarmup() {
 	b.clearEntryLevels()
 	b.eodSent = false
 	b.currentDay = ""
+	// Warmup replays historical candles and may generate theoretical signals.
+	// They were never dispatched to risk/order services, so do not show them as chart markers.
+	b.signals = nil
 }
 
 func (b *Bounce) Stop() { b.stopped = true }

@@ -412,14 +412,16 @@ func (b *Breakout) ResetTradingStateAfterWarmup() {
 	b.pendingEntry = 0
 	b.pendingExit = false
 	b.eodSent = false
+	// Warmup-replayed breakout/EOD signals are not real dispatched signals.
+	b.signals = nil
 }
 
 var (
-	_ strategy.StatefulStrategy            = (*Breakout)(nil)
-	_ strategy.IndicatorProvider           = (*Breakout)(nil)
-	_ strategy.WarmupHint                  = (*Breakout)(nil)
-	_ strategy.ChartHint                   = (*Breakout)(nil)
-	_ strategy.PostWarmupCleanup           = (*Breakout)(nil)
+	_ strategy.StatefulStrategy             = (*Breakout)(nil)
+	_ strategy.IndicatorProvider            = (*Breakout)(nil)
+	_ strategy.WarmupHint                   = (*Breakout)(nil)
+	_ strategy.ChartHint                    = (*Breakout)(nil)
+	_ strategy.PostWarmupCleanup            = (*Breakout)(nil)
 	_ strategy.SignalDispatchFailureHandler = (*Breakout)(nil)
 )
 
