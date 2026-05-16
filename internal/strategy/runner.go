@@ -213,12 +213,15 @@ func (r *Runner) prefetchInstruments(ctx context.Context) error {
 			}
 			in := resp.GetInstrument()
 			r.instrCache.SetInstrument(marketdata.InstrumentInfo{
-				UID:       in.GetUid(),
-				FIGI:      in.GetFigi(),
-				Ticker:    in.GetTicker(),
-				ClassCode: in.GetClassCode(),
-				Name:      in.GetName(),
-				LotSize:   in.GetLot(),
+				UID:            in.GetUid(),
+				FIGI:           in.GetFigi(),
+				Ticker:         in.GetTicker(),
+				ClassCode:      in.GetClassCode(),
+				Name:           in.GetName(),
+				LotSize:        in.GetLot(),
+				InstrumentType: in.GetInstrumentType(),
+				MinPriceIncr:   quotationToFloat(in.GetMinPriceIncrement()),
+				Currency:       in.GetCurrency(),
 			})
 		}
 	}
@@ -506,8 +509,14 @@ func (r *Runner) estimateCost(sig Signal, markPrice float64) float64 {
 	if strings.EqualFold(sig.Direction, "sell") {
 		return 0
 	}
+	inf, ok := r.instrCache.GetInstrument(sig.InstrumentUID)
+	if ok && inf.IsFuture() {
+		// Futures are margined instruments — real cost equals GO (guarantee obligation).
+		// Full GetFuturesMargin integration is a follow-up; for now skip balance check.
+		return 0
+	}
 	lot := int32(1)
-	if inf, ok := r.instrCache.GetInstrument(sig.InstrumentUID); ok && inf.LotSize > 0 {
+	if ok && inf.LotSize > 0 {
 		lot = inf.LotSize
 	}
 	px := markPrice

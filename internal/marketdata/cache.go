@@ -7,12 +7,20 @@ import (
 
 // InstrumentInfo holds instrument metadata.
 type InstrumentInfo struct {
-	UID       string
-	FIGI      string
-	Ticker    string
-	ClassCode string
-	Name      string
-	LotSize   int32
+	UID            string
+	FIGI           string
+	Ticker         string
+	ClassCode      string
+	Name           string
+	LotSize        int32
+	InstrumentType string  // "share", "future", "bond", etc.
+	MinPriceIncr   float64 // minimum price increment (tick size)
+	Currency       string  // "rub", "usd", etc.
+}
+
+// IsFuture returns true for FORTS futures (ClassCode == "SPBFUT").
+func (i InstrumentInfo) IsFuture() bool {
+	return i.ClassCode == "SPBFUT"
 }
 
 // InstrumentCache is a thread-safe cache for instrument metadata keyed by UID.
