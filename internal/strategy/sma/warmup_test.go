@@ -66,6 +66,35 @@ func TestWarmupFeedsHistorySignalsDiscarded(t *testing.T) {
 	}
 }
 
+func TestWarmupDiscardedSignalDoesNotStopHistory(t *testing.T) {
+	c := New()
+	_ = c.Configure(map[string]string{"fast_period": "2", "slow_period": "3", "quantity": "1"})
+
+	base := time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC)
+	prices := []float64{10, 10, 10, 11, 12, 13, 14}
+	for i, px := range prices {
+		sigs := c.OnCandle(strategy.Candle{
+			InstrumentUID: "uid-1",
+			Close:         px,
+			Open:          px,
+			High:          px,
+			Low:           px,
+			Time:          base.Add(time.Duration(i) * time.Hour),
+			IsComplete:    true,
+		})
+		for _, sig := range sigs {
+			c.OnSignalDispatchFailed(sig, "warmup_discarded")
+		}
+	}
+
+	if c.history[len(c.history)-1].Time != base.Add(time.Duration(len(prices)-1)*time.Hour) {
+		t.Fatalf("history stopped at %s, want last warmup candle", c.history[len(c.history)-1].Time)
+	}
+	if c.pendingEntry != 0 {
+		t.Fatalf("pendingEntry after discarded warmup signals = %d, want 0", c.pendingEntry)
+	}
+}
+
 func TestWarmupAfterRestoreNoDoubleData(t *testing.T) {
 	c := New()
 	_ = c.Configure(map[string]string{"fast_period": "2", "slow_period": "3"})

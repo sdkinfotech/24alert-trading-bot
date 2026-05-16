@@ -454,7 +454,7 @@ func (r *Runner) warmupStrategy(
 				Time:          mc.Time,
 				IsComplete:    true,
 			}
-			_ = st.OnCandle(sc) // fills buffers; signals discarded
+			discardWarmupSignals(st, st.OnCandle(sc)) // fills buffers; signals discarded
 			fed++
 		}
 
@@ -469,6 +469,17 @@ func (r *Runner) warmupStrategy(
 		pc.ResetTradingStateAfterWarmup()
 	}
 	return result
+}
+
+func discardWarmupSignals(st Strategy, sigs []Signal) {
+	if len(sigs) == 0 {
+		return
+	}
+	if fh, ok := st.(SignalDispatchFailureHandler); ok {
+		for _, sig := range sigs {
+			fh.OnSignalDispatchFailed(sig, "warmup_discarded")
+		}
+	}
 }
 
 // warmupDaily fetches daily candles and feeds them to the strategy via OnDailyCandle.
