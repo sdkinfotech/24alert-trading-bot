@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Market scanner for 24alert AI-scanner.
-Fetches MOEX shares, calculates intraday trading suitability metrics,
-outputs JSON list of candidates ranked by composite score.
+Fetches MOEX futures, calculates intraday trading suitability metrics,
+filters candidates by contract price, and outputs a JSON list ranked by
+composite score.
 
 Usage:
     python scan_market.py --gateway-url http://gateway:8080 --top-n 10 --min-score 0.5
@@ -20,14 +21,68 @@ def fetch_json(url):
         return json.load(r)
 
 
-TARGET_TICKERS = [
-    "SBER", "GAZP", "LKOH", "ROSN", "GMKN",
-    "YNDX", "VTBR", "NVTK", "TATN", "MGNT",
-    "NLMK", "ALRS", "SNGS", "PLZL", "MTSS",
-    "OZON", "PHOR", "CHMF", "POLY", "MAGN",
-    "AFLT", "PIKK", "RUAL", "IRAO", "MOEX",
-    "TRNFP", "SBERP", "FIVE", "TCSG", "SMLT",
-]
+DEFAULT_FUTURE_PREFIXES = ["BM", "NG", "MC"]
+MONTH_CODES = {code: i for i, code in enumerate("FGHJKMNQUVXZ", start=1)}
+
+
+def unwrap_data(data):
+    if isinstance(data, dict):
+        return data.get("data", data.get("instruments", []))
+    return data
+
+
+def fetch_last_prices(base, uids):
+    if not uids:
+        return {}
+    url = f"{base}/api/v1/prices/bulk?uids={','.join(uids)}"
+    try:
+        data = unwrap_data(fetch_json(url))
+    except Exception:
+        return {}
+
+    out = {}
+    for p in data:
+        uid = p.get("instrument_uid", "")
+        price = p.get("price", 0)
+        if uid and price:
+            out[uid] = price
+    return out
+
+
+def contract_rank(ticker):
+    """Sort futures by year/month code so nearest contracts come first."""
+    if len(ticker) < 2:
+        return (99, 99, ticker)
+    month_code = ticker[-2]
+    year_code = ticker[-1]
+    if month_code not in MONTH_CODES or not year_code.isdigit():
+        return (99, 99, ticker)
+    return (int(year_code), MONTH_CODES[month_code], ticker)
+
+
+def months_ahead(ticker, now):
+    if len(ticker) < 2:
+        return 999
+    month_code = ticker[-2]
+    year_code = ticker[-1]
+    if month_code not in MONTH_CODES or not year_code.isdigit():
+        return 999
+    return (int(year_code) - (now.year % 10)) * 12 + (MONTH_CODES[month_code] - now.month)
+
+
+def select_nearest_by_prefix(futures, prefixes, min_months_ahead):
+    now = datetime.now(timezone.utc)
+    selected = {}
+    for prefix in prefixes:
+        matches = [
+            f for f in futures
+            if f.get("ticker", "").startswith(prefix)
+            and months_ahead(f.get("ticker", ""), now) >= min_months_ahead
+        ]
+        if not matches:
+            continue
+        selected[prefix] = sorted(matches, key=lambda f: contract_rank(f.get("ticker", "")))[0]
+    return list(selected.values())
 
 
 def get_candles(base, uid, interval, days):
@@ -113,38 +168,73 @@ def main():
     parser.add_argument("--json", action="store_true",
                         help="Output JSON only (for machine consumption)")
     parser.add_argument("--tickers", default="",
-                        help="Comma-separated ticker filter (empty = use built-in list)")
+                        help="Comma-separated exact futures ticker filter (e.g. BMM6,NGM6,MCM6)")
+    parser.add_argument("--ticker-prefixes", default=",".join(DEFAULT_FUTURE_PREFIXES),
+                        help="Comma-separated futures prefixes if --tickers is empty (default: BM,NG,MC)")
+    parser.add_argument("--min-contract-price", type=float, default=0.0,
+                        help="Minimum contract price in instrument currency (default: 0)")
+    parser.add_argument("--max-contract-price", type=float, default=10000.0,
+                        help="Maximum contract price in instrument currency (default: 10000)")
+    parser.add_argument("--all-expirations", action="store_true",
+                        help="Analyze all matched expirations instead of nearest contract per prefix")
+    parser.add_argument("--min-months-ahead", type=int, default=1,
+                        help="For prefix selection, skip contracts closer than this many months ahead (default: 1)")
     args = parser.parse_args()
 
     base = args.gateway_url.rstrip("/")
-    tickers = [t.strip() for t in args.tickers.split(",") if t.strip()] if args.tickers else TARGET_TICKERS
+    tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    prefixes = [p.strip().upper() for p in args.ticker_prefixes.split(",") if p.strip()]
 
     if not args.json:
-        print("Fetching shares list...", file=sys.stderr)
-    data = fetch_json(f"{base}/api/v1/instruments/shares")
-    shares = data if isinstance(data, list) else data.get("data", data.get("instruments", []))
+        print("Fetching futures list...", file=sys.stderr)
+    data = fetch_json(f"{base}/api/v1/instruments/futures")
+    futures = unwrap_data(data)
 
-    rub_shares = {}
-    for s in shares:
-        if s.get("currency", "").lower() != "rub":
+    candidates = []
+    for f in futures:
+        if f.get("class_code") != "SPBFUT":
             continue
-        ticker = s.get("ticker", "")
-        uid = s.get("uid", s.get("instrument_uid", ""))
-        if ticker in tickers and uid:
-            rub_shares[ticker] = {
-                "uid": uid,
-                "ticker": ticker,
-                "name": s.get("name", ""),
-                "lot": s.get("lot", 1),
-            }
+        ticker = f.get("ticker", "").upper()
+        uid = f.get("uid", f.get("instrument_uid", ""))
+        if not uid:
+            continue
+        if tickers and ticker not in tickers:
+            continue
+        if not tickers and prefixes and not any(ticker.startswith(p) for p in prefixes):
+            continue
+        candidates.append({
+            "uid": uid,
+            "ticker": ticker,
+            "name": f.get("name", ""),
+            "lot": f.get("lot", 1),
+            "class_code": f.get("class_code", ""),
+            "instrument_type": f.get("instrument_type", "future"),
+            "currency": f.get("currency", ""),
+            "min_price_increment": f.get("min_price_increment", 0),
+        })
+
+    if not tickers and not args.all_expirations:
+        candidates = select_nearest_by_prefix(candidates, prefixes, args.min_months_ahead)
+
+    last_prices = fetch_last_prices(base, [c["uid"] for c in candidates])
+    filtered = []
+    for info in candidates:
+        price = last_prices.get(info["uid"], 0)
+        contract_price = price * info.get("lot", 1) if price else 0
+        if price and contract_price < args.min_contract_price:
+            continue
+        if price and args.max_contract_price > 0 and contract_price > args.max_contract_price:
+            continue
+        info["last_price"] = round(price, 4) if price else 0
+        info["contract_price"] = round(contract_price, 4) if contract_price else 0
+        filtered.append(info)
 
     results = []
-    for ticker in tickers:
-        if ticker not in rub_shares:
-            continue
-        info = rub_shares[ticker]
+    for info in sorted(filtered, key=lambda x: x["ticker"]):
+        ticker = info["ticker"]
         if not args.json:
-            print(f"  Analyzing {ticker}...", end=" ", flush=True, file=sys.stderr)
+            cp = info.get("contract_price", 0)
+            print(f"  Analyzing {ticker} contract_price={cp}...", end=" ", flush=True, file=sys.stderr)
 
         c15 = get_candles(base, info["uid"], "15min", 5)
         c1d = get_candles(base, info["uid"], "1d", 30)
@@ -158,7 +248,11 @@ def main():
         if not args.json:
             print(f"score={metrics['score']:.2f}", file=sys.stderr)
 
-        results.append({**info, **metrics})
+        if not info["last_price"]:
+            info["last_price"] = metrics["last_price"]
+            info["contract_price"] = round(metrics["last_price"] * info.get("lot", 1), 4)
+
+        results.append({**metrics, **info})
 
     results.sort(key=lambda r: r["score"], reverse=True)
     results = [r for r in results if r["score"] >= args.min_score]
@@ -168,13 +262,14 @@ def main():
         json.dump(results, sys.stdout, ensure_ascii=False, indent=2)
         print()
     else:
-        print(f"\n{'#':>2} {'Ticker':<7} {'Price':>8} {'ATR%':>7} {'DRange%':>8} "
+        print(f"\n{'#':>2} {'Ticker':<7} {'Contract':>10} {'Price':>8} {'ATR%':>7} {'DRange%':>8} "
               f"{'VolSpk':>7} {'Score':>8} {'Support':>24} {'Resistance':>24}", file=sys.stderr)
-        print("-" * 110, file=sys.stderr)
+        print("-" * 122, file=sys.stderr)
         for i, r in enumerate(results, 1):
             sup_str = ", ".join(f"{s:.1f}" for s in r["support"][:3])
             res_str = ", ".join(f"{s:.1f}" for s in r["resistance"][:3])
-            print(f"{i:2d} {r['ticker']:<7} {r['last_price']:8.2f} {r['atr_pct']:6.3f}% "
+            print(f"{i:2d} {r['ticker']:<7} {r['contract_price']:10.2f} {r['last_price']:8.2f} "
+                  f"{r['atr_pct']:6.3f}% "
                   f"{r['avg_daily_range_pct']:7.2f}% "
                   f"{r['daily_vol_spike']:6.2f}x {r['score']:8.2f}  "
                   f"S[{sup_str}]  R[{res_str}]", file=sys.stderr)

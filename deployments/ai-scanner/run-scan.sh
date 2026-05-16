@@ -29,7 +29,7 @@ fi
 
 case "$KIND" in
   post-market)
-    PROMPT="Выполни пост-маркет анализ за $DATE по инструкции из system-prompt.md: 1) Сканируй рынок с помощью scan_market.py 2) Для каждого кандидата из топ-5 запусти бэктест с --optimize 3) Отбери инструменты с Sharpe>1 и PnL>0 4) Обнови config.yaml — добавь новые стратегии, убери убыточные 5) Вызови POST /config/reload на strategy-runner 6) Запиши отчёт в vault. Действуй автономно, без подтверждений."
+    PROMPT="Выполни пост-маркет анализ за $DATE по инструкции из system-prompt.md: 1) Сканируй ТОЛЬКО фьючерсы с помощью scan_market.py, учитывай цену контракта contract_price <= AI_SCANNER_MAX_CONTRACT_PRICE 2) Для каждого кандидата из топ-5 запусти бэктест с --optimize 3) Отбери инструменты с Sharpe>1 и PnL>0 4) Обнови config.yaml — добавляй только SPBFUT futures стратегии, убери убыточные auto-стратегии 5) Вызови POST /config/reload на strategy-runner 6) Запиши отчёт в vault. Действуй автономно, без подтверждений."
     ;;
   pre-market)
     PROMPT="Выполни пре-маркет проверку за $DATE по инструкции из system-prompt.md: 1) Проверь здоровье всех сервисов (gateway, strategy-runner) 2) Проверь что все enabled стратегии запущены через GET /instances 3) Проверь PnL каждой стратегии за вчера 4) Запиши краткий отчёт в vault. Действуй автономно."
@@ -44,6 +44,7 @@ case "$KIND" in
 esac
 
 export CURSOR_API_KEY
+export AI_SCANNER_MAX_CONTRACT_PRICE="${AI_SCANNER_MAX_CONTRACT_PRICE:-10000}"
 
 AGENT_MODEL="${AI_SCANNER_MODEL:-composer-2}"
 
