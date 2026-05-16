@@ -73,14 +73,16 @@ type Bounce struct {
 	dailyTRs   []float64
 	prevClose  float64
 
-	// Intraday state
-	pos        int64
-	entryPrice float64
-	stopLoss   float64
-	takeProfit float64
-	currentDay string
-	eodSent    bool
-	stopped    bool
+	// Intraday state: pos is confirmed by fills; pending* tracks orders not yet acknowledged.
+	pos          int64
+	pendingEntry int64 // +1/-1 entry signal sent, awaiting fill or dispatch failure
+	pendingExit  bool  // exit signal sent, awaiting fill or dispatch failure
+	entryPrice   float64
+	stopLoss     float64
+	takeProfit   float64
+	currentDay   string
+	eodSent      bool
+	stopped      bool
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -140,6 +142,11 @@ func (b *Bounce) Configure(params map[string]string) error {
 	}
 
 	b.pos = 0
+	b.pendingEntry = 0
+	b.pendingExit = false
+	b.entryPrice = 0
+	b.stopLoss = 0
+	b.takeProfit = 0
 	b.currentDay = ""
 	b.eodSent = false
 	return nil
@@ -222,6 +229,10 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 		return nil
 	}
 
+	if b.pendingExit || b.pendingEntry != 0 {
+		return nil
+	}
+
 	threshold := b.atr * b.atrMult
 
 	// EOD flatten
@@ -235,8 +246,8 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 				reason = "eod close short"
 			}
 			b.eodSent = true
+			b.pendingExit = true
 			b.recordSignal(k.Time, dir, reason, k.Close)
-			b.pos = 0
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     dir,
@@ -253,7 +264,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 	if b.pos > 0 {
 		if k.Low <= b.stopLoss {
 			b.recordSignal(k.Time, "sell", "stop loss", b.stopLoss)
-			b.pos = 0
+			b.pendingExit = true
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     "sell",
@@ -265,7 +276,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 		}
 		if k.High >= b.takeProfit {
 			b.recordSignal(k.Time, "sell", "take profit", b.takeProfit)
-			b.pos = 0
+			b.pendingExit = true
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     "sell",
@@ -280,7 +291,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 	if b.pos < 0 {
 		if k.High >= b.stopLoss {
 			b.recordSignal(k.Time, "buy", "stop loss", b.stopLoss)
-			b.pos = 0
+			b.pendingExit = true
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     "buy",
@@ -292,7 +303,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 		}
 		if k.Low <= b.takeProfit {
 			b.recordSignal(k.Time, "buy", "take profit", b.takeProfit)
-			b.pos = 0
+			b.pendingExit = true
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     "buy",
@@ -313,7 +324,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 			b.entryPrice = k.Close
 			b.stopLoss = s - b.atr*b.slMult
 			b.takeProfit = b.entryPrice + b.atr*b.tpMult
-			b.pos = 1
+			b.pendingEntry = 1
 			reason := fmt.Sprintf("bounce S=%.1f", s)
 			b.recordSignal(k.Time, "buy", reason, k.Close)
 			return []strategy.Signal{{
@@ -333,7 +344,7 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 			b.entryPrice = k.Close
 			b.stopLoss = r + b.atr*b.slMult
 			b.takeProfit = b.entryPrice - b.atr*b.tpMult
-			b.pos = -1
+			b.pendingEntry = -1
 			reason := fmt.Sprintf("reject R=%.1f", r)
 			b.recordSignal(k.Time, "sell", reason, k.Close)
 			return []strategy.Signal{{
@@ -354,11 +365,68 @@ func (b *Bounce) OnOrderbook(_ strategy.Orderbook) []strategy.Signal { return ni
 
 func (b *Bounce) OnExecution(ev strategy.ExecutionEvent) {
 	s := strings.ToLower(ev.Status)
+	if s == "filled" || s == "partially_filled" {
+		if b.pendingEntry != 0 {
+			b.pos = b.pendingEntry
+			b.pendingEntry = 0
+			return
+		}
+		if b.pendingExit {
+			b.pos = 0
+			b.pendingExit = false
+			b.entryPrice = 0
+			b.stopLoss = 0
+			b.takeProfit = 0
+			return
+		}
+		return
+	}
 	if s == "cancelled" || s == "rejected" {
 		if strings.Contains(strings.ToLower(ev.Message), "reject") {
+			if b.pendingEntry != 0 {
+				b.clearEntryLevels()
+				b.pendingEntry = 0
+				return
+			}
+			if b.pendingExit {
+				b.pendingExit = false
+				return
+			}
 			b.pos = 0
 		}
 	}
+}
+
+func (b *Bounce) clearEntryLevels() {
+	b.entryPrice = 0
+	b.stopLoss = 0
+	b.takeProfit = 0
+}
+
+// OnSignalDispatchFailed implements strategy.SignalDispatchFailureHandler.
+func (b *Bounce) OnSignalDispatchFailed(sig strategy.Signal, _ string) {
+	if b.pendingExit {
+		b.pendingExit = false
+		rsn := strings.ToLower(sig.Reason)
+		if strings.Contains(rsn, "eod close") {
+			b.eodSent = false
+		}
+		return
+	}
+	if b.pendingEntry != 0 {
+		b.clearEntryLevels()
+		b.pendingEntry = 0
+	}
+}
+
+// ResetTradingStateAfterWarmup implements strategy.PostWarmupCleanup.
+func (b *Bounce) ResetTradingStateAfterWarmup() {
+	b.pos = 0
+	b.pendingEntry = 0
+	b.pendingExit = false
+	b.clearEntryLevels()
+	b.eodSent = false
+	b.currentDay = ""
 }
 
 func (b *Bounce) Stop() { b.stopped = true }
@@ -405,28 +473,30 @@ func (b *Bounce) IndicatorData() interface{} {
 // --- StatefulStrategy ---
 
 type lbState struct {
-	ATRMult    float64       `json:"atr_mult"`
-	SLMult     float64       `json:"sl_mult"`
-	TPMult     float64       `json:"tp_mult"`
-	LevelDays  int           `json:"level_days"`
-	Qty        int64         `json:"qty"`
-	CutoffHour int           `json:"cutoff_hour"`
-	CutoffMin  int           `json:"cutoff_min"`
-	Support    []float64     `json:"support"`
-	Resistance []float64     `json:"resistance"`
-	ATR        float64       `json:"atr"`
-	DailyHighs []float64     `json:"daily_highs"`
-	DailyLows  []float64     `json:"daily_lows"`
-	DailyTRs   []float64     `json:"daily_trs"`
-	PrevClose  float64       `json:"prev_close"`
-	Pos        int64         `json:"pos"`
-	EntryPrice float64       `json:"entry_price"`
-	StopLoss   float64       `json:"stop_loss"`
-	TakeProfit float64       `json:"take_profit"`
-	CurrentDay string        `json:"current_day"`
-	EodSent    bool          `json:"eod_sent"`
-	History    []CandlePoint `json:"history,omitempty"`
-	Signals    []SignalPoint `json:"signals,omitempty"`
+	ATRMult      float64       `json:"atr_mult"`
+	SLMult       float64       `json:"sl_mult"`
+	TPMult       float64       `json:"tp_mult"`
+	LevelDays    int           `json:"level_days"`
+	Qty          int64         `json:"qty"`
+	CutoffHour   int           `json:"cutoff_hour"`
+	CutoffMin    int           `json:"cutoff_min"`
+	Support      []float64     `json:"support"`
+	Resistance   []float64     `json:"resistance"`
+	ATR          float64       `json:"atr"`
+	DailyHighs   []float64     `json:"daily_highs"`
+	DailyLows    []float64     `json:"daily_lows"`
+	DailyTRs     []float64     `json:"daily_trs"`
+	PrevClose    float64       `json:"prev_close"`
+	Pos          int64         `json:"pos"`
+	PendingEntry int64         `json:"pending_entry"`
+	PendingExit  bool          `json:"pending_exit"`
+	EntryPrice   float64       `json:"entry_price"`
+	StopLoss     float64       `json:"stop_loss"`
+	TakeProfit   float64       `json:"take_profit"`
+	CurrentDay   string        `json:"current_day"`
+	EodSent      bool          `json:"eod_sent"`
+	History      []CandlePoint `json:"history,omitempty"`
+	Signals      []SignalPoint `json:"signals,omitempty"`
 }
 
 func (b *Bounce) Snapshot() ([]byte, error) {
@@ -436,9 +506,12 @@ func (b *Bounce) Snapshot() ([]byte, error) {
 		CutoffHour: b.cutoffHour, CutoffMin: b.cutoffMin,
 		Support: b.support, Resistance: b.resistance, ATR: b.atr,
 		DailyHighs: b.dailyHighs, DailyLows: b.dailyLows, DailyTRs: b.dailyTRs,
-		PrevClose: b.prevClose,
-		Pos:       b.pos, EntryPrice: b.entryPrice,
-		StopLoss: b.stopLoss, TakeProfit: b.takeProfit,
+		PrevClose:    b.prevClose,
+		Pos:          b.pos,
+		PendingEntry: b.pendingEntry,
+		PendingExit:  b.pendingExit,
+		EntryPrice:   b.entryPrice,
+		StopLoss:     b.stopLoss, TakeProfit: b.takeProfit,
 		CurrentDay: b.currentDay, EodSent: b.eodSent,
 		History: b.history, Signals: b.signals,
 	})
@@ -477,6 +550,8 @@ func (b *Bounce) Restore(blob []byte) error {
 	b.dailyTRs = st.DailyTRs
 	b.prevClose = st.PrevClose
 	b.pos = st.Pos
+	b.pendingEntry = st.PendingEntry
+	b.pendingExit = st.PendingExit
 	b.entryPrice = st.EntryPrice
 	b.stopLoss = st.StopLoss
 	b.takeProfit = st.TakeProfit
@@ -497,11 +572,13 @@ func (b *Bounce) ChartCandles() int { return 200 }
 func (b *Bounce) DailyWarmupCandles() int { return b.levelDays + 5 }
 
 var (
-	_ strategy.StatefulStrategy  = (*Bounce)(nil)
-	_ strategy.IndicatorProvider = (*Bounce)(nil)
-	_ strategy.WarmupHint        = (*Bounce)(nil)
-	_ strategy.ChartHint         = (*Bounce)(nil)
-	_ strategy.DailyWarmupHint   = (*Bounce)(nil)
+	_ strategy.StatefulStrategy             = (*Bounce)(nil)
+	_ strategy.IndicatorProvider            = (*Bounce)(nil)
+	_ strategy.WarmupHint                   = (*Bounce)(nil)
+	_ strategy.ChartHint                    = (*Bounce)(nil)
+	_ strategy.DailyWarmupHint              = (*Bounce)(nil)
+	_ strategy.SignalDispatchFailureHandler = (*Bounce)(nil)
+	_ strategy.PostWarmupCleanup            = (*Bounce)(nil)
 )
 
 // --- sorting helpers ---

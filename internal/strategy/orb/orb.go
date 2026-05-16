@@ -58,14 +58,16 @@ type Breakout struct {
 	cutoffMin    int
 	tz           *time.Location
 
-	rangeHigh   float64
-	rangeLow    float64
-	rangeFormed bool
-	candleCount int
-	pos         int64  // +1 long, -1 short, 0 flat
-	currentDay  string // "2006-01-02" — resets on new trading day
-	eodSent     bool   // true if EOD close signal already sent today
-	stopped     bool
+	rangeHigh    float64
+	rangeLow     float64
+	rangeFormed  bool
+	candleCount  int
+	pos          int64  // +1 long, -1 short, 0 flat — confirmed by broker fill
+	pendingEntry int64  // +1 or -1 while entry/reverse order is in flight
+	pendingExit  bool   // true while EOD close order is in flight
+	currentDay   string // "2006-01-02" — resets on new trading day
+	eodSent      bool   // true if EOD close signal already sent today
+	stopped      bool
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -126,6 +128,8 @@ func (b *Breakout) Configure(params map[string]string) error {
 	b.rangeFormed = false
 	b.candleCount = 0
 	b.pos = 0
+	b.pendingEntry = 0
+	b.pendingExit = false
 	b.currentDay = ""
 	b.eodSent = false
 	return nil
@@ -135,18 +139,20 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 	if b.stopped || !k.IsComplete {
 		return nil
 	}
+	if b.pendingEntry != 0 || b.pendingExit {
+		return nil
+	}
 
 	t := k.Time.In(b.tz)
 	day := t.Format("2006-01-02")
 
-	// New trading day — reset everything
+	// New trading day — reset range and counters; pos stays (broker may still hold).
 	if day != b.currentDay {
 		b.currentDay = day
 		b.rangeHigh = 0
 		b.rangeLow = math.MaxFloat64
 		b.rangeFormed = false
 		b.candleCount = 0
-		b.pos = 0
 		b.eodSent = false
 	}
 
@@ -180,6 +186,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 				reason = "eod close short"
 			}
 			b.eodSent = true
+			b.pendingExit = true
 			sig := strategy.Signal{
 				InstrumentUID: k.InstrumentUID,
 				Direction:     dir,
@@ -189,7 +196,6 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 				CandleTime:    k.Time,
 			}
 			b.recordSignal(k.Time, dir, reason, k.Close)
-			b.pos = 0
 			return []strategy.Signal{sig}
 		}
 		return nil
@@ -206,7 +212,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 		qty := b.qty
 		reason := "orb breakout long"
 		if b.pos < 0 {
-			qty = b.qty * 2 // close short + open long
+			qty = b.qty * 2
 			reason = "orb reverse to long"
 		}
 		out = append(out, strategy.Signal{
@@ -218,12 +224,12 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 			CandleTime:    k.Time,
 		})
 		b.recordSignal(k.Time, "buy", reason, k.Close)
-		b.pos = 1
+		b.pendingEntry = 1
 	} else if k.Close < b.rangeLow && b.pos >= 0 {
 		qty := b.qty
 		reason := "orb breakout short"
 		if b.pos > 0 {
-			qty = b.qty * 2 // close long + open short
+			qty = b.qty * 2
 			reason = "orb reverse to short"
 		}
 		out = append(out, strategy.Signal{
@@ -235,7 +241,7 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 			CandleTime:    k.Time,
 		})
 		b.recordSignal(k.Time, "sell", reason, k.Close)
-		b.pos = -1
+		b.pendingEntry = -1
 	}
 
 	return out
@@ -244,10 +250,38 @@ func (b *Breakout) OnCandle(k strategy.Candle) []strategy.Signal {
 func (b *Breakout) OnOrderbook(_ strategy.Orderbook) []strategy.Signal { return nil }
 
 func (b *Breakout) OnExecution(ev strategy.ExecutionEvent) {
-	s := strings.ToLower(ev.Status)
-	if s == "cancelled" || s == "rejected" {
-		if strings.Contains(strings.ToLower(ev.Message), "reject") {
+	switch strings.ToLower(ev.Status) {
+	case "filled", "partially_filled":
+		if b.pendingEntry != 0 {
+			b.pos = b.pendingEntry
+			b.pendingEntry = 0
+		}
+		if b.pendingExit {
 			b.pos = 0
+			b.pendingExit = false
+		}
+	case "cancelled", "rejected":
+		if strings.Contains(strings.ToLower(ev.Message), "reject") {
+			if b.pendingEntry != 0 {
+				b.pendingEntry = 0
+			}
+			if b.pendingExit {
+				b.pendingExit = false
+				b.eodSent = false
+			}
+		}
+	}
+}
+
+// OnSignalDispatchFailed implements strategy.SignalDispatchFailureHandler.
+func (b *Breakout) OnSignalDispatchFailed(sig strategy.Signal, _ string) {
+	if b.pendingEntry != 0 {
+		b.pendingEntry = 0
+	}
+	if b.pendingExit {
+		b.pendingExit = false
+		if strings.Contains(strings.ToLower(sig.Reason), "eod") {
+			b.eodSent = false
 		}
 	}
 }
@@ -306,6 +340,8 @@ type orbState struct {
 	RangeFormed  bool          `json:"range_formed"`
 	CandleCount  int           `json:"candle_count"`
 	Pos          int64         `json:"pos"`
+	PendingEntry int64         `json:"pending_entry"`
+	PendingExit  bool          `json:"pending_exit"`
 	CurrentDay   string        `json:"current_day"`
 	EodSent      bool          `json:"eod_sent"`
 	History      []CandlePoint `json:"history,omitempty"`
@@ -323,6 +359,8 @@ func (b *Breakout) Snapshot() ([]byte, error) {
 		RangeFormed:  b.rangeFormed,
 		CandleCount:  b.candleCount,
 		Pos:          b.pos,
+		PendingEntry: b.pendingEntry,
+		PendingExit:  b.pendingExit,
 		CurrentDay:   b.currentDay,
 		EodSent:      b.eodSent,
 		History:      b.history,
@@ -351,6 +389,8 @@ func (b *Breakout) Restore(blob []byte) error {
 	b.rangeFormed = st.RangeFormed
 	b.candleCount = st.CandleCount
 	b.pos = st.Pos
+	b.pendingEntry = st.PendingEntry
+	b.pendingExit = st.PendingExit
 	b.currentDay = st.CurrentDay
 	b.eodSent = st.EodSent
 	b.history = st.History
@@ -366,11 +406,21 @@ func (b *Breakout) WarmupCandles() int { return b.rangeCandles }
 // 200 fifteen-minute bars covers ~3.5 trading days with full range context.
 func (b *Breakout) ChartCandles() int { return 200 }
 
+// ResetTradingStateAfterWarmup implements strategy.PostWarmupCleanup.
+func (b *Breakout) ResetTradingStateAfterWarmup() {
+	b.pos = 0
+	b.pendingEntry = 0
+	b.pendingExit = false
+	b.eodSent = false
+}
+
 var (
-	_ strategy.StatefulStrategy  = (*Breakout)(nil)
-	_ strategy.IndicatorProvider = (*Breakout)(nil)
-	_ strategy.WarmupHint        = (*Breakout)(nil)
-	_ strategy.ChartHint         = (*Breakout)(nil)
+	_ strategy.StatefulStrategy            = (*Breakout)(nil)
+	_ strategy.IndicatorProvider           = (*Breakout)(nil)
+	_ strategy.WarmupHint                  = (*Breakout)(nil)
+	_ strategy.ChartHint                   = (*Breakout)(nil)
+	_ strategy.PostWarmupCleanup           = (*Breakout)(nil)
+	_ strategy.SignalDispatchFailureHandler = (*Breakout)(nil)
 )
 
 func intFrom(m map[string]string, key string, def int) int {

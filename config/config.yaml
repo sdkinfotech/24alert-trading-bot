@@ -133,6 +133,10 @@ strategies:
   metrics_port: 9120
   evaluation_timeout_ms: 1000
   journal_path: "data/strategy_journal.db"
+  trading_schedule:
+    main_start: "10:00"
+    main_end: "18:39"
+    timezone: "Europe/Moscow"
   watchdog:
     enabled: true
     check_interval_sec: 60

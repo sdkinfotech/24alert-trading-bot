@@ -37,6 +37,7 @@ type Runner struct {
 	strategiesCfg config.StrategiesRunnerConfig
 	reg           *Registry
 	deps          RunnerDeps
+	schedule      *TradingSchedule
 
 	tinvestClient *tinvest.Client
 	rlm           *tinvest.RateLimiterManager
@@ -105,12 +106,19 @@ func NewRunner(
 	if journ == nil {
 		journ = journal.Noop{}
 	}
+	tsCfg := strategiesCfg.TradingSchedule
+	sched, err := NewTradingSchedule(tsCfg.MainStart, tsCfg.MainEnd, tsCfg.Timezone)
+	if err != nil {
+		logger.Warn("invalid trading_schedule config, using MOEX defaults", "error", err)
+		sched, _ = NewTradingSchedule("", "", "")
+	}
 	return &Runner{
 		cfg:           cfg,
 		configPath:    configPath,
 		strategiesCfg: strategiesCfg,
 		reg:           reg,
 		deps:          deps,
+		schedule:      sched,
 		tinvestClient: client,
 		rlm:           rlm,
 		mdSvc:         mdSvc,
@@ -454,6 +462,9 @@ func (r *Runner) warmupStrategy(
 			"fed", fed, "needed", needed,
 			"last_candle", last.Format(time.RFC3339))
 	}
+	if pc, ok := st.(PostWarmupCleanup); ok {
+		pc.ResetTradingStateAfterWarmup()
+	}
 	return result
 }
 
@@ -511,6 +522,16 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		dir := strings.ToLower(strings.TrimSpace(sig.Direction))
 		metrics.StrategySignalsTotal.WithLabelValues(rt.id, dir).Inc()
 
+		if r.schedule != nil && !r.schedule.IsMainSession(time.Now()) {
+			r.logger.Info("signal blocked: outside main trading session",
+				"instance", rt.id, "direction", dir, "reason", sig.Reason)
+			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "session_blocked").Inc()
+			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok {
+				fh.OnSignalDispatchFailed(sig, "session_blocked")
+			}
+			continue
+		}
+
 		rec := journal.SignalRecord{
 			InstanceID:    rt.id,
 			InstrumentUID: sig.InstrumentUID,
@@ -536,11 +557,18 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		if err != nil {
 			r.logger.Warn("risk validation error", "instance", rt.id, "error", err)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "risk_error").Inc()
+			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
+				fh.OnSignalDispatchFailed(sig, "risk_error")
+			}
 			continue
 		}
 		if resp == nil || !resp.Allowed {
-			r.logger.Info("risk rejected signal", "instance", rt.id, "instrument", sig.InstrumentUID)
+			r.logger.Info("risk rejected signal", "instance", rt.id, "instrument", sig.InstrumentUID,
+				"signal_reason", sig.Reason, "risk_detail", formatRiskDenial(resp))
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "risk_rejected").Inc()
+			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
+				fh.OnSignalDispatchFailed(sig, "risk_rejected")
+			}
 			continue
 		}
 
@@ -549,6 +577,9 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		if err != nil {
 			r.logger.Warn("PostOrder failed", "instance", rt.id, "error", err)
 			metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "post_error").Inc()
+			if fh, ok := rt.strat.(SignalDispatchFailureHandler); ok { //nolint:misspell // strat is short for strategy
+				fh.OnSignalDispatchFailed(sig, "post_error")
+			}
 			continue
 		}
 		oid := postResp.GetOrderId()
@@ -757,4 +788,29 @@ func (r *Runner) StartInstanceByID(ctx context.Context, id string) error {
 	}
 	r.mu.Unlock()
 	return r.startInstance(ctx, inst)
+}
+
+// formatRiskDenial builds a short human-readable summary from failed risk checks (for logs).
+func formatRiskDenial(resp *risk.RiskResponse) string {
+	if resp == nil {
+		return "nil_response"
+	}
+	var b strings.Builder
+	for _, c := range resp.Checks {
+		if c.Passed {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("; ")
+		}
+		if c.Name != "" {
+			b.WriteString(c.Name)
+			b.WriteString(": ")
+		}
+		b.WriteString(c.Reason)
+	}
+	if b.Len() == 0 {
+		return "denied_no_check_details"
+	}
+	return b.String()
 }

@@ -95,9 +95,18 @@ type StrategiesRunnerConfig struct {
 	MetricsPort         int                       `mapstructure:"metrics_port"`
 	EvaluationTimeoutMS int                       `mapstructure:"evaluation_timeout_ms"`
 	JournalPath         string                    `mapstructure:"journal_path"`
+	TradingSchedule     TradingScheduleConfig     `mapstructure:"trading_schedule"`
 	Watchdog            WatchdogRunnerConfig      `mapstructure:"watchdog"`
 	Notifications       NotificationsRunnerConfig `mapstructure:"notifications"`
 	Instances           []StrategyInstanceConfig  `mapstructure:"instances"`
+}
+
+// TradingScheduleConfig defines when the runner is allowed to submit orders.
+// Outside this window signals are blocked. Format: "HH:MM".
+type TradingScheduleConfig struct {
+	MainStart string `mapstructure:"main_start"` // default "10:00"
+	MainEnd   string `mapstructure:"main_end"`   // default "18:39"
+	Timezone  string `mapstructure:"timezone"`   // default "Europe/Moscow"
 }
 
 // WatchdogRunnerConfig configures periodic self-checks in strategy-runner.

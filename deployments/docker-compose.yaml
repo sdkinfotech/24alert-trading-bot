@@ -192,6 +192,7 @@ services:
       - AI_CHAT_MODEL=${AI_CHAT_MODEL:-anthropic/claude-sonnet-4}
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
+      - strategy-data:/app/data
     networks:
       - trading-bot-net
     restart: unless-stopped
@@ -297,3 +298,4 @@ networks:
 volumes:
   redis-data:
   prometheus-data:
+  strategy-data:

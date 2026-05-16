@@ -44,12 +44,13 @@ const maxHistoryLen = 1000
 
 // Crossover implements a minimal SMA crossover on completed candles.
 type Crossover struct {
-	fastN   int
-	slowN   int
-	qty     int64
-	closes  []float64
-	pos     int64 // +1 long, -1 short, 0 flat
-	stopped bool
+	fastN        int
+	slowN        int
+	qty          int64
+	closes       []float64
+	pos          int64 // +1 long, -1 short, 0 flat — confirmed by broker fill
+	pendingEntry int64 // +1 or -1 while order is in flight, 0 when idle
+	stopped      bool
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -89,11 +90,15 @@ func (c *Crossover) Configure(params map[string]string) error {
 	}
 	c.closes = c.closes[:0]
 	c.pos = 0
+	c.pendingEntry = 0
 	return nil
 }
 
 func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 	if c.stopped || !k.IsComplete {
+		return nil
+	}
+	if c.pendingEntry != 0 {
 		return nil
 	}
 	c.closes = append(c.closes, k.Close)
@@ -127,7 +132,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		}
 		out = append(out, sig)
 		c.recordSignal(k.Time, "buy", "sma golden cross", k.Close)
-		c.pos = 1
+		c.pendingEntry = 1
 	} else if prevFast >= prevSlow && fast < slow && c.pos >= 0 {
 		sig := strategy.Signal{
 			InstrumentUID: k.InstrumentUID,
@@ -139,7 +144,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		}
 		out = append(out, sig)
 		c.recordSignal(k.Time, "sell", "sma death cross", k.Close)
-		c.pos = -1
+		c.pendingEntry = -1
 	}
 	return out
 }
@@ -181,39 +186,54 @@ func (c *Crossover) OnOrderbook(_ strategy.Orderbook) []strategy.Signal { return
 func (c *Crossover) OnExecution(ev strategy.ExecutionEvent) {
 	switch strings.ToLower(ev.Status) {
 	case "filled", "partially_filled":
-		// Position is tracked by crossover direction; refine with fills if needed.
+		if c.pendingEntry != 0 {
+			c.pos = c.pendingEntry
+			c.pendingEntry = 0
+		}
 	case "cancelled", "rejected":
-		// reset flat on hard failure
 		if strings.Contains(strings.ToLower(ev.Message), "reject") {
-			c.pos = 0
+			c.pendingEntry = 0
 		}
 	}
+}
+
+// OnSignalDispatchFailed implements strategy.SignalDispatchFailureHandler.
+func (c *Crossover) OnSignalDispatchFailed(_ strategy.Signal, _ string) {
+	c.pendingEntry = 0
 }
 
 func (c *Crossover) Stop() {
 	c.stopped = true
 }
 
+// ResetTradingStateAfterWarmup implements strategy.PostWarmupCleanup.
+func (c *Crossover) ResetTradingStateAfterWarmup() {
+	c.pos = 0
+	c.pendingEntry = 0
+}
+
 type smaState struct {
-	FastN   int           `json:"fast_n"`
-	SlowN   int           `json:"slow_n"`
-	Qty     int64         `json:"qty"`
-	Closes  []float64     `json:"closes"`
-	Pos     int64         `json:"pos"`
-	History []CandlePoint `json:"history,omitempty"`
-	Signals []SignalPoint `json:"signals,omitempty"`
+	FastN        int           `json:"fast_n"`
+	SlowN        int           `json:"slow_n"`
+	Qty          int64         `json:"qty"`
+	Closes       []float64     `json:"closes"`
+	Pos          int64         `json:"pos"`
+	PendingEntry int64         `json:"pending_entry"`
+	History      []CandlePoint `json:"history,omitempty"`
+	Signals      []SignalPoint `json:"signals,omitempty"`
 }
 
 // Snapshot persists internal buffers for StatefulStrategy.
 func (c *Crossover) Snapshot() ([]byte, error) {
 	st := smaState{
-		FastN:   c.fastN,
-		SlowN:   c.slowN,
-		Qty:     c.qty,
-		Closes:  append([]float64(nil), c.closes...),
-		Pos:     c.pos,
-		History: c.history,
-		Signals: c.signals,
+		FastN:        c.fastN,
+		SlowN:        c.slowN,
+		Qty:          c.qty,
+		Closes:       append([]float64(nil), c.closes...),
+		Pos:          c.pos,
+		PendingEntry: c.pendingEntry,
+		History:      c.history,
+		Signals:      c.signals,
 	}
 	return json.Marshal(st)
 }
@@ -238,6 +258,7 @@ func (c *Crossover) Restore(blob []byte) error {
 	}
 	c.closes = append([]float64(nil), st.Closes...)
 	c.pos = st.Pos
+	c.pendingEntry = st.PendingEntry
 	c.history = st.History
 	c.signals = st.Signals
 	return nil
@@ -260,6 +281,8 @@ func (c *Crossover) ChartCandles() int {
 var _ strategy.StatefulStrategy = (*Crossover)(nil)
 var _ strategy.WarmupHint = (*Crossover)(nil)
 var _ strategy.ChartHint = (*Crossover)(nil)
+var _ strategy.PostWarmupCleanup = (*Crossover)(nil)
+var _ strategy.SignalDispatchFailureHandler = (*Crossover)(nil)
 
 func smaTail(xs []float64, n int) float64 {
 	if len(xs) < n || n <= 0 {

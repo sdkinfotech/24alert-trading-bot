@@ -9,3 +9,16 @@ type Strategy interface {
 	OnExecution(event ExecutionEvent)
 	Stop()
 }
+
+// SignalDispatchFailureHandler is optional: called when the runner could not submit
+// an order for a signal (risk rejection, risk error, PostOrder error). Strategies
+// that optimistically updated internal state when emitting the signal should revert it here.
+type SignalDispatchFailureHandler interface {
+	OnSignalDispatchFailed(sig Signal, stage string)
+}
+
+// PostWarmupCleanup is optional: called after historical candle warmup so strategies
+// can clear simulated position / pending flags while keeping indicator buffers.
+type PostWarmupCleanup interface {
+	ResetTradingStateAfterWarmup()
+}
