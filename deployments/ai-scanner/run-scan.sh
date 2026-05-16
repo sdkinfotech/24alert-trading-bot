@@ -21,6 +21,17 @@ if [ ! -d "$WS" ] || [ ! -f "$WS/system-prompt.md" ]; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=bad_workspace $WS" >&2
   exit 3
 fi
+REF="$WS/reference/ai-scanner-reference.md"
+MEM="$WS/memory/agent-memory.md"
+REPORTS="$WS/reports"
+if [ ! -f "$REF" ]; then
+  echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=missing_reference $REF" >&2
+  exit 3
+fi
+mkdir -p "$WS/memory" "$REPORTS"
+if [ ! -s "$MEM" ]; then
+  cp "$WS/reference/agent-memory.seed.md" "$MEM"
+fi
 
 if ! command -v agent >/dev/null 2>&1; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=agent_not_found PATH=$PATH" >&2
@@ -29,13 +40,13 @@ fi
 
 case "$KIND" in
   post-market)
-    PROMPT="Выполни пост-маркет анализ за $DATE по инструкции из system-prompt.md: 1) Сканируй ТОЛЬКО фьючерсы с помощью scan_market.py, учитывай contract_price <= AI_SCANNER_MAX_CONTRACT_PRICE 2) Не отсекай кандидатов по score/atr_pct до бэктеста — score только ранжирует очередь 3) Для каждого futures-кандидата из результата сканера запусти бэктест sma и level_bounce с --optimize 4) Отбери только стратегии с Sharpe>1, PnL>0, win_rate>45%, trades>=5, profit_factor>1.3 5) Обнови config.yaml — добавляй только SPBFUT futures стратегии, убери/замени убыточные auto-стратегии 6) Вызови POST /config/reload на strategy-runner 7) Запиши отчёт в vault. Действуй автономно, без подтверждений."
+    PROMPT="Выполни пост-маркет анализ за $DATE по инструкции из system-prompt.md. Сначала прочитай справочник $REF и память $MEM. Затем: 1) Сканируй ТОЛЬКО фьючерсы с помощью scan_market.py, учитывай contract_price <= AI_SCANNER_MAX_CONTRACT_PRICE 2) Не отсекай кандидатов по score/atr_pct до бэктеста — score только ранжирует очередь 3) Для каждого futures-кандидата из результата сканера запусти бэктест sma и level_bounce с --optimize 4) Отбери только стратегии с Sharpe>1, PnL>0, win_rate>45%, trades>=5, profit_factor>1.3 5) Обнови config.yaml — добавляй только SPBFUT futures стратегии, убери/замени убыточные auto-стратегии 6) Вызови POST /config/reload на strategy-runner 7) Запиши отчёт в $REPORTS 8) Дополни $MEM краткой записью о решениях и метриках. Действуй автономно, без подтверждений."
     ;;
   pre-market)
-    PROMPT="Выполни пре-маркет проверку за $DATE по инструкции из system-prompt.md: 1) Проверь здоровье всех сервисов (gateway, strategy-runner) 2) Проверь что все enabled стратегии запущены через GET /instances 3) Проверь PnL каждой стратегии за вчера 4) Запиши краткий отчёт в vault. Действуй автономно."
+    PROMPT="Выполни пре-маркет проверку за $DATE по инструкции из system-prompt.md. Сначала прочитай справочник $REF и память $MEM. Затем: 1) Проверь здоровье всех сервисов (gateway, strategy-runner) 2) Проверь что все enabled стратегии запущены через GET /instances 3) Проверь PnL каждой стратегии за вчера 4) Запиши краткий отчёт в $REPORTS 5) При значимых событиях дополни $MEM. Действуй автономно."
     ;;
   health)
-    PROMPT="Быстрая проверка здоровья 24alert за $DATE: 1) GET /health на gateway и strategy-runner 2) GET /instances — убедись что все enabled стратегии running 3) Если что-то не так — запиши в vault и попробуй перезапустить через API. Кратко."
+    PROMPT="Быстрая проверка здоровья 24alert за $DATE: сначала прочитай $REF и $MEM, затем 1) GET /health на gateway и strategy-runner 2) GET /instances — убедись что все enabled стратегии running 3) Если что-то не так — запиши в $REPORTS, попробуй перезапустить через API и дополни $MEM. Кратко."
     ;;
   *)
     echo "Unknown scan kind: $KIND (expected: post-market | pre-market | health)" >&2

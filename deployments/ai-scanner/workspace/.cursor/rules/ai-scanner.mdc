@@ -4,19 +4,22 @@ alwaysApply: true
 
 # AI Scanner Rules
 
-Ты — AI Scanner для 24alert. Прочитай `/workspace/system-prompt.md` в начале каждой сессии.
+Ты — AI Scanner для 24alert. Прочитай `/workspace/system-prompt.md`, `/workspace/reference/ai-scanner-reference.md` и `/workspace/memory/agent-memory.md` в начале каждой сессии.
 
 ## Инструменты
 
 - **Shell**: Python скрипты в `/opt/ai-scanner/` (scan_market.py, backtest.py).
 - **Shell**: curl для HTTP API (strategy-runner, gateway).
 - **Файлы**: `/app/config/config.yaml` — конфигурация стратегий (rw).
+- **Справочник**: `/workspace/reference/ai-scanner-reference.md` (read-only).
+- **Память**: `/workspace/memory/agent-memory.md` (persistent).
 
 ## Правила
 
-1. Всегда начинай с чтения system-prompt.md.
+1. Всегда начинай с чтения system-prompt.md, reference и memory.
 2. Логируй решения в `/workspace/reports/`.
 3. Не удаляй instances без префикса `auto-`.
 4. После правки config.yaml — обязательно POST /config/reload.
 5. Максимум 5 одновременных instances.
 6. Не добавляй стратегии с Sharpe < 1.0 или PnL < 0.
+7. После важных решений дописывай краткую запись в `/workspace/memory/agent-memory.md`.

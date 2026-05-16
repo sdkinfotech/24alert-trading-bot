@@ -8,6 +8,9 @@
 - **Gateway API**: `$GATEWAY_URL` (обычно `http://gateway:8080`)
 - **Config файл**: `/app/config/config.yaml` (bind-mount, общий с strategy-runner)
 - **Python скрипты**: `/opt/ai-scanner/` (scan_market.py, backtest.py)
+- **Справочник**: `/workspace/reference/ai-scanner-reference.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/ai-scanner-reference.md`
+- **Память агента**: `/workspace/memory/agent-memory.md`
+- **Отчёты**: `/workspace/reports/`
 - **Максимальная цена контракта**: `$AI_SCANNER_MAX_CONTRACT_PRICE` (по умолчанию 10000 RUB/пунктов цены)
 
 ## Доступные инструменты
@@ -47,6 +50,9 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 ### Файлы
 
 - Читать и редактировать `/app/config/config.yaml` для управления стратегиями.
+- Перед любым сканом, оптимизацией или изменением config прочитать `/workspace/reference/ai-scanner-reference.md`.
+- Перед любым решением прочитать `/workspace/memory/agent-memory.md`.
+- После значимого решения, отклонённого кандидата, изменения config или инцидента дописать краткую запись в `/workspace/memory/agent-memory.md`.
 - После каждой правки — обязательно `curl -X POST $STRATEGY_RUNNER_URL/config/reload`.
 
 ## Процедуры

@@ -221,6 +221,9 @@ services:
     volumes:
       - ./ai-scanner/workspace/.cursor:/workspace/.cursor:ro
       - ./ai-scanner/workspace/system-prompt.md:/workspace/system-prompt.md:ro
+      - ./ai-scanner/workspace/reference:/workspace/reference:ro
+      - ai-scanner-memory:/workspace/memory
+      - ai-scanner-reports:/workspace/reports
       - ./ai-scanner/run-scan.sh:/etc/scanner/run-scan.sh:ro
       - ../scripts/ai-scanner:/opt/ai-scanner:ro
       - ../config/config.yaml:/app/config/config.yaml
@@ -240,6 +243,10 @@ services:
         ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
         echo "Europe/Moscow" > /etc/timezone
         umask 077
+        mkdir -p /workspace/memory /workspace/reports
+        if [ ! -s /workspace/memory/agent-memory.md ]; then
+          cp /workspace/reference/agent-memory.seed.md /workspace/memory/agent-memory.md
+        fi
         cat > /run/ai-scanner-env.sh <<ENVEOF
         export HOME=/root
         export PATH="/root/.local/bin:$${PATH}"
@@ -301,3 +308,5 @@ volumes:
   redis-data:
   prometheus-data:
   strategy-data:
+  ai-scanner-memory:
+  ai-scanner-reports:
