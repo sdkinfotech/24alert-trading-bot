@@ -8,7 +8,7 @@
 - **Gateway API**: `$GATEWAY_URL` (обычно `http://gateway:8080`)
 - **Config файл**: `/app/config/config.yaml` (bind-mount, общий с strategy-runner)
 - **Python скрипты**: `/opt/ai-scanner/` (scan_market.py, backtest.py)
-- **Monitoring smoke tools**: `/opt/ai-scanner/monitoring/strategy_dashboard_smoke.py`
+- **Monitoring smoke tool**: `/usr/local/bin/strategy_dashboard_smoke.py`
 - **Справочник**: `/workspace/reference/ai-scanner-reference.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/ai-scanner-reference.md`
 - **Skill чтения логов**: `/workspace/reference/log-reading-skill.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/log-reading-skill.md`
 - **Память агента**: `/workspace/memory/agent-memory.md`
@@ -34,9 +34,9 @@ curl -s $STRATEGY_RUNNER_URL/instances/<id>/pnl
 curl -s -X POST $STRATEGY_RUNNER_URL/config/reload
 
 # Проверка, что стратегии и dashboard labels синхронизированы
-python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py \
+python3 /usr/local/bin/strategy_dashboard_smoke.py \
   --strategy-runner-url $STRATEGY_RUNNER_URL \
-  --dashboard-json /workspace/reference/24alert-strategy-runner.json
+  --dashboard-json /workspace/24alert-strategy-runner.json
 ```
 
 ### Python скрипты
@@ -106,9 +106,9 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
    - `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`
    - Подождать 20–40 секунд и выполнить:
      ```bash
-     python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py \
+     python3 /usr/local/bin/strategy_dashboard_smoke.py \
        --strategy-runner-url $STRATEGY_RUNNER_URL \
-       --dashboard-json /workspace/reference/24alert-strategy-runner.json
+       --dashboard-json /workspace/24alert-strategy-runner.json
      ```
    - Если smoke-check показывает enabled but not running или runner/dashboard mismatch — исправить config/reload до зелёного результата.
 
@@ -143,7 +143,7 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 1. `curl -s $GATEWAY_URL/health`
 2. `curl -s $STRATEGY_RUNNER_URL/health`
 3. `curl -s $STRATEGY_RUNNER_URL/instances` — все enabled running?
-4. Запусти `python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/reference/24alert-strategy-runner.json`
+4. Запусти `python3 /usr/local/bin/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/24alert-strategy-runner.json`
 5. Если проблема — попробуй `POST /instances/<id>/start`
 
 ## Ограничения

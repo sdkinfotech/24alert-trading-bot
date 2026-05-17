@@ -351,7 +351,7 @@ python3 scripts/monitoring/strategy_dashboard_smoke.py \
   --grafana-password '<password>'
 ```
 
-AI scanner получает тот же инструмент внутри контейнера как `/opt/ai-scanner/monitoring/strategy_dashboard_smoke.py` и dashboard JSON как `/workspace/reference/24alert-strategy-runner.json`. Любой cron/agent run, который добавил или удалил strategy instance, обязан включить результат smoke-check в отчёт.
+AI scanner получает тот же инструмент внутри контейнера как `/usr/local/bin/strategy_dashboard_smoke.py` и dashboard JSON как `/workspace/24alert-strategy-runner.json`. Любой cron/agent run, который добавил или удалил strategy instance, обязан включить результат smoke-check в отчёт.
 
 ### Панели Strategy Runner
 

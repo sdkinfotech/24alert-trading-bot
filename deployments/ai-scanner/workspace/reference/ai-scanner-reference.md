@@ -54,7 +54,7 @@ If two variants are close, prefer lower drawdown and more trades over a tiny Sha
 - Health: `curl -s $GATEWAY_URL/health` and `curl -s $STRATEGY_RUNNER_URL/health`
 - Instances: `curl -s $STRATEGY_RUNNER_URL/instances`
 - Reload config after edits: `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`
-- Strategy/dashboard smoke-check after config edits: `python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/reference/24alert-strategy-runner.json`
+- Strategy/dashboard smoke-check after config edits: `python3 /usr/local/bin/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/24alert-strategy-runner.json`
 
 ## Strategy Dashboard Synchronization Contract
 
