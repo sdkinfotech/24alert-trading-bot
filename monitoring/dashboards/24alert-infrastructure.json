@@ -80,7 +80,7 @@
         }
       },
       "targets": [
-        { "expr": "max by (container, image, state) (alert24_ops_container_running)", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
+        { "expr": "max by (container, image, state) (alert24_ops_container_running{state!=\"\"})", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
       ]
     },
     {
@@ -91,7 +91,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
       "targets": [
-        { "expr": "max by (container) (alert24_ops_container_restarts)", "legendFormat": "{{ container }}" }
+        { "expr": "max by (container) (alert24_ops_container_restarts{state!=\"\"})", "legendFormat": "{{ container }}" }
       ]
     },
     {
@@ -102,7 +102,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
       "targets": [
-        { "expr": "max by (container, image, image_id, state) (alert24_ops_container_info)", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
+        { "expr": "max by (container, image, image_id, state) (alert24_ops_container_info{state!=\"\"})", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
       ]
     },
     {
@@ -122,7 +122,7 @@
         }
       },
       "targets": [
-        { "expr": "max(alert24_ops_container_running{container=\"24alert-prometheus-agent\"})", "instant": true, "legendFormat": "prometheus-agent" }
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-prometheus-agent\",state!=\"\"})", "instant": true, "legendFormat": "prometheus-agent" }
       ]
     },
     {
@@ -142,7 +142,7 @@
         }
       },
       "targets": [
-        { "expr": "max(alert24_ops_container_running{container=\"24alert-promtail\"})", "instant": true, "legendFormat": "promtail" }
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-promtail\",state!=\"\"})", "instant": true, "legendFormat": "promtail" }
       ]
     },
     {
@@ -162,7 +162,7 @@
         }
       },
       "targets": [
-        { "expr": "max(alert24_ops_container_running{container=\"24alert-ops-exporter\"})", "instant": true, "legendFormat": "ops-exporter" }
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-ops-exporter\",state!=\"\"})", "instant": true, "legendFormat": "ops-exporter" }
       ]
     },
     {
@@ -209,5 +209,5 @@
     }
   ],
   "schemaVersion": 39,
-  "version": 2
+  "version": 3
 }
