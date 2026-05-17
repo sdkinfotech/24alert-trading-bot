@@ -88,7 +88,7 @@ def main() -> int:
     parser.add_argument("--strategy-runner-url", default=os.getenv("STRATEGY_RUNNER_URL", "http://127.0.0.1:9020"))
     parser.add_argument("--prometheus-url", default=os.getenv("PROMETHEUS_URL"))
     parser.add_argument("--grafana-url", default=os.getenv("GRAFANA_URL"))
-    parser.add_argument("--dashboard-json", default="monitoring/dashboards/24alert-strategy-runner.json")
+    parser.add_argument("--dashboard-json", default=None)
     parser.add_argument("--prometheus-user", default=os.getenv("PROMETHEUS_USER"))
     parser.add_argument("--prometheus-password", default=os.getenv("PROMETHEUS_PASSWORD"))
     parser.add_argument("--grafana-user", default=os.getenv("GRAFANA_USER"))
@@ -96,6 +96,10 @@ def main() -> int:
     parser.add_argument("--wait-seconds", type=int, default=0)
     parser.add_argument("--skip-runner", action="store_true", help="Only validate dashboard JSON structure")
     args = parser.parse_args()
+    if not args.dashboard_json and not args.grafana_url:
+        local_dashboard = Path("monitoring/dashboards/24alert-strategy-runner.json")
+        if local_dashboard.exists():
+            args.dashboard_json = str(local_dashboard)
 
     if args.wait_seconds:
         time.sleep(args.wait_seconds)
