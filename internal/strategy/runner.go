@@ -150,12 +150,12 @@ func (r *Runner) Start(ctx context.Context) error {
 	for _, inst := range r.strategiesCfg.Instances {
 		r.byID[inst.ID] = inst
 	}
-	r.updateInstanceMetrics()
 	r.updateSessionMetrics(time.Now())
 
 	if err := r.prefetchInstruments(ctx); err != nil {
 		r.logger.Warn("prefetch instruments: some failures", "error", err)
 	}
+	r.updateInstanceMetrics()
 
 	go func() {
 		if err := r.streamMgr.Listen(ctx); err != nil && ctx.Err() == nil {
@@ -796,11 +796,11 @@ func (r *Runner) ReloadConfig(ctx context.Context) (added, removed, changed int,
 		r.byID[inst.ID] = inst
 	}
 	r.mu.Unlock()
-	r.updateInstanceMetrics()
 
 	if err := r.prefetchInstruments(ctx); err != nil {
 		r.logger.Warn("reload: prefetch instruments: some failures", "error", err)
 	}
+	r.updateInstanceMetrics()
 
 	// Start new or changed instances that are enabled.
 	for _, inst := range newCfg.Instances {
