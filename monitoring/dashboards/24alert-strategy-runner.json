@@ -8,6 +8,18 @@
   "templating": {
     "list": [
       {
+        "name": "strategy_instance",
+        "label": "Strategy tile instances",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(alert24_strategy_instance_enabled, exported_instance)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2,
+        "sort": 1,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
         "name": "instance",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -21,11 +33,14 @@
   "panels": [
     {
       "id": 1,
-      "title": "BMM6 Brent mini",
-      "description": "Плитка боевой стратегии fut-brent-mini-lb. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
+      "title": "Strategy: $strategy_instance",
+      "description": "Автоматическая плитка по label exported_instance из Prometheus. Новая стратегия появится здесь после /config/reload и первого scrape метрик; удалённая исчезнет после исчезновения series. RUNNING = enabled=1 и running=1 прямо сейчас.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "repeat": "strategy_instance",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -43,61 +58,7 @@
         }
       },
       "targets": [
-        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-brent-mini-lb\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-brent-mini-lb\"})", "instant": true, "legendFormat": "fut-brent-mini-lb" }
-      ]
-    },
-    {
-      "id": 11,
-      "title": "NGM6 Gas mini",
-      "description": "Плитка боевой стратегии fut-gas-mini-sma. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
-      "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "3": { "text": "RUNNING" },
-                "2": { "text": "STOPPED" },
-                "1": { "text": "CONFIG OFF / RUNNING" },
-                "0": { "text": "DISABLED" }
-              }
-            }
-          ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }
-        }
-      },
-      "targets": [
-        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-gas-mini-sma\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-gas-mini-sma\"})", "instant": true, "legendFormat": "fut-gas-mini-sma" }
-      ]
-    },
-    {
-      "id": 12,
-      "title": "MCM6 Mechel",
-      "description": "Плитка боевой стратегии fut-mechel-lb. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
-      "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "3": { "text": "RUNNING" },
-                "2": { "text": "STOPPED" },
-                "1": { "text": "CONFIG OFF / RUNNING" },
-                "0": { "text": "DISABLED" }
-              }
-            }
-          ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }
-        }
-      },
-      "targets": [
-        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-mechel-lb\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-mechel-lb\"})", "instant": true, "legendFormat": "fut-mechel-lb" }
+        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"$strategy_instance\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"$strategy_instance\"})", "instant": true, "legendFormat": "$strategy_instance" }
       ]
     },
     {
@@ -106,7 +67,7 @@
       "description": "1 = сейчас разрешённое окно FORTS, 0 = торговля намеренно заблокирована (ночь, выходной, клиринг). Расписание: Mon-Fri 10:00-14:00, 14:05-18:50, 19:00-23:50 MSK. Выходные заблокированы из-за низкой ликвидности.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 5 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -126,7 +87,7 @@
       "description": "Unix timestamp следующего разрешённого FORTS окна, показанный как дата/время. Если сейчас выходные или ночь — здесь видно, когда runner снова сможет отправлять заявки.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
       "targets": [
         { "expr": "alert24_strategy_next_session_open_timestamp{job=\"24alert-strategy-runner\"} * 1000", "legendFormat": "next open" }
@@ -138,7 +99,7 @@
       "description": "Сколько раз runner обнаружил расхождение своего ledger с брокерской позицией. Норма: 0. Любой рост — проверить сделки у брокера, журнал runner и позицию по инструменту.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 5 },
       "fieldConfig": {
         "defaults": {
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
@@ -154,7 +115,7 @@
       "description": "Total/realized/unrealized PnL по внутреннему ledger runner. Это оперативная оценка без полного учёта комиссий и всех брокерских нюансов. Для денег сверять с брокером.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 10 },
       "fieldConfig": { "defaults": { "unit": "currencyRUB" } },
       "targets": [
         { "expr": "alert24_strategy_total_pnl_rub{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} total" },
@@ -168,7 +129,7 @@
       "description": "Позиция по инструменту и текущая просадка стратегии. Норма зависит от стратегии. Неожиданная позиция вне торгового плана — проверить executions и broker portfolio.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 10 },
       "targets": [
         { "expr": "alert24_strategy_position_qty_shares{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} {{ instrument }} qty" },
         { "expr": "alert24_strategy_drawdown_percent{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} drawdown %" }
@@ -180,7 +141,7 @@
       "description": "Воронка исполнения: strategy signals, отмены session/risk/post и submitted orders. Норма: session_blocked может быть вне сессии; risk_error/post_error должны быть 0.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
       "targets": [
         { "expr": "sum by (exported_instance, direction) (increase(alert24_strategy_signals_total{exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} signal {{ direction }}" },
         { "expr": "sum by (exported_instance, status) (increase(alert24_strategy_orders_total{exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} order {{ status }}" }
@@ -192,7 +153,7 @@
       "description": "Почему сигнал не стал сделкой: session_blocked, risk_rejected, risk_error, post_error. session_blocked вне сессии — нормально; risk_error/post_error — расследовать.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
       "targets": [
         { "expr": "sum by (exported_instance, status, reason) (increase(alert24_strategy_events_total{type=\"signal_cancelled\",exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} {{ status }} {{ reason }}" }
       ]
@@ -203,7 +164,7 @@
       "description": "Сколько времени занимает обработка закрытой свечи стратегией. Рост может означать зависание внешнего API/стратегии или нагрузку на runner.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 20 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 25 },
       "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
         { "expr": "histogram_quantile(0.95, sum by (le, exported_instance) (rate(alert24_strategy_evaluation_duration_seconds_bucket{exported_instance=~\"$instance\"}[15m])))", "legendFormat": "{{ exported_instance }} p95" }
@@ -215,12 +176,12 @@
       "description": "Логи отменённых сигналов, risk rejects/errors, post errors и reconcile. Это основной журнал объяснений “почему был сигнал, но не было сделки”.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 20 },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 25 },
       "targets": [
         { "expr": "{project=\"24alert\",service=\"strategy-runner\"} |~ \"signal cancelled|risk_rejected|risk_error|post_error|reconcile|order submitted\"", "refId": "A" }
       ]
     }
   ],
   "schemaVersion": 39,
-  "version": 5
+  "version": 6
 }

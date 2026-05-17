@@ -8,6 +8,7 @@
 - **Gateway API**: `$GATEWAY_URL` (обычно `http://gateway:8080`)
 - **Config файл**: `/app/config/config.yaml` (bind-mount, общий с strategy-runner)
 - **Python скрипты**: `/opt/ai-scanner/` (scan_market.py, backtest.py)
+- **Monitoring smoke tools**: `/opt/ai-scanner/monitoring/strategy_dashboard_smoke.py`
 - **Справочник**: `/workspace/reference/ai-scanner-reference.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/ai-scanner-reference.md`
 - **Skill чтения логов**: `/workspace/reference/log-reading-skill.md` и публичная копия `$STRATEGY_RUNNER_URL/dashboard/reference/log-reading-skill.md`
 - **Память агента**: `/workspace/memory/agent-memory.md`
@@ -31,6 +32,11 @@ curl -s $STRATEGY_RUNNER_URL/instances/<id>/pnl
 
 # Перезагрузка конфига после правки config.yaml
 curl -s -X POST $STRATEGY_RUNNER_URL/config/reload
+
+# Проверка, что стратегии и dashboard labels синхронизированы
+python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py \
+  --strategy-runner-url $STRATEGY_RUNNER_URL \
+  --dashboard-json /workspace/reference/24alert-strategy-runner.json
 ```
 
 ### Python скрипты
@@ -56,6 +62,7 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 - Перед любым решением прочитать `/workspace/memory/agent-memory.md`.
 - После значимого решения, отклонённого кандидата, изменения config или инцидента дописать краткую запись в `/workspace/memory/agent-memory.md`.
 - После каждой правки — обязательно `curl -X POST $STRATEGY_RUNNER_URL/config/reload`.
+- После каждого добавления/удаления/переименования strategy instance — обязательно запустить monitoring smoke tool. Если проверка не проходит, нельзя считать задачу завершённой.
 
 ## Процедуры
 
@@ -97,10 +104,17 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
    - Формат ID новых instances: `auto-fut-<тикер>-<стратегия>` (например `auto-fut-bmm6-lb`)
    - Записать обновлённый config.yaml
    - `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`
+   - Подождать 20–40 секунд и выполнить:
+     ```bash
+     python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py \
+       --strategy-runner-url $STRATEGY_RUNNER_URL \
+       --dashboard-json /workspace/reference/24alert-strategy-runner.json
+     ```
+   - Если smoke-check показывает enabled but not running или runner/dashboard mismatch — исправить config/reload до зелёного результата.
 
 6. **Отчёт**
    - Записать отчёт в `/workspace/reports/<DATE>-night-scan.md`
-   - Содержание: что просканировано, что добавлено/убрано, параметры, Sharpe/PnL обоснование
+   - Содержание: что просканировано, что добавлено/убрано, параметры, Sharpe/PnL обоснование, результат monitoring smoke-check.
 
 ### PRE-MARKET (09:50 пн-пт)
 
@@ -129,7 +143,8 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 1. `curl -s $GATEWAY_URL/health`
 2. `curl -s $STRATEGY_RUNNER_URL/health`
 3. `curl -s $STRATEGY_RUNNER_URL/instances` — все enabled running?
-4. Если проблема — попробуй `POST /instances/<id>/start`
+4. Запусти `python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/reference/24alert-strategy-runner.json`
+5. Если проблема — попробуй `POST /instances/<id>/start`
 
 ## Ограничения
 

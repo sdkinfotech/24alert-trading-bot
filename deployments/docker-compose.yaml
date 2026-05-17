@@ -228,6 +228,8 @@ services:
       - ./ai-scanner/run-scan.sh:/etc/scanner/run-scan.sh:ro
       - ./ai-scanner/metrics-server.py:/etc/scanner/metrics-server.py:ro
       - ../scripts/ai-scanner:/opt/ai-scanner:ro
+      - ../scripts/monitoring:/opt/ai-scanner/monitoring:ro
+      - ../monitoring/dashboards/24alert-strategy-runner.json:/workspace/reference/24alert-strategy-runner.json:ro
       - ../config/config.yaml:/app/config/config.yaml
     expose:
       - "9130"

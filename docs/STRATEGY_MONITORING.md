@@ -327,6 +327,32 @@ rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma",status="risk_reje
 - `monitoring/dashboards/24alert-infrastructure.json`
 - `monitoring/rules/24alert.yml`
 
+### Workflow: strategy changes -> dashboard tiles
+
+Цель: добавление/удаление strategy instance не должно требовать ручного редактирования Grafana.
+
+Контракт:
+
+- `24alert Strategy Runner` использует переменную Grafana `$strategy_instance`, источник `label_values(alert24_strategy_instance_enabled, exported_instance)`.
+- Верхняя strategy-плитка является repeated panel по `$strategy_instance`; каждая новая метрика `exported_instance` автоматически создаёт отдельную плитку.
+- Плитка считает readiness: `enabled * 2 + running`, где `3=RUNNING`, `2=STOPPED`, `1=CONFIG OFF / RUNNING`, `0=DISABLED`.
+- После правки `config.yaml` обязательны `POST /config/reload`, ожидание scrape 20-40 секунд и smoke-check.
+
+Инструмент проверки:
+
+```bash
+python3 scripts/monitoring/strategy_dashboard_smoke.py \
+  --strategy-runner-url http://127.0.0.1:9020 \
+  --prometheus-url http://213.171.27.217:9191 \
+  --prometheus-user 24alert \
+  --prometheus-password '<password>' \
+  --grafana-url http://213.171.27.217:3535 \
+  --grafana-user admin \
+  --grafana-password '<password>'
+```
+
+AI scanner получает тот же инструмент внутри контейнера как `/opt/ai-scanner/monitoring/strategy_dashboard_smoke.py` и dashboard JSON как `/workspace/reference/24alert-strategy-runner.json`. Любой cron/agent run, который добавил или удалил strategy instance, обязан включить результат smoke-check в отчёт.
+
 ### Панели Strategy Runner
 
 **Row 1 — Ключевые числа (stat)**
@@ -365,7 +391,8 @@ rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma",status="risk_reje
 
 ### Переменные
 
-- `$instance` — фильтр по инстансу стратегии (label `exported_instance`), поддерживает мульти-выбор и All.
+- `$strategy_instance` — источник автоматических strategy tiles; обновляется из `alert24_strategy_instance_enabled`.
+- `$instance` — фильтр графиков по инстансу стратегии (label `exported_instance`), поддерживает мульти-выбор и All.
 
 ### Как обновить дашборд
 

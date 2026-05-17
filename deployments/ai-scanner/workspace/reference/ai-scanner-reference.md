@@ -54,6 +54,24 @@ If two variants are close, prefer lower drawdown and more trades over a tiny Sha
 - Health: `curl -s $GATEWAY_URL/health` and `curl -s $STRATEGY_RUNNER_URL/health`
 - Instances: `curl -s $STRATEGY_RUNNER_URL/instances`
 - Reload config after edits: `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`
+- Strategy/dashboard smoke-check after config edits: `python3 /opt/ai-scanner/monitoring/strategy_dashboard_smoke.py --strategy-runner-url $STRATEGY_RUNNER_URL --dashboard-json /workspace/reference/24alert-strategy-runner.json`
+
+## Strategy Dashboard Synchronization Contract
+
+The Grafana `24alert Strategy Runner` dashboard must not hardcode strategy IDs in the top status tiles. It uses a repeated stat panel driven by Prometheus:
+
+- variable: `strategy_instance`
+- source metric: `alert24_strategy_instance_enabled{exported_instance=...}`
+- tile readiness formula: `enabled * 2 + running`
+- value mapping: `3=RUNNING`, `2=STOPPED`, `1=CONFIG OFF / RUNNING`, `0=DISABLED`
+
+After adding, deleting, renaming, enabling, or disabling any strategy instance:
+
+1. Save `/app/config/config.yaml`.
+2. Run `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`.
+3. Wait 20-40 seconds for metrics scrape.
+4. Run the smoke-check tool above.
+5. Do not report success until all enabled instances are running and the dashboard JSON still contains the repeated `strategy_instance` tile.
 
 ## Memory Protocol
 
