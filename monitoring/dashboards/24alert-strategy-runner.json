@@ -21,11 +21,11 @@
   "panels": [
     {
       "id": 1,
-      "title": "Стратегии: состояние сейчас",
-      "description": "Одна строка на futures-стратегию. RUNNING означает enabled=1 и running=1 прямо сейчас. ENABLED BUT STOPPED означает стратегия включена в config.yaml, но не работает в памяти runner и требует вмешательства.",
-      "type": "table",
+      "title": "BMM6 Brent mini",
+      "description": "Плитка боевой стратегии fut-brent-mini-lb. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
+      "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -33,8 +33,8 @@
               "type": "value",
               "options": {
                 "3": { "text": "RUNNING" },
-                "2": { "text": "ENABLED BUT STOPPED" },
-                "1": { "text": "DISABLED BUT RUNNING" },
+                "2": { "text": "STOPPED" },
+                "1": { "text": "CONFIG OFF / RUNNING" },
                 "0": { "text": "DISABLED" }
               }
             }
@@ -43,7 +43,61 @@
         }
       },
       "targets": [
-        { "expr": "(alert24_strategy_instance_enabled{exported_instance=~\"$instance\"} * 2) + alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "format": "table", "instant": true, "legendFormat": "{{ exported_instance }}" }
+        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-brent-mini-lb\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-brent-mini-lb\"})", "instant": true, "legendFormat": "fut-brent-mini-lb" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "NGM6 Gas mini",
+      "description": "Плитка боевой стратегии fut-gas-mini-sma. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "3": { "text": "RUNNING" },
+                "2": { "text": "STOPPED" },
+                "1": { "text": "CONFIG OFF / RUNNING" },
+                "0": { "text": "DISABLED" }
+              }
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }
+        }
+      },
+      "targets": [
+        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-gas-mini-sma\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-gas-mini-sma\"})", "instant": true, "legendFormat": "fut-gas-mini-sma" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "MCM6 Mechel",
+      "description": "Плитка боевой стратегии fut-mechel-lb. RUNNING = стратегия включена и реально работает сейчас. STOPPED = включена в config.yaml, но не запущена.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "3": { "text": "RUNNING" },
+                "2": { "text": "STOPPED" },
+                "1": { "text": "CONFIG OFF / RUNNING" },
+                "0": { "text": "DISABLED" }
+              }
+            }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }
+        }
+      },
+      "targets": [
+        { "expr": "(max(alert24_strategy_instance_enabled{exported_instance=\"fut-mechel-lb\"}) * 2) + max(alert24_strategy_instance_running{exported_instance=\"fut-mechel-lb\"})", "instant": true, "legendFormat": "fut-mechel-lb" }
       ]
     },
     {
@@ -52,7 +106,7 @@
       "description": "1 = сейчас разрешённое окно FORTS, 0 = торговля намеренно заблокирована (ночь, выходной, клиринг). Расписание: Mon-Fri 10:00-14:00, 14:05-18:50, 19:00-23:50 MSK. Выходные заблокированы из-за низкой ликвидности.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -72,7 +126,7 @@
       "description": "Unix timestamp следующего разрешённого FORTS окна, показанный как дата/время. Если сейчас выходные или ночь — здесь видно, когда runner снова сможет отправлять заявки.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
       "targets": [
         { "expr": "alert24_strategy_next_session_open_timestamp{job=\"24alert-strategy-runner\"} * 1000", "legendFormat": "next open" }
@@ -84,7 +138,7 @@
       "description": "Сколько раз runner обнаружил расхождение своего ledger с брокерской позицией. Норма: 0. Любой рост — проверить сделки у брокера, журнал runner и позицию по инструменту.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
       "fieldConfig": {
         "defaults": {
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
@@ -168,5 +222,5 @@
     }
   ],
   "schemaVersion": 39,
-  "version": 4
+  "version": 5
 }

@@ -64,12 +64,120 @@
       ]
     },
     {
+      "id": 14,
+      "title": "Gateway",
+      "description": "Главный API/WebSocket gateway. OK = контейнер running. DOWN = платформа и внешние клиенты не смогут получать данные.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-gateway\",state!=\"\"})", "instant": true, "legendFormat": "gateway" }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Strategy Runner",
+      "description": "Боевой runner futures-стратегий. OK = контейнер running. DOWN = стратегии не исполняются.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-strategy-runner\",state!=\"\"})", "instant": true, "legendFormat": "strategy-runner" }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "AI Scanner",
+      "description": "Cron-советник ИИ. OK = контейнер running. DOWN = не будет health/pre-market/post-market запусков.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-ai-scanner\",state!=\"\"})", "instant": true, "legendFormat": "ai-scanner" }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Prometheus",
+      "description": "Локальный prometheus-agent на srv03-cloud. OK = метрики уходят в central Prometheus.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-prometheus-agent\",state!=\"\"})", "instant": true, "legendFormat": "prometheus-agent" }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Promtail",
+      "description": "Доставка Docker logs в Loki. OK = логи доступны в Grafana.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-promtail\",state!=\"\"})", "instant": true, "legendFormat": "promtail" }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Ops Exporter",
+      "description": "Экспортёр disk/container/version metrics. OK = инфраструктурные панели получают свежие данные.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [{ "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "max(alert24_ops_container_running{container=\"24alert-ops-exporter\",state!=\"\"})", "instant": true, "legendFormat": "ops-exporter" }
+      ]
+    },
+    {
       "id": 5,
       "title": "Контейнеры 24alert: running",
       "description": "Таблица статуса контейнеров вместо мелкой россыпи плиток. 1 = контейнер запущен, 0 = контейнер существует, но не running. Если 0 у gateway/strategy-runner/ai-scanner/prometheus-agent/promtail — это production incident.",
       "type": "table",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -89,7 +197,7 @@
       "description": "Docker restart count по контейнерам. Рост означает crash/restart loop или ручные рестарты. Для расследования смотреть Loki errors по этому container.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 18 },
       "targets": [
         { "expr": "max by (container) (alert24_ops_container_restarts{state!=\"\"})", "legendFormat": "{{ container }}" }
       ]
@@ -100,7 +208,7 @@
       "description": "Инвентарь: какой image/image_id/status у каждого контейнера. Помогает понять, какие версии реально крутятся после деплоя.",
       "type": "table",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 18 },
       "targets": [
         { "expr": "max by (container, image, image_id, state) (alert24_ops_container_info{state!=\"\"})", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
       ]
@@ -111,7 +219,7 @@
       "description": "Крупная отдельная плитка: жив ли локальный prometheus-agent на srv03-cloud. Если DOWN — central Prometheus перестанет получать свежие метрики.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 21 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 25 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -131,7 +239,7 @@
       "description": "Крупная отдельная плитка: жив ли promtail. Если DOWN — Grafana/Loki перестанут видеть свежие Docker logs.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 21 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 25 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -151,7 +259,7 @@
       "description": "Крупная отдельная плитка: жив ли контейнер ops-exporter, который даёт disk/container/version metrics.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 21 },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 25 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -171,7 +279,7 @@
       "description": "Крупная отдельная плитка: может ли prometheus-agent scrape ops-exporter. Если контейнер OK, но scrape DOWN — проблема сети/endpoint/HTTP 500.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 21 },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 25 },
       "fieldConfig": {
         "defaults": {
           "unit": "bool",
@@ -191,7 +299,7 @@
       "description": "Ошибки prometheus-agent: remote_write, scrape commit, WAL, no space left. Любая строка no space left on device — срочно чистить диск.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 26 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 30 },
       "targets": [
         { "expr": "{project=\"24alert\",service=\"prometheus-agent\"} |~ \"(?i)(error|remote|wal|no space|scrape commit failed)\"", "refId": "A" }
       ]
@@ -202,12 +310,12 @@
       "description": "Ошибки доставки логов в Loki или чтения Docker logs. Если здесь есть свежие ошибки — log panels могут быть неполными.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 26 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 30 },
       "targets": [
         { "expr": "{project=\"24alert\",service=\"promtail\"} |~ \"(?i)(error|failed|cannot|no such container)\"", "refId": "A" }
       ]
     }
   ],
   "schemaVersion": 39,
-  "version": 3
+  "version": 4
 }
