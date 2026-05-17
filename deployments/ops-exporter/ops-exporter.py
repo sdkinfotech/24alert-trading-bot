@@ -27,8 +27,31 @@ def docker_get(path):
                 break
             chunks.append(chunk)
     raw = b"".join(chunks)
-    _, _, body = raw.partition(b"\r\n\r\n")
+    head, _, body = raw.partition(b"\r\n\r\n")
+    status_line = head.splitlines()[0].decode("ascii", errors="replace") if head else ""
+    if " 200 " not in status_line:
+        raise RuntimeError(f"Docker API {path} returned {status_line}")
+    headers = head.decode("iso-8859-1", errors="replace").lower()
+    if "transfer-encoding: chunked" in headers:
+        body = decode_chunked(body)
     return json.loads(body.decode("utf-8"))
+
+
+def decode_chunked(body):
+    out = bytearray()
+    pos = 0
+    while True:
+        line_end = body.find(b"\r\n", pos)
+        if line_end < 0:
+            break
+        size_line = body[pos:line_end].split(b";", 1)[0]
+        size = int(size_line, 16)
+        pos = line_end + 2
+        if size == 0:
+            break
+        out.extend(body[pos : pos + size])
+        pos += size + 2
+    return bytes(out)
 
 
 def label_value(value):
