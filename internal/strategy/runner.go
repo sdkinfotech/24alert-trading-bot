@@ -419,8 +419,17 @@ func (r *Runner) warmupStrategy(
 	}
 
 	dur := IntervalDuration(subInterval)
-	// Request 20% extra to account for gaps (weekends, non-trading hours).
-	lookback := time.Duration(float64(needed)*1.2+2) * dur
+	// Request extra calendar time to account for weekends, nights and clearing
+	// gaps. FORTS intraday candles occupy much less than 24h/day, so 20% was
+	// not enough to build a useful dashboard history after restart.
+	multiplier := 1.5
+	if dur <= time.Hour {
+		multiplier = 2.0
+	}
+	lookback := time.Duration(float64(needed)*multiplier+2) * dur
+	if dur <= time.Hour {
+		lookback += 5 * 24 * time.Hour
+	}
 	now := time.Now()
 	from := now.Add(-lookback)
 

@@ -30,16 +30,28 @@ type SignalPoint struct {
 	RefPrice  float64   `json:"ref_price"`
 }
 
+// LevelSource explains which daily candle produced a support/resistance level.
+type LevelSource struct {
+	Price float64 `json:"price"`
+	Date  string  `json:"date"`
+	Kind  string  `json:"kind"` // "low" for support, "high" for resistance
+	Rank  int     `json:"rank"`
+}
+
 // IndicatorSnapshot is returned by IndicatorData() for web dashboard visualization.
 type IndicatorSnapshot struct {
-	StrategyType string        `json:"strategy_type"`
-	Support      []float64     `json:"support"`
-	Resistance   []float64     `json:"resistance"`
-	ATR          float64       `json:"atr"`
-	Position     int64         `json:"position"`
-	CurrentDay   string        `json:"current_day"`
-	Candles      []CandlePoint `json:"candles"`
-	Signals      []SignalPoint `json:"signals"`
+	StrategyType      string        `json:"strategy_type"`
+	Support           []float64     `json:"support"`
+	Resistance        []float64     `json:"resistance"`
+	SupportSources    []LevelSource `json:"support_sources"`
+	ResistanceSources []LevelSource `json:"resistance_sources"`
+	LevelMethod       string        `json:"level_method"`
+	LevelDays         int           `json:"level_days"`
+	ATR               float64       `json:"atr"`
+	Position          int64         `json:"position"`
+	CurrentDay        string        `json:"current_day"`
+	Candles           []CandlePoint `json:"candles"`
+	Signals           []SignalPoint `json:"signals"`
 }
 
 const maxHistoryLen = 1000
@@ -63,14 +75,17 @@ type Bounce struct {
 	tz         *time.Location
 
 	// Computed from daily bars fed during warmup
-	support    []float64
-	resistance []float64
-	atr        float64
+	support           []float64
+	resistance        []float64
+	supportSources    []LevelSource
+	resistanceSources []LevelSource
+	atr               float64
 
 	// Daily candle accumulator
 	dailyHighs []float64
 	dailyLows  []float64
 	dailyTRs   []float64
+	dailyDates []string
 	prevClose  float64
 
 	// Intraday state: pos is confirmed by fills; pending* tracks orders not yet acknowledged.
@@ -155,6 +170,22 @@ func (b *Bounce) Configure(params map[string]string) error {
 // OnDailyCandle feeds a completed daily candle for level building.
 // Called by the runner during warmup phase with daily bars.
 func (b *Bounce) OnDailyCandle(k strategy.Candle) {
+	day := k.Time.In(b.tz).Format("2006-01-02")
+	if len(b.dailyDates) > 0 && b.dailyDates[len(b.dailyDates)-1] == day {
+		b.dailyHighs[len(b.dailyHighs)-1] = k.High
+		b.dailyLows[len(b.dailyLows)-1] = k.Low
+		if len(b.dailyTRs) > 0 && b.prevClose > 0 {
+			tr := math.Max(k.High-k.Low, math.Max(
+				math.Abs(k.High-b.prevClose),
+				math.Abs(k.Low-b.prevClose)))
+			b.dailyTRs[len(b.dailyTRs)-1] = tr
+		}
+		b.prevClose = k.Close
+		b.recomputeLevels()
+		return
+	}
+
+	b.dailyDates = append(b.dailyDates, day)
 	b.dailyHighs = append(b.dailyHighs, k.High)
 	b.dailyLows = append(b.dailyLows, k.Low)
 	if b.prevClose > 0 {
@@ -176,17 +207,23 @@ func (b *Bounce) recomputeLevels() {
 		return
 	}
 
-	// Top-3 highs = resistance, bottom-3 lows = support
-	highs := make([]float64, n)
-	copy(highs, b.dailyHighs[len(b.dailyHighs)-n:])
-	lows := make([]float64, n)
-	copy(lows, b.dailyLows[len(b.dailyLows)-n:])
+	start := len(b.dailyHighs) - n
+	highs := make([]levelCandidate, 0, n)
+	lows := make([]levelCandidate, 0, n)
+	for i := start; i < len(b.dailyHighs); i++ {
+		date := ""
+		if i < len(b.dailyDates) {
+			date = b.dailyDates[i]
+		}
+		highs = append(highs, levelCandidate{price: b.dailyHighs[i], date: date})
+		lows = append(lows, levelCandidate{price: b.dailyLows[i], date: date})
+	}
 
-	sortDesc(highs)
-	sortAsc(lows)
+	sortCandidatesDesc(highs)
+	sortCandidatesAsc(lows)
 
-	b.resistance = highs[:3]
-	b.support = lows[:3]
+	b.resistance, b.resistanceSources = topLevelSources(highs, "high")
+	b.support, b.supportSources = topLevelSources(lows, "low")
 
 	// ATR from daily TRs
 	atrN := 14
@@ -461,15 +498,23 @@ func (b *Bounce) IndicatorData() interface{} {
 	copy(sup, b.support)
 	res := make([]float64, len(b.resistance))
 	copy(res, b.resistance)
+	supSrc := make([]LevelSource, len(b.supportSources))
+	copy(supSrc, b.supportSources)
+	resSrc := make([]LevelSource, len(b.resistanceSources))
+	copy(resSrc, b.resistanceSources)
 	return IndicatorSnapshot{
-		StrategyType: "level_bounce",
-		Support:      sup,
-		Resistance:   res,
-		ATR:          b.atr,
-		Position:     b.pos,
-		CurrentDay:   b.currentDay,
-		Candles:      candles,
-		Signals:      sigs,
+		StrategyType:      "level_bounce",
+		Support:           sup,
+		Resistance:        res,
+		SupportSources:    supSrc,
+		ResistanceSources: resSrc,
+		LevelMethod:       "top-3 daily highs and bottom-3 daily lows over level_days",
+		LevelDays:         b.levelDays,
+		ATR:               b.atr,
+		Position:          b.pos,
+		CurrentDay:        b.currentDay,
+		Candles:           candles,
+		Signals:           sigs,
 	}
 }
 
@@ -485,6 +530,7 @@ type lbState struct {
 	CutoffMin    int           `json:"cutoff_min"`
 	Support      []float64     `json:"support"`
 	Resistance   []float64     `json:"resistance"`
+	DailyDates   []string      `json:"daily_dates"`
 	ATR          float64       `json:"atr"`
 	DailyHighs   []float64     `json:"daily_highs"`
 	DailyLows    []float64     `json:"daily_lows"`
@@ -508,6 +554,7 @@ func (b *Bounce) Snapshot() ([]byte, error) {
 		LevelDays: b.levelDays, Qty: b.qty,
 		CutoffHour: b.cutoffHour, CutoffMin: b.cutoffMin,
 		Support: b.support, Resistance: b.resistance, ATR: b.atr,
+		DailyDates: b.dailyDates,
 		DailyHighs: b.dailyHighs, DailyLows: b.dailyLows, DailyTRs: b.dailyTRs,
 		PrevClose:    b.prevClose,
 		Pos:          b.pos,
@@ -548,9 +595,20 @@ func (b *Bounce) Restore(blob []byte) error {
 	b.support = st.Support
 	b.resistance = st.Resistance
 	b.atr = st.ATR
-	b.dailyHighs = st.DailyHighs
-	b.dailyLows = st.DailyLows
-	b.dailyTRs = st.DailyTRs
+	if len(st.DailyDates) == len(st.DailyHighs) && len(st.DailyDates) == len(st.DailyLows) {
+		b.dailyDates = st.DailyDates
+		b.dailyHighs = st.DailyHighs
+		b.dailyLows = st.DailyLows
+		b.dailyTRs = st.DailyTRs
+		b.recomputeLevels()
+	} else {
+		// Old snapshots did not store daily dates. Rebuild daily buffers from
+		// fresh warmup instead of appending duplicate bars after restart.
+		b.dailyDates = nil
+		b.dailyHighs = nil
+		b.dailyLows = nil
+		b.dailyTRs = nil
+	}
 	b.prevClose = st.PrevClose
 	b.pos = st.Pos
 	b.pendingEntry = st.PendingEntry
@@ -569,10 +627,34 @@ func (b *Bounce) Restore(blob []byte) error {
 func (b *Bounce) WarmupCandles() int { return 4 }
 
 // ChartCandles returns the number of 15-min candles for dashboard visualization.
-func (b *Bounce) ChartCandles() int { return 200 }
+func (b *Bounce) ChartCandles() int { return 600 }
 
 // DailyWarmupCandles returns the number of daily bars needed to build S/R levels.
 func (b *Bounce) DailyWarmupCandles() int { return b.levelDays + 5 }
+
+type levelCandidate struct {
+	price float64
+	date  string
+}
+
+func topLevelSources(items []levelCandidate, kind string) ([]float64, []LevelSource) {
+	n := 3
+	if len(items) < n {
+		n = len(items)
+	}
+	levels := make([]float64, 0, n)
+	sources := make([]LevelSource, 0, n)
+	for i := 0; i < n; i++ {
+		levels = append(levels, items[i].price)
+		sources = append(sources, LevelSource{
+			Price: items[i].price,
+			Date:  items[i].date,
+			Kind:  kind,
+			Rank:  i + 1,
+		})
+	}
+	return levels, sources
+}
 
 var (
 	_ strategy.StatefulStrategy             = (*Bounce)(nil)
@@ -586,20 +668,20 @@ var (
 
 // --- sorting helpers ---
 
-func sortDesc(a []float64) {
+func sortCandidatesDesc(a []levelCandidate) {
 	for i := 0; i < len(a); i++ {
 		for j := i + 1; j < len(a); j++ {
-			if a[j] > a[i] {
+			if a[j].price > a[i].price {
 				a[i], a[j] = a[j], a[i]
 			}
 		}
 	}
 }
 
-func sortAsc(a []float64) {
+func sortCandidatesAsc(a []levelCandidate) {
 	for i := 0; i < len(a); i++ {
 		for j := i + 1; j < len(a); j++ {
-			if a[j] < a[i] {
+			if a[j].price < a[i].price {
 				a[i], a[j] = a[j], a[i]
 			}
 		}

@@ -274,8 +274,8 @@ func (c *Crossover) WarmupCandles() int { return c.slowN }
 // across most of the chart (not just the last point).
 func (c *Crossover) ChartCandles() int {
 	n := c.slowN * 3
-	if n < 200 {
-		n = 200
+	if n < 500 {
+		n = 500
 	}
 	return n
 }

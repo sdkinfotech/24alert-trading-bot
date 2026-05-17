@@ -55,6 +55,16 @@ function levelBounceLevels(data: IndicatorData): { support: number[]; resistance
   return { support: sup, resistance: res };
 }
 
+function formatLevelSources(
+  label: string,
+  sources: NonNullable<IndicatorData['support_sources']>,
+): string {
+  if (!sources.length) return '';
+  return `${label}: ${sources
+    .map((s) => `${s.rank}:${s.price.toFixed(2)} ${s.kind} ${s.date || '?'}`)
+    .join(' · ')}`;
+}
+
 const MSK_TZ = 'Europe/Moscow';
 
 function formatMskTime(time: number | string): string {
@@ -315,7 +325,7 @@ export function IndicatorChart({ data }: Props) {
   if (lbMode && data) {
     const { support, resistance } = levelBounceLevels(data);
     const atr = data.atr ?? 0;
-    headerLabel = `Level Bounce · ATR ${atr > 0 ? atr.toFixed(2) : '—'} · ${support.length}S / ${resistance.length}R`;
+    headerLabel = `Level Bounce · levels ${data.level_days ?? '?'}d · ATR ${atr > 0 ? atr.toFixed(2) : '—'} · ${support.length}S / ${resistance.length}R`;
   } else if (orbMode && data) {
     headerLabel = `ORB (Range ${data.range_formed ? 'formed' : 'forming'}: ${data.range_high?.toFixed(2) ?? '?'} / ${data.range_low?.toFixed(2) ?? '?'})`;
   } else if (smaMode && data) {
@@ -346,12 +356,25 @@ export function IndicatorChart({ data }: Props) {
         </div>
       </div>
       {lbMode && (
-        <p className="text-xs text-gray-500 mb-1 px-1">
-          Зелёные пунктиры — поддержка (S1–S3), красные — сопротивление (R1–R3). Позиция справа — внутреннее
-          состояние стратегии; в Stats «Positions» — факт по счёту у брокера (может отличаться до исполнения
-          ордеров). Маркеры строятся по времени свечи; «EOD*» — сигнал после последней свечи на графике,
-          стрелка показана на последнем баре.
-        </p>
+        <div className="text-xs text-gray-500 mb-1 px-1 space-y-1">
+          <p>
+            Уровни: {data?.level_method ?? 'top daily highs/lows'}. Зелёные пунктиры — поддержка (S1–S3),
+            красные — сопротивление (R1–R3).
+          </p>
+          {data?.support_sources?.length ? (
+            <p className="text-emerald-400/80">{formatLevelSources('Support sources', data.support_sources)}</p>
+          ) : null}
+          {data?.resistance_sources?.length ? (
+            <p className="text-red-400/80">
+              {formatLevelSources('Resistance sources', data.resistance_sources)}
+            </p>
+          ) : null}
+          <p>
+            Позиция справа — внутреннее состояние стратегии; в Stats «Positions» — факт по счёту у брокера
+            (может отличаться до исполнения ордеров). Маркеры строятся по времени свечи; «EOD*» — сигнал
+            после последней свечи на графике, стрелка показана на последнем баре.
+          </p>
+        </div>
       )}
       <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800" />
     </div>

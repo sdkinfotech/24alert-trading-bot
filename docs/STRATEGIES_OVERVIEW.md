@@ -48,6 +48,8 @@ Warmup-сигналы не считаются боевыми и очищаютс
 Логика:
 
 - дневной warmup строит top-3 support/resistance;
+- источники уровней теперь отдаются в dashboard: для каждого `S1-S3`/`R1-R3` видны цена, дата дневной свечи и тип (`low`/`high`);
+- при восстановлении state дневные бары дедуплицируются по дате, старые snapshots без дат пересобираются из fresh warmup, чтобы не накапливать дубли уровней после restart;
 - ATR по дневным свечам задаёт ширину зоны около уровня;
 - bounce от support -> `buy`;
 - reject от resistance -> `sell`;
@@ -60,6 +62,12 @@ Warmup-сигналы не считаются боевыми и очищаютс
 |---|---|
 | `fut-brent-mini-lb` | `atr_mult=0.3`, `sl_mult=0.3`, `tp_mult=2.0`, `cutoff=23:30`, `level_days=10` |
 | `fut-mechel-lb` | `atr_mult=0.5`, `sl_mult=0.7`, `tp_mult=1.0`, `cutoff=23:30`, `level_days=10` |
+
+Dashboard history:
+
+- `level_bounce` прогревает до 600 intraday candles для графика;
+- `sma_crossover` прогревает минимум 500 candles для графика;
+- runner запрашивает расширенный calendar lookback, чтобы FORTS ночные/выходные gaps не обрезали фактическую историю.
 
 ## `orb_breakout`
 

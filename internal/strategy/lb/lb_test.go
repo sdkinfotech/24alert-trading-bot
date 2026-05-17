@@ -1,6 +1,7 @@
 package lb
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -109,5 +110,59 @@ func TestBounce_OnCandle_entryUsesPendingNotPos(t *testing.T) {
 	}
 	if b.pendingEntry != 1 {
 		t.Fatalf("pendingEntry want 1 got %d", b.pendingEntry)
+	}
+}
+
+func TestBounce_OnDailyCandle_recordsLevelSources(t *testing.T) {
+	b := New()
+	base := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		b.OnDailyCandle(strategy.Candle{
+			High:       100 + float64(i),
+			Low:        90 - float64(i),
+			Close:      95 + float64(i),
+			Time:       base.AddDate(0, 0, i),
+			IsComplete: true,
+		})
+	}
+
+	snap := b.IndicatorData().(IndicatorSnapshot)
+	if len(snap.ResistanceSources) != 3 || len(snap.SupportSources) != 3 {
+		t.Fatalf("want 3 support/resistance sources, got %d/%d", len(snap.SupportSources), len(snap.ResistanceSources))
+	}
+	if snap.ResistanceSources[0].Price != 104 || snap.ResistanceSources[0].Date != "2026-05-05" {
+		t.Fatalf("unexpected top resistance source: %+v", snap.ResistanceSources[0])
+	}
+	if snap.SupportSources[0].Price != 86 || snap.SupportSources[0].Date != "2026-05-05" {
+		t.Fatalf("unexpected top support source: %+v", snap.SupportSources[0])
+	}
+}
+
+func TestBounce_RestoreOldSnapshotClearsUndatedDailyBuffers(t *testing.T) {
+	b := New()
+	blob, err := (&Bounce{
+		dailyHighs: []float64{101, 102, 103},
+		dailyLows:  []float64{91, 92, 93},
+		dailyTRs:   []float64{10, 10},
+	}).Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var st lbState
+	if err := json.Unmarshal(blob, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.DailyDates = nil
+	legacyBlob, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Restore(legacyBlob); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.dailyHighs) != 0 || len(b.dailyLows) != 0 || len(b.dailyTRs) != 0 {
+		t.Fatalf("legacy undated daily buffers should be cleared, highs=%v lows=%v trs=%v", b.dailyHighs, b.dailyLows, b.dailyTRs)
 	}
 }

@@ -66,7 +66,18 @@ export interface IndicatorData {
   /** Level Bounce: all support / resistance levels (from daily stack) */
   support?: number[];
   resistance?: number[];
+  support_sources?: LevelSource[];
+  resistance_sources?: LevelSource[];
+  level_method?: string;
+  level_days?: number;
   atr?: number;
+}
+
+export interface LevelSource {
+  price: number;
+  date: string;
+  kind: 'low' | 'high';
+  rank: number;
 }
 
 export interface SignalRecord {
