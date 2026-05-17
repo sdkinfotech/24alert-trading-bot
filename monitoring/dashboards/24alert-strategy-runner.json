@@ -73,7 +73,7 @@
       "gridPos": { "h": 4, "w": 8, "x": 0, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "bool" } },
       "targets": [
-        { "expr": "alert24_strategy_session_allowed", "legendFormat": "session allowed" }
+        { "expr": "alert24_strategy_session_allowed{job=\"24alert-strategy-runner\"}", "legendFormat": "session allowed" }
       ]
     },
     {
@@ -84,7 +84,7 @@
       "gridPos": { "h": 4, "w": 8, "x": 8, "y": 16 },
       "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
       "targets": [
-        { "expr": "alert24_strategy_next_session_open_timestamp * 1000", "legendFormat": "next open" }
+        { "expr": "alert24_strategy_next_session_open_timestamp{job=\"24alert-strategy-runner\"} * 1000", "legendFormat": "next open" }
       ]
     },
     {

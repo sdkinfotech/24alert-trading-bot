@@ -64,7 +64,7 @@ groups:
       - alert: 24alert_MarketDataStale
         expr: >
           alert24_marketdata_staleness_seconds > 900
-          and on() alert24_strategy_session_allowed == 1
+          and on() alert24_strategy_session_allowed{job="24alert-strategy-runner"} == 1
         for: 10m
         labels:
           severity: warning
