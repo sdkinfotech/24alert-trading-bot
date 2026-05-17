@@ -21,23 +21,29 @@
   "panels": [
     {
       "id": 1,
-      "title": "Стратегии: включены и реально запущены",
-      "description": "Операторская проверка трёх futures-стратегий. Enabled=1 означает включено в config.yaml, Running=1 означает реально работает в памяти strategy-runner. Если enabled=1 и running=0 — это критично: стратегия не торгует.",
-      "type": "stat",
+      "title": "Стратегии: состояние сейчас",
+      "description": "Одна строка на futures-стратегию. RUNNING означает enabled=1 и running=1 прямо сейчас. ENABLED BUT STOPPED означает стратегия включена в config.yaml, но не работает в памяти runner и требует вмешательства.",
+      "type": "table",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
-          "unit": "bool",
           "mappings": [
-            { "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "STOP" } } }
+            {
+              "type": "value",
+              "options": {
+                "3": { "text": "RUNNING" },
+                "2": { "text": "ENABLED BUT STOPPED" },
+                "1": { "text": "DISABLED BUT RUNNING" },
+                "0": { "text": "DISABLED" }
+              }
+            }
           ],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 1 }, { "color": "green", "value": 3 }] }
         }
       },
       "targets": [
-        { "expr": "alert24_strategy_instance_enabled{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} enabled" },
-        { "expr": "alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} running" }
+        { "expr": "(alert24_strategy_instance_enabled{exported_instance=~\"$instance\"} * 2) + alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "format": "table", "instant": true, "legendFormat": "{{ exported_instance }}" }
       ]
     },
     {
@@ -162,5 +168,5 @@
     }
   ],
   "schemaVersion": 39,
-  "version": 3
+  "version": 4
 }
