@@ -14,12 +14,47 @@ var (
 		Help:      "Signals emitted by strategy instances.",
 	}, []string{"instance", "direction"})
 
+	StrategyEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "strategy",
+		Name:      "events_total",
+		Help:      "Operational strategy events recorded in the runner journal.",
+	}, []string{"instance", "type", "status", "reason"})
+
 	StrategyOrdersTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "strategy",
 		Name:      "orders_total",
 		Help:      "Orders placed from strategy runner.",
 	}, []string{"instance", "status"})
+
+	StrategyInstanceEnabled = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: "strategy",
+		Name:      "instance_enabled",
+		Help:      "Whether the strategy instance is enabled in config (1 enabled, 0 disabled).",
+	}, []string{"instance", "type", "ticker"})
+
+	StrategyInstanceRunning = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: "strategy",
+		Name:      "instance_running",
+		Help:      "Whether the strategy instance is currently running in memory (1 running, 0 stopped).",
+	}, []string{"instance", "type", "ticker"})
+
+	StrategySessionAllowed = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: "strategy",
+		Name:      "session_allowed",
+		Help:      "Whether the current time is inside an allowed FORTS trading session (1 allowed, 0 blocked).",
+	})
+
+	StrategyNextSessionOpenTimestamp = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: namespace,
+		Subsystem: "strategy",
+		Name:      "next_session_open_timestamp",
+		Help:      "Unix timestamp of the next allowed FORTS trading session open in runner schedule.",
+	})
 
 	StrategyEvaluationDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: namespace,

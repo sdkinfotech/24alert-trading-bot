@@ -224,9 +224,13 @@ services:
       - ./ai-scanner/workspace/reference:/workspace/reference:ro
       - ai-scanner-memory:/workspace/memory
       - ai-scanner-reports:/workspace/reports
+      - ai-scanner-metrics:/workspace/metrics
       - ./ai-scanner/run-scan.sh:/etc/scanner/run-scan.sh:ro
+      - ./ai-scanner/metrics-server.py:/etc/scanner/metrics-server.py:ro
       - ../scripts/ai-scanner:/opt/ai-scanner:ro
       - ../config/config.yaml:/app/config/config.yaml
+    expose:
+      - "9130"
     networks:
       - trading-bot-net
     restart: unless-stopped
@@ -243,10 +247,11 @@ services:
         ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime
         echo "Europe/Moscow" > /etc/timezone
         umask 077
-        mkdir -p /workspace/memory /workspace/reports
+        mkdir -p /workspace/memory /workspace/reports /workspace/metrics
         if [ ! -s /workspace/memory/agent-memory.md ]; then
           cp /workspace/reference/agent-memory.seed.md /workspace/memory/agent-memory.md
         fi
+        python3 /etc/scanner/metrics-server.py &
         cat > /run/ai-scanner-env.sh <<ENVEOF
         export HOME=/root
         export PATH="/root/.local/bin:$${PATH}"
@@ -310,3 +315,4 @@ volumes:
   strategy-data:
   ai-scanner-memory:
   ai-scanner-reports:
+  ai-scanner-metrics:

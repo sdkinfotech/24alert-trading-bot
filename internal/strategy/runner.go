@@ -150,6 +150,8 @@ func (r *Runner) Start(ctx context.Context) error {
 	for _, inst := range r.strategiesCfg.Instances {
 		r.byID[inst.ID] = inst
 	}
+	r.updateInstanceMetrics()
+	r.updateSessionMetrics(time.Now())
 
 	if err := r.prefetchInstruments(ctx); err != nil {
 		r.logger.Warn("prefetch instruments: some failures", "error", err)
@@ -395,6 +397,7 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	}
 
 	r.logger.Info("strategy instance started", "id", inst.ID, "type", inst.Type, "account", inst.AccountID)
+	r.updateInstanceMetrics()
 	return nil
 }
 
@@ -565,6 +568,7 @@ func (r *Runner) recordSignalCancellation(ctx context.Context, rt *instanceRunti
 	}); err != nil {
 		r.logger.Warn("record signal cancellation event failed", "instance", rt.id, "stage", status, "error", err)
 	}
+	metrics.StrategyEventsTotal.WithLabelValues(rt.id, "signal_cancelled", status, normalizeMetricLabel(sig.Reason)).Inc()
 }
 
 func (r *Runner) sessionBlockMessage(now time.Time) string {
@@ -582,6 +586,7 @@ func (r *Runner) sessionBlockMessage(now time.Time) string {
 }
 
 func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPrice float64, sigs []Signal) {
+	r.updateSessionMetrics(time.Now())
 	for _, sig := range sigs {
 		dir := strings.ToLower(strings.TrimSpace(sig.Direction))
 		metrics.StrategySignalsTotal.WithLabelValues(rt.id, dir).Inc()
@@ -732,6 +737,7 @@ func (r *Runner) StopInstance(id string) {
 	delete(r.instances, id)
 	r.mu.Unlock()
 	r.logger.Info("strategy instance stopped", "id", id)
+	r.updateInstanceMetrics()
 }
 
 // StopAll stops every running instance.
@@ -790,6 +796,7 @@ func (r *Runner) ReloadConfig(ctx context.Context) (added, removed, changed int,
 		r.byID[inst.ID] = inst
 	}
 	r.mu.Unlock()
+	r.updateInstanceMetrics()
 
 	if err := r.prefetchInstruments(ctx); err != nil {
 		r.logger.Warn("reload: prefetch instruments: some failures", "error", err)
@@ -817,7 +824,77 @@ func (r *Runner) ReloadConfig(ctx context.Context) (added, removed, changed int,
 	}
 
 	r.logger.Info("config reloaded", "added", added, "removed", removed, "changed", changed)
+	r.updateInstanceMetrics()
 	return added, removed, changed, nil
+}
+
+func normalizeMetricLabel(v string) string {
+	v = strings.TrimSpace(strings.ToLower(v))
+	if v == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('_')
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "unknown"
+	}
+	if len(out) > 64 {
+		return out[:64]
+	}
+	return out
+}
+
+func (r *Runner) updateInstanceMetrics() {
+	r.mu.Lock()
+	byID := make(map[string]config.StrategyInstanceConfig, len(r.byID))
+	for id, inst := range r.byID {
+		byID[id] = inst
+	}
+	running := make(map[string]struct{}, len(r.instances))
+	for id := range r.instances {
+		running[id] = struct{}{}
+	}
+	r.mu.Unlock()
+
+	for _, inst := range byID {
+		ticker := r.InstanceTickers(inst)
+		if ticker == "" {
+			ticker = strings.Join(inst.Instruments, ",")
+		}
+		enabled := 0.0
+		if inst.Enabled {
+			enabled = 1
+		}
+		isRunning := 0.0
+		if _, ok := running[inst.ID]; ok {
+			isRunning = 1
+		}
+		metrics.StrategyInstanceEnabled.WithLabelValues(inst.ID, inst.Type, ticker).Set(enabled)
+		metrics.StrategyInstanceRunning.WithLabelValues(inst.ID, inst.Type, ticker).Set(isRunning)
+	}
+}
+
+func (r *Runner) updateSessionMetrics(now time.Time) {
+	if r.schedule == nil {
+		metrics.StrategySessionAllowed.Set(0)
+		metrics.StrategyNextSessionOpenTimestamp.Set(0)
+		return
+	}
+	if r.schedule.IsMainSession(now) {
+		metrics.StrategySessionAllowed.Set(1)
+	} else {
+		metrics.StrategySessionAllowed.Set(0)
+	}
+	if next := r.schedule.NextSessionOpen(now); !next.IsZero() {
+		metrics.StrategyNextSessionOpenTimestamp.Set(float64(next.Unix()))
+	}
 }
 
 func instanceChanged(a, b config.StrategyInstanceConfig) bool {

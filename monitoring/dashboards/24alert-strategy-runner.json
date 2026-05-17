@@ -1,0 +1,103 @@
+{
+  "uid": "24alert-strategy",
+  "title": "24alert Strategy Runner",
+  "tags": ["24alert", "strategy-runner", "futures"],
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(alert24_strategy_total_pnl_rub, exported_instance)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Strategy PnL",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "currencyRUB" } },
+      "targets": [
+        { "expr": "alert24_strategy_total_pnl_rub{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} total" },
+        { "expr": "alert24_strategy_realized_pnl_rub{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} realized" },
+        { "expr": "alert24_strategy_unrealized_pnl_rub{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} unrealized" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Enabled / Running",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "targets": [
+        { "expr": "alert24_strategy_instance_enabled{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} enabled" },
+        { "expr": "alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} running" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Signals / Orders",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum by (exported_instance, direction) (rate(alert24_strategy_signals_total{exported_instance=~\"$instance\"}[15m]))", "legendFormat": "{{ exported_instance }} {{ direction }} signals/s" },
+        { "expr": "sum by (exported_instance, status) (rate(alert24_strategy_orders_total{exported_instance=~\"$instance\"}[15m]))", "legendFormat": "{{ exported_instance }} {{ status }} orders/s" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cancelled Signals by Reason",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum by (exported_instance, status, reason) (increase(alert24_strategy_events_total{type=\"signal_cancelled\",exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} {{ status }} {{ reason }}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "FORTS Session Guard",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "targets": [
+        { "expr": "alert24_strategy_session_allowed", "legendFormat": "session allowed" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Next Session Open",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
+      "targets": [
+        { "expr": "alert24_strategy_next_session_open_timestamp * 1000", "legendFormat": "next open" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Strategy Runner Events",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"strategy-runner\"} |~ \"signal cancelled|risk_rejected|risk_error|post_error|reconcile\"", "refId": "A" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

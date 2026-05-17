@@ -1,0 +1,65 @@
+{
+  "uid": "24alert-ai-scanner",
+  "title": "24alert AI Scanner",
+  "tags": ["24alert", "ai-scanner"],
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Last Successful Run",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
+      "targets": [
+        { "expr": "alert24_ai_scanner_last_success_timestamp * 1000", "legendFormat": "{{ kind }}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Last Failure",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
+      "targets": [
+        { "expr": "alert24_ai_scanner_last_failure_timestamp * 1000", "legendFormat": "{{ kind }}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Run Duration",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "alert24_ai_scanner_run_duration_seconds", "legendFormat": "{{ kind }}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "AI Scanner Logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |= \"ai-scanner\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "AI Scanner Failures",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |~ \"FAILED|missing_env|bad_workspace|timeout|error\"", "refId": "A" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

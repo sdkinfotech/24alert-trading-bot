@@ -317,10 +317,14 @@ rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma",status="risk_reje
 
 ## Prometheus / Grafana
 
-**Текущий статус:** dedicated strategy Grafana dashboard не развёрнут. Strategy metrics доступны на `127.0.0.1:9120`; общий monitoring-контур описан в Obsidian `24alert/Grafana`.
+**Текущий статус:** dedicated strategy Grafana dashboard развёрнут как `24alert Strategy Runner` (`uid: 24alert-strategy`). Strategy metrics доступны на `127.0.0.1:9120` на `srv03-cloud` и уходят в central Prometheus через `24alert-prometheus-agent`; общий monitoring-контур описан в Obsidian `24alert/Grafana`.
 
-Артефакт: `deployments/grafana/dashboards/strategy-overview.json`.
-JSON можно использовать при включении/настройке strategy dashboard в текущем monitoring-контуре.
+Артефакты:
+
+- `monitoring/dashboards/24alert-strategy-runner.json`
+- `monitoring/dashboards/24alert-gateway-api.json`
+- `monitoring/dashboards/24alert-ai-scanner.json`
+- `monitoring/rules/24alert.yml`
 
 ### Панели
 
@@ -356,7 +360,7 @@ JSON можно использовать при включении/настро�
 
 **Row 5 — Логи**
 
-- Production сейчас проверяется через `docker logs 24alert-strategy-runner`; Loki/Promtail есть только как неактивный compose profile `monitoring`.
+- Production проверяется через dashboard logs panels и Loki query `{project="24alert",service="strategy-runner"}`; локально на VPS можно дополнительно использовать `docker logs 24alert-strategy-runner`.
 
 ### Переменные
 
@@ -364,12 +368,12 @@ JSON можно использовать при включении/настро�
 
 ### Как обновить дашборд
 
-Dedicated strategy Grafana dashboard сейчас не развёрнут в production. Если он понадобится, используйте JSON из `deployments/grafana/dashboards/strategy-overview.json` и подключите его к текущему monitoring-контуру, описанному в Obsidian `24alert/Grafana`.
+Strategy dashboard импортируется из `monitoring/dashboards/24alert-strategy-runner.json` в central Grafana. В центральном Prometheus strategy label называется `exported_instance`, потому что исходный `instance` конфликтует с scrape target label.
 
 ### Алерты (Alertmanager)
 
-Файл: `deployments/grafana/alerts/strategy-runner.rules.yml`.
-В репо есть правила, но отдельный production rollout для strategy alerts нужно проверять по текущему monitoring-контуру.
+Файл: `monitoring/rules/24alert.yml`.
+Правила включают schedule-aware `24alert_MarketDataStale`, `24alert_EnabledStrategyStopped`, cancelled signal alerts и AI scanner alerts.
 
 Текущие правила:
 ```yaml
@@ -507,5 +511,5 @@ curl -s http://localhost:9120/metrics | grep alert24_strategy
 
 - [`docs/STRATEGY_RUNNER.md`](STRATEGY_RUNNER.md) — конфигурация, watchdog, типы стратегий.
 - [`docs/INSTRUMENT_SELECTION.md`](INSTRUMENT_SELECTION.md) — подбор инструментов.
-- `deployments/grafana/dashboards/strategy-overview.json` — дашборд Grafana.
-- `deployments/grafana/alerts/strategy-runner.rules.yml` — алерт-правила.
+- [`monitoring/dashboards/24alert-strategy-runner.json`](../monitoring/dashboards/24alert-strategy-runner.json) — strategy dashboard.
+- [`monitoring/rules/24alert.yml`](../monitoring/rules/24alert.yml) — production alert rules.

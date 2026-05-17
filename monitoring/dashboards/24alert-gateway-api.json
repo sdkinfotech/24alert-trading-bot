@@ -1,0 +1,87 @@
+{
+  "uid": "24alert-gateway-api",
+  "title": "24alert Gateway/API",
+  "tags": ["24alert", "gateway", "api"],
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Up/Down",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "targets": [
+        { "expr": "up{project=\"24alert\",job=~\"24alert-(gateway|order-svc|marketdata-svc|portfolio-svc|risk-svc)\"}", "legendFormat": "{{ job }}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP RPS",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum by (path, status) (rate(alert24_http_requests_total{job=\"24alert-gateway\"}[5m]))", "legendFormat": "{{ status }} {{ path }}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "HTTP p95 Latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(alert24_http_request_duration_seconds_bucket{job=\"24alert-gateway\"}[5m])) by (le))", "legendFormat": "gateway p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "T-Invest Requests / Errors",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum by (service, method, status) (rate(alert24_tinvest_requests_total[5m]))", "legendFormat": "{{ service }} {{ method }} {{ status }}" },
+        { "expr": "sum by (service, method, error_type) (rate(alert24_tinvest_errors_total[5m]))", "legendFormat": "{{ service }} {{ method }} {{ error_type }}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Market Data Staleness",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "alert24_marketdata_staleness_seconds", "legendFormat": "{{ instrument }}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Gateway Errors from Loki",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"gateway\"} |~ \"ResourceExhausted|Unauthenticated|rpc error|error|panic|fatal\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Nginx Access/Error Logs",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "expr": "{project=\"24alert\"} |~ \"nginx|gateway.24alert.ru|/health| 5[0-9][0-9] \"", "refId": "A" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

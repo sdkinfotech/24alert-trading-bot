@@ -205,7 +205,12 @@ strategies:
 Метрики на отдельном listener (`metrics_port`), namespace **`alert24`**, подсистема **`strategy`**:
 
 - `alert24_strategy_signals_total{instance,direction}`
+- `alert24_strategy_events_total{instance,type,status,reason}` (включая `signal_cancelled`)
 - `alert24_strategy_orders_total{instance,status}`
+- `alert24_strategy_instance_enabled{instance,type,ticker}`
+- `alert24_strategy_instance_running{instance,type,ticker}`
+- `alert24_strategy_session_allowed`
+- `alert24_strategy_next_session_open_timestamp`
 - `alert24_strategy_evaluation_duration_seconds{instance}`
 - `alert24_strategy_realized_pnl_rub{instance}`
 - `alert24_strategy_unrealized_pnl_rub{instance}`
@@ -219,8 +224,12 @@ strategies:
 
 Артефакты «as code»:
 
-- Дашборд: [`deployments/grafana/dashboards/strategy-overview.json`](../deployments/grafana/dashboards/strategy-overview.json)
-- Правила алертов: [`deployments/grafana/alerts/strategy-runner.rules.yml`](../deployments/grafana/alerts/strategy-runner.rules.yml) (пример: высокая просадка по `alert24_strategy_drawdown_percent`).
+- Strategy dashboard: [`monitoring/dashboards/24alert-strategy-runner.json`](../monitoring/dashboards/24alert-strategy-runner.json)
+- Gateway/API dashboard: [`monitoring/dashboards/24alert-gateway-api.json`](../monitoring/dashboards/24alert-gateway-api.json)
+- AI Scanner dashboard: [`monitoring/dashboards/24alert-ai-scanner.json`](../monitoring/dashboards/24alert-ai-scanner.json)
+- Правила алертов: [`monitoring/rules/24alert.yml`](../monitoring/rules/24alert.yml). `MarketDataStale` зависит от `alert24_strategy_session_allowed`, поэтому не должен шуметь ночью, на выходных и в клиринг.
+
+В центральном Prometheus после `remote_write` label `instance` из strategy metrics отображается как `exported_instance`, потому что `instance` уже занят scrape target (`strategy-runner:9120`).
 
 ## Типы стратегий
 

@@ -25,6 +25,8 @@ REF="$WS/reference/ai-scanner-reference.md"
 LOG_SKILL="$WS/reference/log-reading-skill.md"
 MEM="$WS/memory/agent-memory.md"
 REPORTS="$WS/reports"
+METRICS_DIR="$WS/metrics"
+METRICS_FILE="$METRICS_DIR/ai-scanner-$KIND.prom"
 if [ ! -f "$REF" ]; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=missing_reference $REF" >&2
   exit 3
@@ -33,7 +35,7 @@ if [ ! -f "$LOG_SKILL" ]; then
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND FAILED reason=missing_log_skill $LOG_SKILL" >&2
   exit 3
 fi
-mkdir -p "$WS/memory" "$REPORTS"
+mkdir -p "$WS/memory" "$REPORTS" "$METRICS_DIR"
 if [ ! -s "$MEM" ]; then
   cp "$WS/reference/agent-memory.seed.md" "$MEM"
 fi
@@ -79,8 +81,18 @@ DUR=$((END_TS - START_TS))
 MSG_BYTES=$(wc -c < "$MSG_FILE" 2>/dev/null || echo 0)
 
 if [ "$EXIT" -eq 0 ]; then
+  cat > "$METRICS_FILE" <<EOF
+alert24_ai_scanner_last_success_timestamp{kind="$KIND"} $END_TS
+alert24_ai_scanner_run_duration_seconds{kind="$KIND"} $DUR
+alert24_ai_scanner_runs_total{kind="$KIND",status="ok"} 1
+EOF
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND exit=0 dur=${DUR}s bytes=$MSG_BYTES status=ok"
 else
+  cat > "$METRICS_FILE" <<EOF
+alert24_ai_scanner_last_failure_timestamp{kind="$KIND"} $END_TS
+alert24_ai_scanner_run_duration_seconds{kind="$KIND"} $DUR
+alert24_ai_scanner_runs_total{kind="$KIND",status="failed"} 1
+EOF
   echo "[$(date -Iseconds)] ai-scanner kind=$KIND exit=$EXIT dur=${DUR}s bytes=$MSG_BYTES status=FAILED log=$MSG_FILE" >&2
   head -c 2000 "$MSG_FILE" 2>/dev/null || true
   echo "" >&2

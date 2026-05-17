@@ -1,6 +1,6 @@
 {
   "uid": "24alert-trading-bot",
-  "title": "24alert Trading Bot",
+  "title": "24alert Gateway/API",
   "tags": ["24alert", "trading"],
   "timezone": "Europe/Moscow",
   "refresh": "30s",

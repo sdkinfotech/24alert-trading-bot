@@ -3,23 +3,22 @@ groups:
     rules:
       - alert: 24alert_HighErrorRate
         expr: >
-          (
-            sum(rate(alert24_http_requests_total{job=~"24alert.*",status=~"5.."}[5m]))
-            /
-            sum(rate(alert24_http_requests_total{job=~"24alert.*"}[5m]))
-          ) > 0.05
+          sum(rate(alert24_http_requests_total{job="24alert-gateway",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(alert24_http_requests_total{job="24alert-gateway"}[5m])), 1)
+          > 0.05
         for: 5m
         labels:
           severity: critical
           project: 24alert
         annotations:
-          summary: "24alert HTTP 5xx error rate above 5%"
-          description: "5xx error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+          summary: "24alert gateway HTTP 5xx error rate above 5%"
+          description: "Gateway 5xx error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
 
       - alert: 24alert_HighLatency
         expr: >
           histogram_quantile(0.95,
-            sum(rate(alert24_http_request_duration_seconds_bucket{job=~"24alert.*"}[5m])) by (le)
+            sum(rate(alert24_http_request_duration_seconds_bucket{job="24alert-gateway"}[5m])) by (le)
           ) > 2
         for: 5m
         labels:
@@ -30,7 +29,7 @@ groups:
           description: "p95 latency is {{ $value | humanizeDuration }}."
 
       - alert: 24alert_ServiceDown
-        expr: up{job=~"24alert.*"} == 0
+        expr: up{project="24alert",job=~"24alert-(gateway|strategy-runner)"} == 0
         for: 2m
         labels:
           severity: critical
@@ -38,6 +37,16 @@ groups:
         annotations:
           summary: "24alert service {{ $labels.job }} is down"
           description: "{{ $labels.job }} has been unreachable for more than 2 minutes."
+
+      - alert: 24alert_AuxServiceDown
+        expr: up{project="24alert",job=~"24alert-(order-svc|marketdata-svc|portfolio-svc|risk-svc|ai-scanner)"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert auxiliary service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 5 minutes."
 
   - name: 24alert-tinvest
     rules:
@@ -53,14 +62,38 @@ groups:
           description: "T-Invest upstream error rate: {{ $value | humanize }} errors/5min."
 
       - alert: 24alert_MarketDataStale
-        expr: alert24_marketdata_staleness_seconds > 300
-        for: 5m
+        expr: >
+          alert24_marketdata_staleness_seconds > 900
+          and on() alert24_strategy_session_allowed == 1
+        for: 10m
         labels:
           severity: warning
           project: 24alert
         annotations:
           summary: "24alert market data stale for {{ $labels.instrument }}"
-          description: "Instrument {{ $labels.instrument }} has not received an update for {{ $value | humanizeDuration }}."
+          description: "Instrument {{ $labels.instrument }} has not received an update during an allowed FORTS session for {{ $value | humanizeDuration }}."
+
+      - alert: 24alert_TInvestAuthErrors
+        expr: >
+          sum(rate(alert24_tinvest_errors_total{error_type=~"(?i).*unauth.*|(?i).*auth.*"}[5m])) * 300 > 0
+        for: 2m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert T-Invest authentication errors"
+          description: "T-Invest auth/unauthenticated errors were observed in the last 5 minutes."
+
+      - alert: 24alert_TInvestRateLimitHigh
+        expr: >
+          sum(rate(alert24_tinvest_errors_total{error_type=~"(?i).*resource.*|(?i).*limit.*|(?i).*exhausted.*"}[5m])) * 300 > 5
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert T-Invest rate limit/resource errors"
+          description: "T-Invest ResourceExhausted/rate-limit errors are elevated."
 
   - name: 24alert-risk
     rules:
@@ -76,15 +109,96 @@ groups:
 
       - alert: 24alert_OrderFailures
         expr: >
-          (
-            sum(rate(alert24_trading_order_errors_total{job=~"24alert.*"}[5m]))
-            /
-            (sum(rate(alert24_trading_orders_total{job=~"24alert.*"}[5m])) + sum(rate(alert24_trading_order_errors_total{job=~"24alert.*"}[5m])))
-          ) > 0.05
+          sum(rate(alert24_strategy_orders_total{status=~"risk_error|post_error"}[15m]))
+          /
+          clamp_min(sum(rate(alert24_strategy_orders_total[15m])), 1)
+          > 0.05
         for: 5m
         labels:
           severity: critical
           project: 24alert
         annotations:
           summary: "24alert order failure rate above 5%"
-          description: "Order failure rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+          description: "Strategy order failure rate is {{ $value | humanizePercentage }} over the last 15 minutes."
+
+  - name: 24alert-strategy-runner
+    rules:
+      - alert: 24alert_StrategyRunnerDown
+        expr: absent(up{project="24alert",job="24alert-strategy-runner"} == 1)
+        for: 2m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert strategy-runner is not reporting metrics"
+          description: "Central Prometheus has no healthy strategy-runner target."
+
+      - alert: 24alert_EnabledStrategyStopped
+        expr: >
+          alert24_strategy_instance_enabled == 1
+          unless on(exported_instance) alert24_strategy_instance_running == 1
+        for: 2m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert enabled strategy {{ $labels.exported_instance }} is stopped"
+          description: "Strategy is enabled in config but not running in strategy-runner."
+
+      - alert: 24alert_SignalCancelledRiskHigh
+        expr: >
+          sum by (exported_instance, status) (
+            increase(alert24_strategy_events_total{type="signal_cancelled",status=~"risk_rejected|risk_error"}[30m])
+          ) > 3
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert risk-related cancelled signals for {{ $labels.exported_instance }}"
+          description: "Risk cancellation count in 30m: {{ $value }} (status={{ $labels.status }})."
+
+      - alert: 24alert_SignalCancelledUnexpected
+        expr: >
+          sum by (exported_instance) (
+            increase(alert24_strategy_events_total{type="signal_cancelled",status="post_error"}[15m])
+          ) > 0
+        for: 1m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert post-order cancellation for {{ $labels.exported_instance }}"
+          description: "A signal passed session/risk checks but failed before broker order submission."
+
+      - alert: 24alert_ReconcileMismatch
+        expr: increase(alert24_strategy_reconcile_mismatch_total[30m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert broker/runner position mismatch"
+          description: "Strategy {{ $labels.exported_instance }} needed ledger reconciliation from broker position."
+
+  - name: 24alert-ai-scanner
+    rules:
+      - alert: 24alert_AiScannerFailed
+        expr: time() - alert24_ai_scanner_last_failure_timestamp < 3600
+        for: 1m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert AI scanner failed"
+          description: "AI scanner kind={{ $labels.kind }} failed less than one hour ago."
+
+      - alert: 24alert_AiScannerNoPostMarketRun
+        expr: absent(alert24_ai_scanner_last_success_timestamp{kind="post-market"}) or (time() - alert24_ai_scanner_last_success_timestamp{kind="post-market"} > 172800)
+        for: 30m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert AI scanner has no recent post-market success"
+          description: "No successful post-market AI scanner run has been observed in the last 48 hours."

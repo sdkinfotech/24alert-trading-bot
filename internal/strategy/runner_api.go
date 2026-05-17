@@ -127,6 +127,9 @@ func (r *Runner) runWatchdog(ctx context.Context) {
 }
 
 func (r *Runner) tickWatchdog(ctx context.Context) {
+	r.updateSessionMetrics(time.Now())
+	r.updateInstanceMetrics()
+
 	r.mu.Lock()
 	ids := make([]string, 0, len(r.instances))
 	accounts := make(map[string]struct{})
