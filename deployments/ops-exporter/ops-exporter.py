@@ -135,7 +135,6 @@ def collect():
         cid = container.get("Id", "")
         image = container.get("Image", "")
         state = container.get("State", "")
-        status = container.get("Status", "")
         running = 1 if state == "running" else 0
         detail = docker_get(f"/containers/{cid}/json")
         restart_count = detail.get("RestartCount", 0)
@@ -143,7 +142,7 @@ def collect():
         image_id = detail.get("Image", "")
         labels = (
             f'container="{label_value(name)}",image="{label_value(image)}",'
-            f'image_id="{label_value(image_id)}",status="{label_value(status)}"'
+            f'image_id="{label_value(image_id)}",state="{label_value(state)}"'
         )
         lines.append(f"alert24_ops_container_running{{{labels}}} {running}")
         lines.append(f"alert24_ops_container_restarts{{{labels}}} {restart_count}")
