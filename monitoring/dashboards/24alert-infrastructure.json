@@ -1,0 +1,154 @@
+{
+  "uid": "24alert-infrastructure",
+  "title": "24alert Infrastructure",
+  "tags": ["24alert", "infrastructure", "docker"],
+  "timezone": "Europe/Moscow",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "srv03-cloud disk used",
+      "description": "Заполненность корневого диска production-сервера. Именно этот показатель поймал бы инцидент, когда Docker images забили диск на 100% и prometheus-agent перестал писать WAL. Норма: <80%, тревожно >85%, критично >92%.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.8 }, { "color": "red", "value": 0.92 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_ops_filesystem_used_bytes / alert24_ops_filesystem_size_bytes", "legendFormat": "disk used" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "srv03-cloud disk free",
+      "description": "Свободное место на production-сервере. Если меньше 3GB — срочно чистить Docker images/logs до пересборок и деплоев.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 3000000000 }, { "color": "green", "value": 6000000000 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_ops_filesystem_free_bytes", "legendFormat": "free" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Docker images: count / size",
+      "description": "Сколько Docker images лежит на srv03-cloud и их общий размер. Рост после деплоев нормален, но если размер снова приближается к десяткам GB — нужен prune.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "alert24_ops_docker_images_total", "legendFormat": "images total" },
+        { "expr": "alert24_ops_docker_images_size_bytes / 1000000000", "legendFormat": "images GB" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Deployed git commit",
+      "description": "Текущий commit, который лежит в /opt/24alert на production. Использовать для сверки: локальный main, GitHub и VPS должны совпадать после деплоя.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "alert24_ops_git_info", "legendFormat": "{{ branch }} {{ commit }}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Контейнеры 24alert: running",
+      "description": "1 = контейнер запущен, 0 = контейнер существует, но не running. Если 0 у gateway/strategy-runner/ai-scanner/prometheus-agent/promtail — это production incident.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "RUNNING" }, "0": { "text": "STOPPED" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_ops_container_running", "legendFormat": "{{ container }} {{ image }}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Контейнеры: restarts",
+      "description": "Docker restart count по контейнерам. Рост означает crash/restart loop или ручные рестарты. Для расследования смотреть Loki errors по этому container.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        { "expr": "alert24_ops_container_restarts", "legendFormat": "{{ container }}" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Container image / version inventory",
+      "description": "Инвентарь: какой image/image_id/status у каждого контейнера. Помогает понять, какие версии реально крутятся после деплоя.",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "targets": [
+        { "expr": "alert24_ops_container_info", "format": "table", "instant": true, "legendFormat": "{{ container }}" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Monitoring pipeline: agent/promtail/up",
+      "description": "Жив ли сам monitoring pipeline. Если prometheus-agent не работает — Grafana перестанет видеть свежие метрики. Если promtail не работает — пропадут логи.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 21 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_ops_container_running{container=~\"24alert-(prometheus-agent|promtail|ops-exporter)\"}", "legendFormat": "{{ container }}" },
+        { "expr": "up{project=\"24alert\",job=\"24alert-ops-exporter\"}", "legendFormat": "ops scrape" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Prometheus Agent errors",
+      "description": "Ошибки prometheus-agent: remote_write, scrape commit, WAL, no space left. Любая строка no space left on device — срочно чистить диск.",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 21 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"prometheus-agent\"} |~ \"(?i)(error|remote|wal|no space|scrape commit failed)\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Promtail errors",
+      "description": "Ошибки доставки логов в Loki или чтения Docker logs. Если здесь есть свежие ошибки — log panels могут быть неполными.",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 21 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"promtail\"} |~ \"(?i)(error|failed|cannot|no such container)\"", "refId": "A" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

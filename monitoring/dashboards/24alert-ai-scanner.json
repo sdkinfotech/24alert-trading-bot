@@ -8,10 +8,11 @@
   "panels": [
     {
       "id": 1,
-      "title": "Last Successful Run",
+      "title": "Советник ИИ: последний успешный запуск",
+      "description": "Когда последний раз успешно завершились health/pre-market/post-market задачи. Норма: health каждые 4 часа, pre-market по будням перед открытием, post-market после закрытия рынка.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
       "targets": [
         { "expr": "alert24_ai_scanner_last_success_timestamp * 1000", "legendFormat": "{{ kind }}" }
@@ -19,10 +20,11 @@
     },
     {
       "id": 2,
-      "title": "Last Failure",
+      "title": "Советник ИИ: последний сбой",
+      "description": "Время последнего failed запуска. Если появилось свежее значение — смотреть AI Scanner Failures ниже и docker logs 24alert-ai-scanner.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
       "targets": [
         { "expr": "alert24_ai_scanner_last_failure_timestamp * 1000", "legendFormat": "{{ kind }}" }
@@ -30,36 +32,109 @@
     },
     {
       "id": 3,
-      "title": "Run Duration",
+      "title": "Cron job сейчас выполняется",
+      "description": "1 = run-scan.sh сейчас выполняется, 0 = idle. Если долго висит 1 — вероятно завис агент или timeout ещё не сработал.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "RUNNING" }, "0": { "text": "IDLE" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_ai_scanner_run_in_progress", "legendFormat": "{{ kind }}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Длительность запусков",
+      "description": "Сколько секунд выполнялся последний запуск каждого kind. Норма: health быстро, post-market может быть долгим из-за сканирования/бэктестов. >1800s означает timeout.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
         { "expr": "alert24_ai_scanner_run_duration_seconds", "legendFormat": "{{ kind }}" }
       ]
     },
     {
-      "id": 4,
-      "title": "AI Scanner Logs",
-      "type": "logs",
-      "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "id": 5,
+      "title": "Exit code последнего запуска",
+      "description": "0 = успешно. 1/2/3/4 — ошибка скрипта, workspace/env/agent. Если не 0 — смотреть Failures log panel.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
       "targets": [
-        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |= \"ai-scanner\"", "refId": "A" }
+        { "expr": "alert24_ai_scanner_last_exit_code", "legendFormat": "{{ kind }}" }
       ]
     },
     {
-      "id": 5,
-      "title": "AI Scanner Failures",
+      "id": 6,
+      "title": "Размер ответа агента",
+      "description": "Сколько байт и строк вывел Cursor Agent в последнем запуске. 0 при success подозрительно: агент мог ничего не сделать или вывод не записался.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 5 },
+      "targets": [
+        { "expr": "alert24_ai_scanner_last_response_bytes", "legendFormat": "{{ kind }} bytes" },
+        { "expr": "alert24_ai_scanner_last_response_lines", "legendFormat": "{{ kind }} lines" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Отчёты в /workspace/reports",
+      "description": "Сколько файлов отчётов видит scanner. Если post-market/pre-market прошёл, но отчётов не прибавляется — проверять prompt и права volume.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 11 },
+      "targets": [
+        { "expr": "alert24_ai_scanner_reports_total", "legendFormat": "{{ kind }}" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Cron расписание из логов контейнера",
+      "description": "При старте контейнера ai-scanner печатает crontab. Здесь видно, какие job реально заведены внутри контейнера.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 11 },
       "targets": [
-        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |~ \"FAILED|missing_env|bad_workspace|timeout|error\"", "refId": "A" }
+        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |~ \"crontab|run-scan.sh|ai-scanner ready\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "AI Scanner runs",
+      "description": "Логи start/status=ok/status=FAILED по health/pre-market/post-market. Это основной журнал: сколько раз запускался советник и чем завершился.",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 19 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |= \"ai-scanner kind=\"", "refId": "A" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "AI Scanner failures",
+      "description": "Ошибки советника: missing_env, bad_workspace, agent_not_found, timeout, FAILED. Любая свежая строка требует проверки, потому что советник мог не обновить конфиг/отчёт.",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 19 },
+      "targets": [
+        { "expr": "{project=\"24alert\",service=\"ai-scanner\"} |~ \"FAILED|missing_env|bad_workspace|agent_not_found|timeout|error\"", "refId": "A" }
       ]
     }
   ],
   "schemaVersion": 39,
-  "version": 1
+  "version": 3
 }

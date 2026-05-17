@@ -293,6 +293,23 @@ services:
     profiles:
       - monitoring
 
+  ops-exporter:
+    image: python:3.12-alpine
+    container_name: 24alert-ops-exporter
+    command: ["python", "/opt/ops-exporter/ops-exporter.py"]
+    volumes:
+      - ./ops-exporter/ops-exporter.py:/opt/ops-exporter/ops-exporter.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host:ro
+      - ../.git:/repo/.git:ro
+    expose:
+      - "9140"
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
   promtail:
     image: grafana/promtail:3.5.0
     container_name: 24alert-promtail

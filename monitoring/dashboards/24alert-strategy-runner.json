@@ -21,10 +21,80 @@
   "panels": [
     {
       "id": 1,
-      "title": "Strategy PnL",
+      "title": "Стратегии: включены и реально запущены",
+      "description": "Операторская проверка трёх futures-стратегий. Enabled=1 означает включено в config.yaml, Running=1 означает реально работает в памяти strategy-runner. Если enabled=1 и running=0 — это критично: стратегия не торгует.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "STOP" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_strategy_instance_enabled{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} enabled" },
+        { "expr": "alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} running" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "FORTS session guard",
+      "description": "1 = сейчас разрешённое окно FORTS, 0 = торговля намеренно заблокирована (ночь, выходной, клиринг). Расписание: Mon-Fri 10:00-14:00, 14:05-18:50, 19:00-23:50 MSK. Выходные заблокированы из-за низкой ликвидности.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "ALLOWED" }, "0": { "text": "BLOCKED" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "alert24_strategy_session_allowed{job=\"24alert-strategy-runner\"}", "legendFormat": "session" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Следующее открытие торгов",
+      "description": "Unix timestamp следующего разрешённого FORTS окна, показанный как дата/время. Если сейчас выходные или ночь — здесь видно, когда runner снова сможет отправлять заявки.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
+      "targets": [
+        { "expr": "alert24_strategy_next_session_open_timestamp{job=\"24alert-strategy-runner\"} * 1000", "legendFormat": "next open" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Reconcile mismatch",
+      "description": "Сколько раз runner обнаружил расхождение своего ledger с брокерской позицией. Норма: 0. Любой рост — проверить сделки у брокера, журнал runner и позицию по инструменту.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      },
+      "targets": [
+        { "expr": "sum by (exported_instance) (increase(alert24_strategy_reconcile_mismatch_total{exported_instance=~\"$instance\"}[24h]))", "legendFormat": "{{ exported_instance }}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Оценочный PnL стратегий",
+      "description": "Total/realized/unrealized PnL по внутреннему ledger runner. Это оперативная оценка без полного учёта комиссий и всех брокерских нюансов. Для денег сверять с брокером.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 },
       "fieldConfig": { "defaults": { "unit": "currencyRUB" } },
       "targets": [
         { "expr": "alert24_strategy_total_pnl_rub{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} total" },
@@ -33,71 +103,64 @@
       ]
     },
     {
-      "id": 2,
-      "title": "Enabled / Running",
+      "id": 6,
+      "title": "Позиции и drawdown",
+      "description": "Позиция по инструменту и текущая просадка стратегии. Норма зависит от стратегии. Неожиданная позиция вне торгового плана — проверить executions и broker portfolio.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 },
       "targets": [
-        { "expr": "alert24_strategy_instance_enabled{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} enabled" },
-        { "expr": "alert24_strategy_instance_running{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} running" }
+        { "expr": "alert24_strategy_position_qty_shares{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} {{ instrument }} qty" },
+        { "expr": "alert24_strategy_drawdown_percent{exported_instance=~\"$instance\"}", "legendFormat": "{{ exported_instance }} drawdown %" }
       ]
     },
     {
-      "id": 3,
-      "title": "Signals / Orders",
+      "id": 7,
+      "title": "Signal funnel: сигнал → фильтры → заявка",
+      "description": "Воронка исполнения: strategy signals, отмены session/risk/post и submitted orders. Норма: session_blocked может быть вне сессии; risk_error/post_error должны быть 0.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "targets": [
-        { "expr": "sum by (exported_instance, direction) (rate(alert24_strategy_signals_total{exported_instance=~\"$instance\"}[15m]))", "legendFormat": "{{ exported_instance }} {{ direction }} signals/s" },
-        { "expr": "sum by (exported_instance, status) (rate(alert24_strategy_orders_total{exported_instance=~\"$instance\"}[15m]))", "legendFormat": "{{ exported_instance }} {{ status }} orders/s" }
+        { "expr": "sum by (exported_instance, direction) (increase(alert24_strategy_signals_total{exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} signal {{ direction }}" },
+        { "expr": "sum by (exported_instance, status) (increase(alert24_strategy_orders_total{exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} order {{ status }}" }
       ]
     },
     {
-      "id": 4,
-      "title": "Cancelled Signals by Reason",
+      "id": 8,
+      "title": "Отменённые сигналы по причинам",
+      "description": "Почему сигнал не стал сделкой: session_blocked, risk_rejected, risk_error, post_error. session_blocked вне сессии — нормально; risk_error/post_error — расследовать.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
         { "expr": "sum by (exported_instance, status, reason) (increase(alert24_strategy_events_total{type=\"signal_cancelled\",exported_instance=~\"$instance\"}[6h]))", "legendFormat": "{{ exported_instance }} {{ status }} {{ reason }}" }
       ]
     },
     {
-      "id": 5,
-      "title": "FORTS Session Guard",
-      "type": "stat",
+      "id": 9,
+      "title": "Strategy evaluation latency",
+      "description": "Сколько времени занимает обработка закрытой свечи стратегией. Рост может означать зависание внешнего API/стратегии или нагрузку на runner.",
+      "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 16 },
-      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 20 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
       "targets": [
-        { "expr": "alert24_strategy_session_allowed{job=\"24alert-strategy-runner\"}", "legendFormat": "session allowed" }
+        { "expr": "histogram_quantile(0.95, sum by (le, exported_instance) (rate(alert24_strategy_evaluation_duration_seconds_bucket{exported_instance=~\"$instance\"}[15m])))", "legendFormat": "{{ exported_instance }} p95" }
       ]
     },
     {
-      "id": 6,
-      "title": "Next Session Open",
-      "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 16 },
-      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" } },
-      "targets": [
-        { "expr": "alert24_strategy_next_session_open_timestamp{job=\"24alert-strategy-runner\"} * 1000", "legendFormat": "next open" }
-      ]
-    },
-    {
-      "id": 7,
-      "title": "Strategy Runner Events",
+      "id": 10,
+      "title": "Strategy Runner важные события из логов",
+      "description": "Логи отменённых сигналов, risk rejects/errors, post errors и reconcile. Это основной журнал объяснений “почему был сигнал, но не было сделки”.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 20 },
       "targets": [
-        { "expr": "{project=\"24alert\",service=\"strategy-runner\"} |~ \"signal cancelled|risk_rejected|risk_error|post_error|reconcile\"", "refId": "A" }
+        { "expr": "{project=\"24alert\",service=\"strategy-runner\"} |~ \"signal cancelled|risk_rejected|risk_error|post_error|reconcile|order submitted\"", "refId": "A" }
       ]
     }
   ],
   "schemaVersion": 39,
-  "version": 1
+  "version": 3
 }

@@ -8,18 +8,28 @@
   "panels": [
     {
       "id": 1,
-      "title": "Service Up/Down",
+      "title": "Сервисы API: жив / не жив",
+      "description": "Показывает, скрейпит ли Prometheus gateway и вспомогательные сервисы. Норма: все значения 1. Если 0 — контейнер упал, /metrics недоступен или prometheus-agent не может дойти до сервиса. First action: на srv03-cloud выполнить docker compose ps и docker logs нужного контейнера.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "bool" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool",
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "OK" }, "0": { "text": "DOWN" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
       "targets": [
         { "expr": "up{project=\"24alert\",job=~\"24alert-(gateway|order-svc|marketdata-svc|portfolio-svc|risk-svc)\"}", "legendFormat": "{{ job }}" }
       ]
     },
     {
       "id": 2,
-      "title": "HTTP RPS",
+      "title": "Gateway HTTP нагрузка: запросы в секунду",
+      "description": "Сколько HTTP-запросов обрабатывает gateway по path/status. Норма зависит от активности dashboard/Traderbook/AI scanner. Резкий рост 5xx или исчезновение всех запросов — повод проверить gateway logs и T-Invest connectivity.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
@@ -30,58 +40,73 @@
     },
     {
       "id": 3,
-      "title": "HTTP p95 Latency",
+      "title": "Gateway latency p95",
+      "description": "95-й перцентиль времени ответа gateway. Норма: обычно меньше 0.5s, тревожно выше 2s. Если растёт — проверить T-Invest latency, CPU/disk на srv03-cloud и ошибки gateway.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "s" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 2 }] }
+        }
+      },
       "targets": [
         { "expr": "histogram_quantile(0.95, sum(rate(alert24_http_request_duration_seconds_bucket{job=\"24alert-gateway\"}[5m])) by (le))", "legendFormat": "gateway p95" }
       ]
     },
     {
       "id": 4,
-      "title": "T-Invest Requests / Errors",
+      "title": "T-Invest API: запросы и ошибки",
+      "description": "Показывает обращения к T-Invest и ошибки по service/method/status. Норма: ошибок почти нет. ResourceExhausted — rate limit, Unauthenticated — проблема токена, rpc error — сбой сети/API.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
       "targets": [
-        { "expr": "sum by (service, method, status) (rate(alert24_tinvest_requests_total[5m]))", "legendFormat": "{{ service }} {{ method }} {{ status }}" },
-        { "expr": "sum by (service, method, error_type) (rate(alert24_tinvest_errors_total[5m]))", "legendFormat": "{{ service }} {{ method }} {{ error_type }}" }
+        { "expr": "sum by (service, method, status) (rate(alert24_tinvest_requests_total[5m]))", "legendFormat": "requests {{ service }} {{ method }} {{ status }}" },
+        { "expr": "sum by (service, method, error_type) (rate(alert24_tinvest_errors_total[5m]))", "legendFormat": "errors {{ service }} {{ method }} {{ error_type }}" }
       ]
     },
     {
       "id": 5,
-      "title": "Market Data Staleness",
+      "title": "Market data freshness",
+      "description": "Сколько секунд прошло с последнего market data update по инструменту. Во время разрешённой FORTS-сессии значение должно оставаться небольшим. Ночью, в выходные и клиринг это не должно алертить.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
-      "fieldConfig": { "defaults": { "unit": "s" } },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 300 }, { "color": "red", "value": 900 }] }
+        }
+      },
       "targets": [
         { "expr": "alert24_marketdata_staleness_seconds", "legendFormat": "{{ instrument }}" }
       ]
     },
     {
       "id": 6,
-      "title": "Gateway Errors from Loki",
+      "title": "Ошибки gateway из Loki",
+      "description": "Живой лог ошибок gateway. Сюда попадают panic/fatal/error, T-Invest ResourceExhausted, Unauthenticated, rpc error. First action: открыть строку лога, затем проверить соответствующий upstream или токен.",
       "type": "logs",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "h": 10, "w": 12, "x": 0, "y": 13 },
       "targets": [
-        { "expr": "{project=\"24alert\",service=\"gateway\"} |~ \"ResourceExhausted|Unauthenticated|rpc error|error|panic|fatal\"", "refId": "A" }
+        { "expr": "{project=\"24alert\",service=\"gateway\"} |~ \"(?i)(ResourceExhausted|Unauthenticated|rpc error|error|panic|fatal)\"", "refId": "A" }
       ]
     },
     {
       "id": 7,
-      "title": "Nginx Access/Error Logs",
-      "type": "logs",
+      "title": "Ошибки всех API-сервисов за 1 час",
+      "description": "Считает error/panic/fatal/rpc error по gateway и *-svc за последний час. Норма: 0 или единичные известные transient ошибки. Рост — смотреть log panel ниже.",
+      "type": "timeseries",
       "datasource": { "type": "loki", "uid": "loki" },
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 13 },
       "targets": [
-        { "expr": "{project=\"24alert\"} |~ \"nginx|gateway.24alert.ru|/health| 5[0-9][0-9] \"", "refId": "A" }
+        { "expr": "sum by (service) (count_over_time({project=\"24alert\",service=~\"gateway|order-svc|marketdata-svc|portfolio-svc|risk-svc\"} |~ \"(?i)(error|panic|fatal|rpc error|ResourceExhausted|Unauthenticated)\" [1h]))", "refId": "A", "legendFormat": "{{ service }}" }
       ]
     }
   ],
   "schemaVersion": 39,
-  "version": 1
+  "version": 2
 }

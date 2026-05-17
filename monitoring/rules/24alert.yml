@@ -39,7 +39,7 @@ groups:
           description: "{{ $labels.job }} has been unreachable for more than 2 minutes."
 
       - alert: 24alert_AuxServiceDown
-        expr: up{project="24alert",job=~"24alert-(order-svc|marketdata-svc|portfolio-svc|risk-svc|ai-scanner)"} == 0
+        expr: up{project="24alert",job=~"24alert-(order-svc|marketdata-svc|portfolio-svc|risk-svc|ai-scanner|ops-exporter)"} == 0
         for: 5m
         labels:
           severity: warning
@@ -47,6 +47,66 @@ groups:
         annotations:
           summary: "24alert auxiliary service {{ $labels.job }} is down"
           description: "{{ $labels.job }} has been unreachable for more than 5 minutes."
+
+  - name: 24alert-infrastructure
+    rules:
+      - alert: 24alert_DiskAlmostFull
+        expr: >
+          alert24_ops_filesystem_used_bytes{mountpoint="/"}
+          /
+          alert24_ops_filesystem_size_bytes{mountpoint="/"}
+          > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert srv03-cloud disk usage above 85%"
+          description: "Root filesystem is {{ $value | humanizePercentage }} used. Prune Docker images/logs before deploys; 100% disk breaks prometheus-agent WAL."
+
+      - alert: 24alert_DiskCritical
+        expr: >
+          alert24_ops_filesystem_used_bytes{mountpoint="/"}
+          /
+          alert24_ops_filesystem_size_bytes{mountpoint="/"}
+          > 0.92
+        for: 5m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert srv03-cloud disk usage above 92%"
+          description: "Root filesystem is critically full. Immediate action: docker image prune -af after verifying current containers."
+
+      - alert: 24alert_OpsExporterDown
+        expr: absent(up{project="24alert",job="24alert-ops-exporter"} == 1)
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert ops-exporter is not reporting"
+          description: "Infrastructure/container/version metrics are stale or unavailable."
+
+      - alert: 24alert_ContainerStopped
+        expr: alert24_ops_container_running{container=~"24alert-(gateway|strategy-runner|ai-scanner|prometheus-agent|promtail|ops-exporter)"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          project: 24alert
+        annotations:
+          summary: "24alert container {{ $labels.container }} is stopped"
+          description: "Container {{ $labels.container }} is not running. Check docker compose ps and docker logs on srv03-cloud."
+
+      - alert: 24alert_DockerImagesBloat
+        expr: alert24_ops_docker_images_size_bytes > 15000000000
+        for: 30m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert Docker images consume more than 15GB"
+          description: "Docker image cache is growing and can fill the 30GB disk. Plan docker image prune -af after deployment verification."
 
   - name: 24alert-tinvest
     rules:
@@ -202,3 +262,23 @@ groups:
         annotations:
           summary: "24alert AI scanner has no recent post-market success"
           description: "No successful post-market AI scanner run has been observed in the last 48 hours."
+
+      - alert: 24alert_AiScannerNoHealthRun
+        expr: time() - alert24_ai_scanner_last_success_timestamp{kind="health"} > 18000
+        for: 30m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert AI scanner health job is stale"
+          description: "No successful health AI scanner run has been observed in the last 5 hours."
+
+      - alert: 24alert_AiScannerRunStuck
+        expr: alert24_ai_scanner_run_in_progress == 1 and (time() - alert24_ai_scanner_last_start_timestamp > 2100)
+        for: 5m
+        labels:
+          severity: warning
+          project: 24alert
+        annotations:
+          summary: "24alert AI scanner run appears stuck"
+          description: "AI scanner kind={{ $labels.kind }} has been running for more than 35 minutes."

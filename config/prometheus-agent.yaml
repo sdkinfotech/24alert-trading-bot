@@ -40,6 +40,11 @@ scrape_configs:
       - targets: ["ai-scanner:9130"]
     metrics_path: /metrics
 
+  - job_name: "24alert-ops-exporter"
+    static_configs:
+      - targets: ["ops-exporter:9140"]
+    metrics_path: /metrics
+
 # Remote write to central Prometheus on monitoring server.
 # Credentials configured via basic_auth_password_file or inline.
 # Update the URL and password before deploying.

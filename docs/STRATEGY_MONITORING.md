@@ -324,9 +324,10 @@ rate(alert24_strategy_orders_total{instance="fut-gas-mini-sma",status="risk_reje
 - `monitoring/dashboards/24alert-strategy-runner.json`
 - `monitoring/dashboards/24alert-gateway-api.json`
 - `monitoring/dashboards/24alert-ai-scanner.json`
+- `monitoring/dashboards/24alert-infrastructure.json`
 - `monitoring/rules/24alert.yml`
 
-### Панели
+### Панели Strategy Runner
 
 **Row 1 — Ключевые числа (stat)**
 
@@ -373,7 +374,7 @@ Strategy dashboard импортируется из `monitoring/dashboards/24aler
 ### Алерты (Alertmanager)
 
 Файл: `monitoring/rules/24alert.yml`.
-Правила включают schedule-aware `24alert_MarketDataStale`, `24alert_EnabledStrategyStopped`, cancelled signal alerts и AI scanner alerts.
+Правила включают schedule-aware `24alert_MarketDataStale`, `24alert_EnabledStrategyStopped`, cancelled signal alerts, AI scanner alerts и infrastructure alerts (`24alert_DiskAlmostFull`, `24alert_DiskCritical`, `24alert_ContainerStopped`, `24alert_DockerImagesBloat`).
 
 Текущие правила:
 ```yaml
@@ -388,12 +389,13 @@ Strategy dashboard импортируется из `monitoring/dashboards/24aler
 
 ### Мониторинговый стек
 
-Prometheus agent и Promtail есть в compose profile `monitoring`, но на production сейчас не запущены:
+Monitoring profile на production должен держать три контейнера:
 
 | Контейнер | Роль |
 |-----------|------|
 | `24alert-prometheus-agent` | Scrape метрик со всех сервисов → remote_write при настройке |
 | `24alert-promtail` | Сбор Docker-логов → Loki при настройке |
+| `24alert-ops-exporter` | Disk/Docker/container/version metrics для `24alert Infrastructure` |
 
 Scrape targets (config: `config/prometheus-agent.yaml`):
 - gateway:8080

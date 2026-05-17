@@ -227,9 +227,12 @@ strategies:
 - Strategy dashboard: [`monitoring/dashboards/24alert-strategy-runner.json`](../monitoring/dashboards/24alert-strategy-runner.json)
 - Gateway/API dashboard: [`monitoring/dashboards/24alert-gateway-api.json`](../monitoring/dashboards/24alert-gateway-api.json)
 - AI Scanner dashboard: [`monitoring/dashboards/24alert-ai-scanner.json`](../monitoring/dashboards/24alert-ai-scanner.json)
+- Infrastructure dashboard: [`monitoring/dashboards/24alert-infrastructure.json`](../monitoring/dashboards/24alert-infrastructure.json)
 - Правила алертов: [`monitoring/rules/24alert.yml`](../monitoring/rules/24alert.yml). `MarketDataStale` зависит от `alert24_strategy_session_allowed{job="24alert-strategy-runner"}`, поэтому не должен шуметь ночью, на выходных и в клиринг.
 
 В центральном Prometheus после `remote_write` label `instance` из strategy metrics отображается как `exported_instance`, потому что `instance` уже занят scrape target (`strategy-runner:9120`).
+
+Infrastructure dashboard использует `24alert-ops-exporter`: `alert24_ops_filesystem_*`, `alert24_ops_container_*`, `alert24_ops_git_info`, `alert24_ops_docker_images_*`.
 
 ## Типы стратегий
 
