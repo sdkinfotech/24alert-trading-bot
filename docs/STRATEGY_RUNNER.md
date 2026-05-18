@@ -244,6 +244,13 @@ Infrastructure dashboard использует `24alert-ops-exporter`: `alert24_o
 | `level_bounce` | `internal/strategy/lb` | Mean reversion от support/resistance уровней с ATR stop/take-profit | `atr_mult`, `sl_mult`, `tp_mult`, `level_days`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 | `orb_breakout` | `internal/strategy/orb` | Intraday Opening Range Breakout: вход при пробое диапазона открытия, выход до конца сессии | `range_candles`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 
+**`level_bounce` guardrails:**
+
+- BUY требует фактического касания support: `low <= S` и закрытие выше уровня.
+- SELL требует фактического касания resistance: `high >= R` и закрытие ниже уровня.
+- ATR используется для stop/take-profit, но больше не расширяет entry-зону перед уровнем. Это предотвращает серию контртрендовых сигналов, когда цена только приближается к сопротивлению.
+- Один и тот же `level + direction` не сигналит повторно в тот же торговый день, даже если предыдущий сигнал был отменён session/risk guard.
+
 **`orb_breakout` — Opening Range Breakout:**
 1. **Наблюдение (первые N свечей):** Запоминает High и Low первых `range_candles` свечей дня — формирует "opening range".
 2. **Торговля:** При закрытии свечи выше Range High → BUY; ниже Range Low → SELL. При пробое в обратную сторону — разворот позиции (2x qty).
