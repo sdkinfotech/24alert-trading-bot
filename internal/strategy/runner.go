@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -292,6 +293,9 @@ func (r *Runner) buildStrategy(inst config.StrategyInstanceConfig) (Strategy, er
 }
 
 func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstanceConfig) error {
+	if err := validateInstanceSafety(inst); err != nil {
+		return err
+	}
 	st, err := r.buildStrategy(inst)
 	if err != nil {
 		return err
@@ -1096,6 +1100,23 @@ func instanceChanged(a, b config.StrategyInstanceConfig) bool {
 	return false
 }
 
+func validateInstanceSafety(inst config.StrategyInstanceConfig) error {
+	switch strings.ToLower(strings.TrimSpace(inst.Type)) {
+	case "sma_crossover":
+		raw := strings.TrimSpace(inst.Params["trailing_stop_pct"])
+		if raw == "" {
+			return fmt.Errorf("instance %q refused: sma_crossover live trading requires trailing_stop_pct > 0", inst.ID)
+		}
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || v <= 0 {
+			return fmt.Errorf("instance %q refused: invalid trailing_stop_pct %q, must be > 0", inst.ID, raw)
+		}
+	case "orb_breakout":
+		return fmt.Errorf("instance %q refused: orb_breakout has no protective stop and is blocked for live runner", inst.ID)
+	}
+	return nil
+}
+
 // InstanceIDs returns configured instance ids (from file order).
 func (r *Runner) InstanceIDs() []string {
 	out := make([]string, 0, len(r.strategiesCfg.Instances))
@@ -1118,6 +1139,9 @@ func (r *Runner) StartInstanceByID(ctx context.Context, id string) error {
 	inst, ok := r.byID[id]
 	if !ok {
 		return fmt.Errorf("unknown instance %q", id)
+	}
+	if !inst.Enabled {
+		return fmt.Errorf("instance %q is disabled in config and cannot be started manually", id)
 	}
 	r.mu.Lock()
 	if _, exists := r.instances[id]; exists {
