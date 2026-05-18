@@ -65,6 +65,7 @@ type Runner struct {
 	signalRefPx map[string]float64
 	lastFilled  map[string]int64 // orderID → last reported cumulative filled qty (lots)
 	stopOrders  map[string]string
+	aiTrader    *AITraderManager
 
 	equityPeak        map[string]float64 // instance → peak RUB (realized+unrealized)
 	dailyReportDayUTC string             // YYYY-MM-DD
@@ -140,6 +141,7 @@ func NewRunner(
 		signalRefPx:   make(map[string]float64),
 		lastFilled:    make(map[string]int64),
 		stopOrders:    make(map[string]string),
+		aiTrader:      NewAITraderManager(),
 		equityPeak:    make(map[string]float64),
 		fillWins:      make(map[string]int64),
 		fillLosses:    make(map[string]int64),

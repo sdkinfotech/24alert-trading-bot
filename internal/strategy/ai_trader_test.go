@@ -1,0 +1,53 @@
+package strategy
+
+import (
+	"testing"
+	"time"
+
+	"github.com/24alert/trading-bot/internal/marketdata"
+)
+
+func TestComputeAITraderFeatures(t *testing.T) {
+	book := &marketdata.Orderbook{
+		InstrumentUID: "uid1",
+		Depth:         20,
+		Time:          time.Now().UTC(),
+		Bids: []marketdata.OrderbookRow{
+			{Price: 100, Quantity: 10},
+			{Price: 99.9, Quantity: 20},
+		},
+		Asks: []marketdata.OrderbookRow{
+			{Price: 100.2, Quantity: 5},
+			{Price: 100.3, Quantity: 5},
+		},
+	}
+	f := computeAITraderFeatures(book, "TEST", 1500)
+	if f.BestBid != 100 || f.BestAsk != 100.2 {
+		t.Fatalf("unexpected best bid/ask: %+v", f)
+	}
+	if f.Mid != 100.1 {
+		t.Fatalf("unexpected mid: %v", f.Mid)
+	}
+	if f.TopBidVolume != 30 || f.TopAskVolume != 10 {
+		t.Fatalf("unexpected top volumes: bid=%d ask=%d", f.TopBidVolume, f.TopAskVolume)
+	}
+	if f.Imbalance <= 0 {
+		t.Fatalf("expected positive imbalance: %v", f.Imbalance)
+	}
+	if len(f.OrderBookSnapshot.Bids) != 2 || f.OrderBookSnapshot.Bids[0].Price != 100 {
+		t.Fatalf("unexpected snapshot: %+v", f.OrderBookSnapshot)
+	}
+}
+
+func TestDecideAITraderRejectsStale(t *testing.T) {
+	s := &AITraderSession{
+		ID:     "s1",
+		Mode:   AITraderModePaper,
+		Limits: defaultAITraderLimits(),
+	}
+	f := &AITraderFeatures{Stale: true, DataFreshnessMS: 5000}
+	ev := decideAITrader(s, f)
+	if ev.Action != "block" || ev.RiskResult != "blocked_stale_feed" {
+		t.Fatalf("unexpected stale decision: %+v", ev)
+	}
+}

@@ -8,6 +8,7 @@ The strategy dashboard is the operator UI for live strategy control and post-tra
 - `Chart`: candles, SMA/range/level lines, broker average price, trailing stop line, signal/fill markers, hover OHLC tooltip.
 - `Portfolio`: account totals, broker truth positions, runner ledger mismatch status, active broker stop orders.
 - `History`: unified event timeline plus persisted orders, executions, and broker stop orders.
+- `AI Trader`: safe observe/paper market-context panel for the selected futures instance; live orders are disabled.
 - `Guide`: RU/EN explanations for broker truth, runner ledger, strategy state, expected yield, trailing stop, protective stop, cancelled signals, and watchdog flatten.
 
 ## Themes and localization
@@ -33,7 +34,10 @@ The dashboard uses these runner endpoints:
 - `GET /instances/{id}/executions?limit=1000` for persisted fills.
 - `GET /instances/{id}/stop-orders` for active broker stop-loss/take-profit orders matching the instance account/instruments.
 - `GET /report/daily` for daily aggregate counts.
+- `GET /ai-trader/sessions`, `POST /ai-trader/sessions`, `GET /ai-trader/sessions/{instance_id}`, `POST /ai-trader/sessions/{instance_id}/stop` for observe/paper AI Trader sessions.
 
 ## Operational rule
 
 For live trading, the UI must treat `Broker truth` as the position source of record. `Runner ledger` and `Strategy state` are displayed for reconciliation. Any open broker position without a matching broker-side protective stop is highlighted as unsafe.
+
+AI Trader is currently an observation/paper-planning tool only. `armed_live` is rejected by the backend until deterministic OrderControl and live RiskGate are implemented.

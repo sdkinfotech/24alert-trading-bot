@@ -18,6 +18,7 @@ import { StatsPanel } from './components/StatsPanel';
 import { PositionOverview } from './components/PositionOverview';
 import { InstanceSelector } from './components/InstanceSelector';
 import { AiChatPanel } from './components/AiChatPanel';
+import { AiTraderPanel } from './components/AiTraderPanel';
 import { Badge, Card, EmptyState, LabelWithHelp, Stat, Table, Tabs } from './components/ui';
 import { I18nProvider, useI18n } from './i18n';
 import { ThemeProvider, useTheme } from './theme';
@@ -27,7 +28,7 @@ import { formatDateTime, formatMoney, formatNumber } from './format';
 const REFRESH_VISIBLE_MS = 5_000;
 const REFRESH_HIDDEN_MS = 30_000;
 
-type MainTab = 'overview' | 'chart' | 'portfolio' | 'history' | 'guide';
+type MainTab = 'overview' | 'chart' | 'portfolio' | 'history' | 'ai-trader' | 'guide';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -35,7 +36,7 @@ function errorMessage(error: unknown): string {
 
 function tabFromHash(): MainTab {
   const h = window.location.hash.slice(1).toLowerCase();
-  if (['chart', 'portfolio', 'history', 'guide', 'overview'].includes(h)) return h as MainTab;
+  if (['chart', 'portfolio', 'history', 'ai-trader', 'guide', 'overview'].includes(h)) return h as MainTab;
   if (h === 'about' || h === 'справка') return 'guide';
   return 'overview';
 }
@@ -173,6 +174,7 @@ function DashboardApp() {
     { id: 'chart' as const, label: t('chart') },
     { id: 'portfolio' as const, label: t('portfolio') },
     { id: 'history' as const, label: t('history') },
+    { id: 'ai-trader' as const, label: t('aiTrader') },
     { id: 'guide' as const, label: t('guide') },
   ], [t]);
 
@@ -255,6 +257,8 @@ function DashboardApp() {
           <HistoryTables orders={orders} executions={executions} stopOrders={stopOrders} />
         </div>
       )}
+
+      {tab === 'ai-trader' && <AiTraderPanel instance={current} />}
 
       {tab === 'guide' && <GuidePage />}
 

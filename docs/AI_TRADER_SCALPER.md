@@ -286,3 +286,50 @@ Persist every decision with:
 7. Add metrics, audit journal, and session reports.
 8. Enable `armed_live` only for one selected futures instrument with small
    limits, short timeout, and visible kill switch.
+
+## Implemented Slice: observe/paper foundation
+
+Status: implemented in `strategy-runner` as a safe foundation, not yet as a
+separate `advisor-svc`.
+
+Runtime API:
+
+- `GET /ai-trader/sessions`
+- `POST /ai-trader/sessions`
+- `GET /ai-trader/sessions/{instance_id}`
+- `POST /ai-trader/sessions/{instance_id}/stop`
+
+Safety properties:
+
+- supported modes are only `observe` and `paper`;
+- `armed_live` is rejected server-side;
+- no `PostOrder`, `CancelOrder`, `ReplaceOrder`, or stop-order call is reachable
+  from the AI Trader code path;
+- one running AI Trader session per strategy instance;
+- session timeout and conservative default limits are applied;
+- decisions are appended to JSONL audit at `AI_TRADER_JOURNAL_PATH`, default
+  `data/ai_trader_journal.jsonl`.
+
+Current market source:
+
+- polls `marketdata.Service.GetOrderbook` every `observation_interval_ms`
+  (default 2000 ms);
+- computes best bid/ask, mid, spread, top-5 bid/ask volume, imbalance, depth
+  skew, largest bid/ask wall, freshness/stale flag, and top-of-book snapshot.
+
+Dashboard:
+
+- new `AI Trader` tab in Strategy Dashboard;
+- operator can start `observe` or `paper` for the selected futures strategy;
+- UI shows microstructure features, last decision, and decision journal;
+- live orders are explicitly labelled as disabled.
+
+Next steps before live:
+
+1. Move audit from JSONL to queryable SQLite session/event tables.
+2. Add trades and last-price consumption.
+3. Add paper position/fill simulator.
+4. Add Prometheus metrics for sessions, feed freshness, decisions, and blocked
+   reasons.
+5. Implement deterministic OrderControl and live RiskGate before enabling
+   `armed_live`.

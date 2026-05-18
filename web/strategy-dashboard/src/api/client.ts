@@ -10,6 +10,8 @@ import type {
   SignalRecord,
   ExecutionRecord,
   StopOrder,
+  AiTraderLimits,
+  AiTraderSession,
   AiChatResponse,
   AiChatStatus,
 } from './types';
@@ -53,4 +55,16 @@ export const api = {
     post<AiChatResponse>('/ai-chat', { message }),
   aiChatReset: () => post<{ status: string }>('/ai-chat/reset', {}),
   aiChatStatus: () => get<AiChatStatus>('/ai-chat/status'),
+  aiTraderSessions: () => get<AiTraderSession[]>('/ai-trader/sessions'),
+  aiTraderSession: (instanceID: string) =>
+    get<AiTraderSession>(`/ai-trader/sessions/${instanceID}`),
+  startAiTraderSession: (body: {
+    instance_id: string;
+    mode: 'observe' | 'paper';
+    instruction: string;
+    depth?: number;
+    limits?: AiTraderLimits;
+  }) => post<AiTraderSession>('/ai-trader/sessions', body),
+  stopAiTraderSession: (instanceID: string) =>
+    post<AiTraderSession>(`/ai-trader/sessions/${instanceID}/stop`, {}),
 };

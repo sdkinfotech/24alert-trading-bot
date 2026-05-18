@@ -198,3 +198,85 @@ export interface AiChatStatus {
   scanner_cron: boolean;
   cursor_key_set: boolean;
 }
+
+export interface AiTraderLimits {
+  max_position_lots?: number;
+  max_order_size?: number;
+  max_active_orders?: number;
+  max_trades_per_minute?: number;
+  max_cancel_replace_per_minute?: number;
+  max_session_loss_rub?: number;
+  max_daily_loss_rub?: number;
+  max_spread_bps?: number;
+  stale_data_ms?: number;
+  session_timeout_minutes?: number;
+  observation_interval_ms?: number;
+}
+
+export interface AiTraderBookLevel {
+  price: number;
+  quantity: number;
+}
+
+export interface AiTraderWall {
+  side: string;
+  price: number;
+  quantity: number;
+  rank: number;
+}
+
+export interface AiTraderFeatures {
+  uid: string;
+  ticker?: string;
+  observed_at: string;
+  exchange_time?: string;
+  depth: number;
+  best_bid: number;
+  best_ask: number;
+  mid: number;
+  spread_abs: number;
+  spread_bps: number;
+  top_bid_volume: number;
+  top_ask_volume: number;
+  imbalance: number;
+  depth_skew: number;
+  largest_bid_wall: AiTraderWall;
+  largest_ask_wall: AiTraderWall;
+  data_freshness_ms: number;
+  stale: boolean;
+  orderbook_top: {
+    bids: AiTraderBookLevel[];
+    asks: AiTraderBookLevel[];
+  };
+}
+
+export interface AiTraderDecisionEvent {
+  time: string;
+  session_id: string;
+  mode: string;
+  action: string;
+  intent: string;
+  reason: string;
+  confidence: number;
+  risk_result: string;
+  features?: AiTraderFeatures;
+}
+
+export interface AiTraderSession {
+  id: string;
+  instance_id: string;
+  account_id: string;
+  instrument_uid: string;
+  ticker?: string;
+  mode: 'observe' | 'paper' | 'armed_live';
+  instruction: string;
+  limits: AiTraderLimits;
+  status: string;
+  started_at: string;
+  updated_at: string;
+  stopped_at?: string;
+  last_error?: string;
+  features?: AiTraderFeatures;
+  last_decision?: AiTraderDecisionEvent;
+  events?: AiTraderDecisionEvent[];
+}

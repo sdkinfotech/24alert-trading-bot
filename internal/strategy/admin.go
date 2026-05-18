@@ -239,6 +239,44 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
 	})
+	mux.HandleFunc("GET /ai-trader/sessions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(r.AITraderSessions())
+	})
+	mux.HandleFunc("POST /ai-trader/sessions", func(w http.ResponseWriter, req *http.Request) {
+		var in AITraderSessionRequest
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		session, err := r.StartAITraderSession(parent, in)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
+	mux.HandleFunc("GET /ai-trader/sessions/{instance_id}", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		session, ok := r.AITraderSession(instanceID)
+		if !ok {
+			http.Error(w, "ai trader session not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
+	mux.HandleFunc("POST /ai-trader/sessions/{instance_id}/stop", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		session, ok := r.StopAITraderSession(instanceID)
+		if !ok {
+			http.Error(w, "ai trader session not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
 	registerAIChatHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))
