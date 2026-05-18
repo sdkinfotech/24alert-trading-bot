@@ -13,8 +13,8 @@ import (
 const (
 	defaultAITraderLLMInterval = 15 * time.Second
 	aiTraderLLMTimeout         = 45 * time.Second
-	// Cheap high-frequency model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
-	defaultAITraderModel = "deepseek/deepseek-v4-flash"
+	// Free high-frequency model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
+	defaultAITraderModel = "nvidia/nemotron-3-super-120b-a12b:free"
 )
 
 type aiTraderLLMOutput struct {
