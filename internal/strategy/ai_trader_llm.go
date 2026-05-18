@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -145,19 +146,7 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 	b.WriteString("Инструкция оператора: " + strings.TrimSpace(s.Instruction) + "\n")
 	b.WriteString(fmt.Sprintf("Инструмент: %s (%s), счёт %s\n\n", s.Ticker, s.InstrumentID, s.AccountID))
 
-	b.WriteString("== Текущий стакан ==\n")
-	if raw, err := json.MarshalIndent(f, "", "  "); err == nil {
-		b.Write(raw)
-		b.WriteByte('\n')
-	}
-
-	if mctx != nil {
-		b.WriteString("\n== Накопленный контекст (график, лента, уровни, эволюция стакана) ==\n")
-		if raw, err := json.MarshalIndent(mctx, "", "  "); err == nil {
-			b.Write(raw)
-			b.WriteByte('\n')
-		}
-	}
+	writeAITraderContextSummary(&b, f, mctx)
 
 	b.WriteString("\n== Подсказка rule-engine (safety, не копируй слепо) ==\n")
 	b.WriteString(fmt.Sprintf("action=%s intent=%s bias=%s reason=%s\n", base.Action, base.Intent, base.MarketBias, base.Reason))
@@ -270,6 +259,198 @@ func sanitizeAITraderLLMAction(action, mode string) string {
 		action = "observe_plan"
 	}
 	return action
+}
+
+func writeAITraderContextSummary(b *strings.Builder, f *AITraderFeatures, mctx *AITraderMarketContext) {
+	if f != nil {
+		b.WriteString("== Стакан ==\n")
+		fmt.Fprintf(b, "best bid %.4f (top vol %d) | best ask %.4f (top vol %d) | mid %.4f | spread %.2f bps | imbalance %.3f | skew %.3f\n",
+			f.BestBid, f.TopBidVolume, f.BestAsk, f.TopAskVolume, f.Mid, f.SpreadBPS, f.Imbalance, f.DepthSkew)
+		if f.LargestBidWall.Quantity > 0 {
+			fmt.Fprintf(b, "largest bid wall: %.4f x%d (rank %d)\n", f.LargestBidWall.Price, f.LargestBidWall.Quantity, f.LargestBidWall.Rank)
+		}
+		if f.LargestAskWall.Quantity > 0 {
+			fmt.Fprintf(b, "largest ask wall: %.4f x%d (rank %d)\n", f.LargestAskWall.Price, f.LargestAskWall.Quantity, f.LargestAskWall.Rank)
+		}
+		b.WriteString("top bid walls: " + formatBookLevels(aiTraderTopBidLevels(f, mctx, 5)) + "\n")
+		b.WriteString("top ask walls: " + formatBookLevels(aiTraderTopAskLevels(f, mctx, 5)) + "\n")
+		if f.Stale {
+			b.WriteString(fmt.Sprintf("WARNING: stale feed (%d ms)\n", f.DataFreshnessMS))
+		}
+	}
+
+	if mctx == nil {
+		return
+	}
+
+	b.WriteString("\n== Лента")
+	if mctx.TapeStats.WindowSec > 0 {
+		fmt.Fprintf(b, " (%ds)", mctx.TapeStats.WindowSec)
+	}
+	b.WriteString(" ==\n")
+	ts := mctx.TapeStats
+	fmt.Fprintf(b, "trades %d | buy vol %d | sell vol %d | last %.4f | vwap %.4f | delta %.1f%%",
+		ts.TradeCount, ts.BuyVolume, ts.SellVolume, ts.LastPrice, ts.VWAP, ts.DeltaPct*100)
+	if ts.Aggressor != "" {
+		fmt.Fprintf(b, " | aggressor %s", ts.Aggressor)
+	}
+	b.WriteByte('\n')
+	b.WriteString("large prints: " + formatAITraderPrints(aiTraderTopPrints(mctx.RecentPrints, 5)) + "\n")
+
+	if len(mctx.ChartBars) > 0 {
+		b.WriteString("\n== График (последние 1m свечи) ==\n")
+		start := len(mctx.ChartBars) - 5
+		if start < 0 {
+			start = 0
+		}
+		for _, bar := range mctx.ChartBars[start:] {
+			dir := "—"
+			if bar.Close > bar.Open {
+				dir = "▲"
+			} else if bar.Close < bar.Open {
+				dir = "▼"
+			}
+			label := bar.Time
+			if len(label) > 16 {
+				label = label[len(label)-5:]
+			}
+			fmt.Fprintf(b, "%s O=%.4f H=%.4f L=%.4f C=%.4f V=%s %s\n",
+				label, bar.Open, bar.High, bar.Low, bar.Close, formatAITraderVol(bar.Volume), dir)
+		}
+	}
+
+	if len(mctx.Levels) > 0 {
+		b.WriteString("\n== Уровни ==\n")
+		var support, resistance []string
+		for _, lv := range mctx.Levels {
+			line := fmt.Sprintf("%.4f (%s/%s)", lv.Price, lv.Kind, lv.Source)
+			switch strings.ToLower(lv.Kind) {
+			case "support", "support_zone":
+				support = append(support, line)
+			case "resistance", "resistance_zone":
+				resistance = append(resistance, line)
+			default:
+				support = append(support, line)
+			}
+		}
+		if len(support) > 0 {
+			b.WriteString("Support: " + strings.Join(support, ", ") + "\n")
+		}
+		if len(resistance) > 0 {
+			b.WriteString("Resistance: " + strings.Join(resistance, ", ") + "\n")
+		}
+	}
+
+	if len(mctx.BookTimeline) > 0 {
+		b.WriteString("\n== Эволюция стакана (timeline) ==\n")
+		start := len(mctx.BookTimeline) - 5
+		if start < 0 {
+			start = 0
+		}
+		for _, d := range mctx.BookTimeline[start:] {
+			fmt.Fprintf(b, "[%s] mid=%.4f spread=%.1f bps imb=%.3f bid_wall=%s ask_wall=%s\n",
+				d.Time, d.Mid, d.SpreadBPS, d.Imbalance, d.BidWall, d.AskWall)
+		}
+	}
+
+	if len(mctx.SceneNotes) > 0 {
+		b.WriteString("\n== Заметки сцены ==\n")
+		max := 5
+		if len(mctx.SceneNotes) < max {
+			max = len(mctx.SceneNotes)
+		}
+		for i := 0; i < max; i++ {
+			b.WriteString("- " + mctx.SceneNotes[i] + "\n")
+		}
+	}
+
+	if len(mctx.Footprint) > 0 {
+		b.WriteString("\n== Кластеры (последние минуты) ==\n")
+		start := len(mctx.Footprint) - 3
+		if start < 0 {
+			start = 0
+		}
+		for _, col := range mctx.Footprint[start:] {
+			fmt.Fprintf(b, "%s vol=%d delta=%+d\n", col.Label, col.TotalVol, col.Delta)
+		}
+	}
+}
+
+func aiTraderTopBidLevels(f *AITraderFeatures, mctx *AITraderMarketContext, n int) []AITraderBookLevel {
+	if mctx != nil && mctx.DOMBook != nil && len(mctx.DOMBook.Bids) > 0 {
+		return topNBookLevels(mctx.DOMBook.Bids, n)
+	}
+	if f != nil {
+		return topNBookLevels(f.OrderBookSnapshot.Bids, n)
+	}
+	return nil
+}
+
+func aiTraderTopAskLevels(f *AITraderFeatures, mctx *AITraderMarketContext, n int) []AITraderBookLevel {
+	if mctx != nil && mctx.DOMBook != nil && len(mctx.DOMBook.Asks) > 0 {
+		return topNBookLevels(mctx.DOMBook.Asks, n)
+	}
+	if f != nil {
+		return topNBookLevels(f.OrderBookSnapshot.Asks, n)
+	}
+	return nil
+}
+
+func topNBookLevels(levels []AITraderBookLevel, n int) []AITraderBookLevel {
+	if len(levels) == 0 {
+		return nil
+	}
+	cp := append([]AITraderBookLevel(nil), levels...)
+	sort.Slice(cp, func(i, j int) bool { return cp[i].Quantity > cp[j].Quantity })
+	if len(cp) > n {
+		cp = cp[:n]
+	}
+	return cp
+}
+
+func formatBookLevels(levels []AITraderBookLevel) string {
+	if len(levels) == 0 {
+		return "—"
+	}
+	parts := make([]string, 0, len(levels))
+	for _, lv := range levels {
+		parts = append(parts, fmt.Sprintf("%.4f (%d)", lv.Price, lv.Quantity))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func aiTraderTopPrints(prints []AITraderPrint, n int) []AITraderPrint {
+	if len(prints) == 0 {
+		return nil
+	}
+	cp := append([]AITraderPrint(nil), prints...)
+	sort.Slice(cp, func(i, j int) bool { return cp[i].Quantity > cp[j].Quantity })
+	if len(cp) > n {
+		cp = cp[:n]
+	}
+	return cp
+}
+
+func formatAITraderPrints(prints []AITraderPrint) string {
+	if len(prints) == 0 {
+		return "—"
+	}
+	parts := make([]string, 0, len(prints))
+	for _, p := range prints {
+		side := "SELL"
+		if strings.Contains(strings.ToLower(p.Direction), "buy") {
+			side = "BUY"
+		}
+		parts = append(parts, fmt.Sprintf("%s %d@%.4f", side, p.Quantity, p.Price))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatAITraderVol(v int64) string {
+	if v >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(v)/1000)
+	}
+	return fmt.Sprintf("%d", v)
 }
 
 func sanitizeAITraderLLMBias(bias string) string {

@@ -225,7 +225,7 @@ body {
 }
 
 .scalper-dom {
-  --scalper-row-h: 18px;
+  --scalper-row-h: 17px;
   background: #0b0f17;
   border-top: 1px solid var(--border);
   color: #e8eef7;
@@ -269,64 +269,57 @@ body {
 .scalper-legend-sell { color: #fca5a5; }
 
 .scalper-dom-grid {
-  display: grid;
-  grid-template-columns: minmax(360px, 1fr) 152px 238px;
-  grid-template-rows: auto minmax(520px, calc(100vh - 15rem)) auto;
+  display: flex;
+  flex-direction: column;
   min-width: 760px;
 }
 
-.scalper-col-header,
-.scalper-footprint-footer,
-.scalper-tape-footer,
-.scalper-book-footer {
+.scalper-ladder-header,
+.scalper-ladder-footer {
   background: #111827;
   color: #94a3b8;
-  font-size: 10px;
-}
-
-.scalper-col-header {
-  border-bottom: 1px solid #263247;
-  min-height: 20px;
-  padding: 2px 4px;
-}
-
-.scalper-footprint-header {
   display: grid;
-  gap: 2px;
-  text-align: center;
+  font-size: 9px;
+  gap: 0;
 }
 
-.scalper-tape-header {
+.scalper-ladder-header {
+  border-bottom: 1px solid #263247;
+  min-height: 18px;
+}
+
+.scalper-ladder-footer {
+  border-top: 1px solid #263247;
+  min-height: 28px;
+}
+
+.scalper-hcell {
   align-items: center;
-  border-left: 1px solid #263247;
-  border-right: 1px solid #263247;
   display: flex;
   justify-content: center;
+  padding: 0 2px;
+  text-align: center;
 }
 
-.scalper-book-header {
-  display: grid;
-  grid-template-columns: 1fr 58px 1fr;
-  text-align: center;
+.scalper-hcell-tape {
+  border-left: 1px solid #263247;
+  border-right: 1px solid #263247;
+}
+
+.scalper-hcell-dom,
+.scalper-hcell-price {
+  color: #cbd5e1;
 }
 
 .scalper-scroll {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: minmax(360px, 1fr) 152px 238px;
-  height: 100%;
-  min-height: 0;
+  max-height: calc(100vh - 12rem);
+  min-height: min(640px, calc(100vh - 12rem));
   overflow-y: auto;
 }
 
-.scalper-body {
-  display: flex;
-  flex-direction: column;
-}
-
-.scalper-row {
+.scalper-ladder-row {
   align-items: stretch;
-  border-bottom: 1px solid rgb(38 50 71 / 35%);
+  border-bottom: 1px solid rgb(38 50 71 / 28%);
   display: grid;
   min-height: var(--scalper-row-h);
 }
@@ -343,9 +336,13 @@ body {
 
 .scalper-cluster-cell {
   align-items: stretch;
-  border-right: 1px solid rgb(38 50 71 / 25%);
+  border-right: 1px solid rgb(38 50 71 / 20%);
   display: flex;
-  min-width: 50px;
+  min-width: 48px;
+}
+
+.scalper-cluster-empty {
+  background: rgb(15 23 42 / 35%);
 }
 
 .scalper-cluster-split {
@@ -374,131 +371,90 @@ body {
   color: #fecaca;
 }
 
-.scalper-footprint-footer {
-  border-top: 1px solid #263247;
-  display: grid;
-  gap: 1px;
-  padding: 2px 0;
-}
-
 .scalper-footer-cell {
+  align-items: center;
+  border-right: 1px solid rgb(38 50 71 / 20%);
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 0 2px;
+  font-size: 9px;
+  gap: 0;
+  justify-content: center;
+  padding: 1px 2px;
   text-align: center;
+}
+
+.scalper-footer-tape {
+  border-left: 1px solid #263247;
+  border-right: 1px solid #263247;
+}
+
+.scalper-footer-dom {
+  font-weight: 700;
 }
 
 .scalper-delta-pos { color: #4ade80; }
 .scalper-delta-neg { color: #f87171; }
 
-.scalper-tape {
-  background:
-    linear-gradient(90deg, rgb(15 23 42 / 40%), rgb(15 23 42 / 0%) 18%, rgb(15 23 42 / 0%) 82%, rgb(15 23 42 / 40%)),
-    #0d1520;
+.scalper-tape-cell {
+  align-items: center;
+  background: #0d1520;
   border-left: 1px solid #263247;
   border-right: 1px solid #263247;
-  min-height: 100%;
-  position: sticky;
-  top: 0;
-}
-
-.scalper-tape-list {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  height: 100%;
-  max-height: calc(100vh - 15rem);
-  min-height: 0;
-  overflow: hidden;
-  padding: 3px;
+  justify-content: center;
+  min-height: var(--scalper-row-h);
 }
 
-.scalper-tape-print {
+.scalper-tape-dot {
   align-items: center;
-  border: 1px solid rgb(38 50 71 / 35%);
-  border-radius: 3px;
-  display: grid;
-  gap: 3px;
-  grid-template-columns: 40px 30px 1fr 30px;
-  min-height: 17px;
-  padding: 0 3px;
-}
-
-.scalper-tape-print-buy {
-  background: rgb(16 185 129 / 14%);
-  color: #bbf7d0;
-}
-
-.scalper-tape-print-sell {
-  background: rgb(239 68 68 / 14%);
-  color: #fecaca;
-}
-
-.scalper-tape-time {
-  color: #94a3b8;
-  font-size: 9px;
-}
-
-.scalper-tape-side {
-  font-size: 9px;
+  border-radius: 999px;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 8px;
   font-weight: 800;
+  justify-content: center;
+  line-height: 1;
 }
 
-.scalper-tape-price {
-  color: #fbbf24;
+.scalper-tape-dot-buy {
+  background: rgb(34 197 94 / 75%);
+  box-shadow: 0 0 0 1px rgb(34 197 94 / 40%);
+  color: #052e16;
+}
+
+.scalper-tape-dot-sell {
+  background: rgb(239 68 68 / 75%);
+  box-shadow: 0 0 0 1px rgb(239 68 68 / 40%);
+  color: #450a0a;
+}
+
+.dom-ask,
+.dom-bid {
+  align-items: center;
+  display: flex;
+  font-size: 10px;
   font-weight: 700;
+  min-height: var(--scalper-row-h);
+  overflow: hidden;
+  padding: 0 3px;
+  white-space: nowrap;
 }
 
-.scalper-tape-qty {
-  font-weight: 800;
+.dom-ask {
+  background: linear-gradient(to left, rgb(239 68 68 / 55%) var(--fill, 0%), transparent var(--fill, 0%));
+  color: #fecaca;
+  justify-content: flex-end;
   text-align: right;
 }
 
-.scalper-tape-empty {
-  color: #64748b;
-  padding: 1rem;
-  text-align: center;
+.dom-bid {
+  background: linear-gradient(to right, rgb(34 197 94 / 55%) var(--fill, 0%), transparent var(--fill, 0%));
+  color: #bbf7d0;
+  justify-content: flex-start;
+  text-align: left;
 }
 
-.scalper-book-row {
-  display: grid;
-  grid-template-columns: 1fr 58px 1fr;
-}
-
-.scalper-book-side {
-  align-items: center;
-  display: flex;
-  gap: 2px;
-  min-height: var(--scalper-row-h);
-  padding: 0 3px;
-  position: relative;
-}
-
-.scalper-book-ask { justify-content: flex-end; }
-.scalper-book-bid { justify-content: flex-start; }
-
-.scalper-book-bar {
-  border-radius: 2px;
-  height: 13px;
-  max-width: 100%;
-  min-width: 2px;
-}
-
-.scalper-book-bar-ask {
-  background: linear-gradient(90deg, rgb(239 68 68 / 12%), rgb(239 68 68 / 70%));
-}
-
-.scalper-book-bar-bid {
-  background: linear-gradient(270deg, rgb(34 197 94 / 12%), rgb(34 197 94 / 70%));
-}
-
-.scalper-book-qty {
-  position: relative;
-  z-index: 1;
-}
-
-.scalper-book-price {
+.dom-price {
   align-items: center;
   color: #fbbf24;
   display: flex;
@@ -507,9 +463,6 @@ body {
   text-align: center;
 }
 
-.scalper-tape-footer,
-.scalper-book-footer {
-  border-top: 1px solid #263247;
-  padding: 3px 6px;
-  text-align: center;
+.dom-price-mid {
+  background: rgb(250 204 21 / 10%);
 }
