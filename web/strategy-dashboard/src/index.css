@@ -396,49 +396,66 @@ body {
     #0d1520;
   border-left: 1px solid #263247;
   border-right: 1px solid #263247;
+  min-height: 640px;
+  position: sticky;
+  top: 0;
+}
+
+.scalper-tape-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: calc(100vh - 18rem);
+  min-height: 640px;
   overflow: hidden;
+  padding: 6px;
 }
 
-.scalper-tape-svg {
-  display: block;
-  min-height: 100%;
-  width: 100%;
+.scalper-tape-print {
+  align-items: center;
+  border: 1px solid rgb(38 50 71 / 55%);
+  border-radius: 6px;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 52px 38px 1fr 44px;
+  min-height: 22px;
+  padding: 2px 6px;
 }
 
-.scalper-tape-grid-line {
-  stroke: rgb(38 50 71 / 45%);
-  stroke-width: 1;
+.scalper-tape-print-buy {
+  background: rgb(16 185 129 / 14%);
+  color: #bbf7d0;
 }
 
-.scalper-tape-last-line {
-  stroke: rgb(34 211 238 / 45%);
-  stroke-dasharray: 4 4;
-  stroke-width: 1.4;
+.scalper-tape-print-sell {
+  background: rgb(239 68 68 / 14%);
+  color: #fecaca;
 }
 
-.scalper-tape-bubble-buy,
-.scalper-tape-bubble-sell {
-  stroke: rgb(255 255 255 / 45%);
-  stroke-width: 1;
+.scalper-tape-time {
+  color: #94a3b8;
+  font-size: 10px;
 }
 
-.scalper-tape-bubble-buy {
-  fill: rgb(16 185 129 / 78%);
-}
-
-.scalper-tape-bubble-sell {
-  fill: rgb(239 68 68 / 78%);
-}
-
-.scalper-tape-bubble-text {
-  fill: #f8fafc;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+.scalper-tape-side {
+  font-size: 10px;
   font-weight: 800;
-  paint-order: stroke;
-  pointer-events: none;
-  stroke: rgb(0 0 0 / 75%);
-  stroke-width: 2px;
+}
+
+.scalper-tape-price {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.scalper-tape-qty {
+  font-weight: 800;
+  text-align: right;
+}
+
+.scalper-tape-empty {
+  color: #64748b;
+  padding: 1rem;
+  text-align: center;
 }
 
 .scalper-book-row {

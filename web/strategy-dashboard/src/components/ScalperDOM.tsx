@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import type { AiTraderFeatures, AiTraderFootprintColumn, AiTraderMarketContext } from '../api/types';
+import { useEffect, useMemo, useRef } from 'react';
+import type { AiTraderFeatures, AiTraderFootprintColumn, AiTraderMarketContext, AiTraderPrint } from '../api/types';
 import type { Lang } from '../i18n';
 import { formatNumber } from '../format';
 
@@ -22,7 +22,6 @@ interface PriceRow {
 const LADDER_TICKS_EACH_SIDE = 56;
 const MAX_LADDER_ROWS = 160;
 const ROW_HEIGHT = 22;
-const TAPE_VIEWBOX_WIDTH = 260;
 
 function isBuy(dir: string): boolean {
   return dir.toLowerCase().includes('buy');
@@ -63,8 +62,13 @@ function minuteCellKey(col: AiTraderFootprintColumn, price: number, tick: number
   return `${col.time}:${priceKey(price, tick)}`;
 }
 
-function bubbleRadius(qty: number): number {
-  return clamp(Math.sqrt(Math.max(1, qty)) * 2.15, 7, 22);
+function printKey(p: AiTraderPrint, i: number): string {
+  return `${p.time}-${p.price}-${p.quantity}-${i}`;
+}
+
+function printTimeLabel(time: string): string {
+  const m = time.match(/T(\d{2}:\d{2}:\d{2})/);
+  return m?.[1] ?? (time.slice(11, 19) || time);
 }
 
 function buildScalperPriceRows(
@@ -113,6 +117,7 @@ function buildScalperPriceRows(
 export function ScalperDOM({ mc, features, ticker, lang }: Props) {
   const dom = mc?.dom_book;
   const tick = dom?.tick_size && dom.tick_size > 0 ? dom.tick_size : 0.01;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const layout = useMemo(() => {
     const footprint = mc?.footprint ?? [];
@@ -128,43 +133,32 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
     }
     const maxFootprintVol = Math.max(1, ...footprint.flatMap((col) => col.cells.map((c) => c.total)));
 
-    const rowIndex = new Map<string, number>();
-    rows.forEach((row, i) => rowIndex.set(priceKey(row.price, tick), i));
+    const bestBid = dom?.best_bid ?? features?.best_bid ?? 0;
+    const bestAsk = dom?.best_ask ?? features?.best_ask ?? 0;
+    const spreadMid = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : (mc?.tape_stats?.last_price ?? features?.mid ?? 0);
+    const centerIndex = rows.reduce((bestIndex, row, i) => {
+      if (spreadMid <= 0) return bestIndex;
+      const bestDist = Math.abs(rows[bestIndex]?.price - spreadMid);
+      const dist = Math.abs(row.price - spreadMid);
+      return dist < bestDist ? i : bestIndex;
+    }, 0);
 
-    const windowMs = Math.max(30, mc?.tape_stats?.window_sec ?? 60) * 1000;
-    const newestPrintTime = Math.max(
-      0,
-      ...prints.map((p) => Date.parse(p.time)).filter((ts) => Number.isFinite(ts)),
-    );
-    const fallbackTime = Date.parse(dom?.observed_at ?? mc?.updated_at ?? '');
-    const now = newestPrintTime > 0 ? newestPrintTime : (Number.isFinite(fallbackTime) ? fallbackTime : 0);
-    const minTime = now - windowMs;
-    const tapePoints = prints
-      .map((p, i) => {
-        const ts = Date.parse(p.time);
-        const index = rowIndex.get(priceKey(p.price, tick));
-        if (!Number.isFinite(ts) || index == null) return null;
-        const x = clamp(((ts - minTime) / windowMs) * TAPE_VIEWBOX_WIDTH, 10, TAPE_VIEWBOX_WIDTH - 10);
-        return {
-          key: `${p.time}-${p.price}-${i}`,
-          x,
-          y: index * ROW_HEIGHT + ROW_HEIGHT / 2,
-          radius: bubbleRadius(p.quantity),
-          buy: isBuy(p.direction),
-          quantity: p.quantity,
-          price: p.price,
-          direction: p.direction,
-        };
-      })
-      .filter((p): p is NonNullable<typeof p> => p != null);
+    const tapeRows = prints.slice(-32).reverse();
 
-    return { rows, maxBookQty, cellLookup, maxFootprintVol, tapePoints };
+    return { rows, maxBookQty, cellLookup, maxFootprintVol, tapeRows, centerIndex };
   }, [dom, features, mc, tick]);
 
-  const { rows, maxBookQty, cellLookup, maxFootprintVol, tapePoints } = layout;
+  const { rows, maxBookQty, cellLookup, maxFootprintVol, tapeRows, centerIndex } = layout;
   const cols = mc?.footprint ?? [];
   const lastPrice = mc?.tape_stats?.last_price ?? features?.mid ?? dom?.best_bid;
-  const canvasHeight = Math.max(ROW_HEIGHT * rows.length, 560);
+  const spreadCenterKey = `${dom?.best_bid ?? features?.best_bid ?? 0}:${dom?.best_ask ?? features?.best_ask ?? 0}:${rows.length}`;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || rows.length === 0) return;
+    const target = centerIndex * ROW_HEIGHT - el.clientHeight / 2 + ROW_HEIGHT / 2;
+    el.scrollTop = Math.max(0, target);
+  }, [centerIndex, rows.length, spreadCenterKey]);
 
   if (!rows.length) {
     return (
@@ -206,7 +200,7 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
           <span>bid</span>
         </div>
 
-        <div className="scalper-scroll">
+        <div ref={scrollRef} className="scalper-scroll">
           <div className="scalper-footprint">
             <div className="scalper-body">
               {rows.map((row) => (
@@ -239,37 +233,20 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
           </div>
 
           <div className="scalper-tape">
-            <svg
-              className="scalper-tape-svg"
-              viewBox={`0 0 ${TAPE_VIEWBOX_WIDTH} ${canvasHeight}`}
-              preserveAspectRatio="none"
-              style={{ height: canvasHeight }}
-            >
-              {rows.map((row, i) => (
-                <line
-                  key={row.price}
-                  x1="0"
-                  x2={TAPE_VIEWBOX_WIDTH}
-                  y1={i * ROW_HEIGHT + ROW_HEIGHT}
-                  y2={i * ROW_HEIGHT + ROW_HEIGHT}
-                  className={row.isLast ? 'scalper-tape-last-line' : 'scalper-tape-grid-line'}
-                />
-              ))}
-              {tapePoints.map((p) => (
-                <g key={p.key}>
-                  <circle
-                    cx={p.x}
-                    cy={p.y}
-                    r={p.radius}
-                    className={p.buy ? 'scalper-tape-bubble-buy' : 'scalper-tape-bubble-sell'}
-                  />
-                  <text x={p.x} y={p.y + 3} textAnchor="middle" className="scalper-tape-bubble-text">
-                    {fmtVol(p.quantity, lang)}
-                  </text>
-                  <title>{`${p.direction} ${priceLabel(p.price, lang, tick)} x${p.quantity}`}</title>
-                </g>
-              ))}
-            </svg>
+            <div className="scalper-tape-list">
+              {tapeRows.map((p, i) => {
+                const buy = isBuy(p.direction);
+                return (
+                  <div key={printKey(p, i)} className={`scalper-tape-print ${buy ? 'scalper-tape-print-buy' : 'scalper-tape-print-sell'}`}>
+                    <span className="scalper-tape-time">{printTimeLabel(p.time)}</span>
+                    <span className="scalper-tape-side">{buy ? 'BUY' : 'SELL'}</span>
+                    <span className="scalper-tape-price">{priceLabel(p.price, lang, tick)}</span>
+                    <span className="scalper-tape-qty">{fmtVol(p.quantity, lang)}</span>
+                  </div>
+                );
+              })}
+              {tapeRows.length === 0 && <div className="scalper-tape-empty">нет принтов</div>}
+            </div>
           </div>
 
           <div className="scalper-book">
