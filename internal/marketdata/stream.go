@@ -64,19 +64,90 @@ type StreamManager struct {
 	streamCfg     config.MarketDataStreamConfig
 
 	mu            sync.Mutex
-	subscriptions map[subscriptionKey]struct{}
+	subscriptions map[subscriptionKey]*streamSubscription
 	stream        *investgo.MarketDataStream
+}
 
-	candleChs    []<-chan *pb.Candle
-	orderbookChs []<-chan *pb.OrderBook
-	tradeChs     []<-chan *pb.Trade
-	lastPriceChs []<-chan *pb.LastPrice
+type streamSubscription struct {
+	key    subscriptionKey
+	refs   int
+	ctx    context.Context
+	cancel context.CancelFunc
 
-	// Subscriber fan-out channels.
-	candleSubs    []chan<- *pb.Candle
-	orderbookSubs []chan<- *pb.OrderBook
-	tradeSubs     []chan<- *pb.Trade
-	lastPriceSubs []chan<- *pb.LastPrice
+	candles    *streamFanout[*pb.Candle]
+	orderbooks *streamFanout[*pb.OrderBook]
+	trades     *streamFanout[*pb.Trade]
+	lastPrices *streamFanout[*pb.LastPrice]
+}
+
+type streamFanout[T any] struct {
+	mu     sync.Mutex
+	subs   map[chan T]struct{}
+	closed bool
+	drops  uint64
+}
+
+func newStreamFanout[T any]() *streamFanout[T] {
+	return &streamFanout[T]{subs: make(map[chan T]struct{})}
+}
+
+func (f *streamFanout[T]) subscribe(ctx context.Context, buf int) (<-chan T, error) {
+	f.mu.Lock()
+	if f.closed {
+		f.mu.Unlock()
+		return nil, fmt.Errorf("stream fanout closed")
+	}
+	ch := make(chan T, buf)
+	f.subs[ch] = struct{}{}
+	f.mu.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		f.mu.Lock()
+		delete(f.subs, ch)
+		f.mu.Unlock()
+	}()
+
+	return ch, nil
+}
+
+func (f *streamFanout[T]) close() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = true
+	f.subs = make(map[chan T]struct{})
+}
+
+func (f *streamFanout[T]) publish(ctx context.Context, item T, block bool) bool {
+	f.mu.Lock()
+	subs := make([]chan T, 0, len(f.subs))
+	for ch := range f.subs {
+		subs = append(subs, ch)
+	}
+	f.mu.Unlock()
+
+	for _, ch := range subs {
+		if block {
+			select {
+			case <-ctx.Done():
+				return false
+			case ch <- item:
+			}
+			continue
+		}
+
+		select {
+		case <-ctx.Done():
+			return false
+		case ch <- item:
+		default:
+			f.mu.Lock()
+			f.drops++
+			f.mu.Unlock()
+		}
+	}
+
+	return true
 }
 
 func NewStreamManager(
@@ -90,7 +161,7 @@ func NewStreamManager(
 		prices:        prices,
 		logger:        logger,
 		streamCfg:     streamCfg,
-		subscriptions: make(map[subscriptionKey]struct{}),
+		subscriptions: make(map[subscriptionKey]*streamSubscription),
 	}
 }
 
@@ -112,8 +183,15 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 		SubscriptionType: SubCandles,
 		CandleInterval:   interval,
 	}
-	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeCandles: already subscribed to candles for %s at interval %s", instrumentUID, interval.String())
+	if sub, exists := sm.subscriptions[key]; exists {
+		sub.refs++
+		ch, err := sub.candles.subscribe(ctx, 256)
+		if err != nil {
+			sub.refs--
+			return nil, fmt.Errorf("SubscribeCandles: %w", err)
+		}
+		sm.logger.Info("SubscribeCandles shared", "instrument_uid", instrumentUID, "interval", interval.String(), "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return ch, nil
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeCandles: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -124,17 +202,25 @@ func (sm *StreamManager) SubscribeCandles(ctx context.Context, instrumentUID str
 		return nil, fmt.Errorf("SubscribeCandles: %w", err)
 	}
 
-	sm.subscriptions[key] = struct{}{}
-	sm.candleChs = append(sm.candleChs, ch)
+	subCtx, cancel := context.WithCancel(context.Background())
+	hub := newStreamFanout[*pb.Candle]()
+	out, err := hub.subscribe(ctx, 256)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("SubscribeCandles: %w", err)
+	}
+	sm.subscriptions[key] = &streamSubscription{
+		key:     key,
+		refs:    1,
+		ctx:     subCtx,
+		cancel:  cancel,
+		candles: hub,
+	}
 
-	fanOut := make(chan *pb.Candle, 256)
-	sm.candleSubs = append(sm.candleSubs, fanOut)
-
-	// TODO: add WaitGroup for stream goroutines
-	go sm.forwardCandles(ctx, ch, fanOut)
+	go sm.forwardCandles(subCtx, ch, hub)
 
 	sm.logger.Info("SubscribeCandles", "instrument_uid", instrumentUID, "interval", interval.String(), "total_subs", len(sm.subscriptions))
-	return fanOut, nil
+	return out, nil
 }
 
 // SubscribeOrderbook subscribes to streaming order book for the given instrument.
@@ -154,8 +240,15 @@ func (sm *StreamManager) SubscribeOrderbook(ctx context.Context, instrumentUID s
 		SubscriptionType: SubOrderbook,
 		OrderbookDepth:   depth,
 	}
-	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeOrderbook: already subscribed to orderbook for %s depth %d", instrumentUID, depth)
+	if sub, exists := sm.subscriptions[key]; exists {
+		sub.refs++
+		ch, err := sub.orderbooks.subscribe(ctx, 64)
+		if err != nil {
+			sub.refs--
+			return nil, fmt.Errorf("SubscribeOrderbook: %w", err)
+		}
+		sm.logger.Info("SubscribeOrderbook shared", "instrument_uid", instrumentUID, "depth", depth, "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return ch, nil
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeOrderbook: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -166,17 +259,25 @@ func (sm *StreamManager) SubscribeOrderbook(ctx context.Context, instrumentUID s
 		return nil, fmt.Errorf("SubscribeOrderbook: %w", err)
 	}
 
-	sm.subscriptions[key] = struct{}{}
-	sm.orderbookChs = append(sm.orderbookChs, ch)
+	subCtx, cancel := context.WithCancel(context.Background())
+	hub := newStreamFanout[*pb.OrderBook]()
+	out, err := hub.subscribe(ctx, 64)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("SubscribeOrderbook: %w", err)
+	}
+	sm.subscriptions[key] = &streamSubscription{
+		key:        key,
+		refs:       1,
+		ctx:        subCtx,
+		cancel:     cancel,
+		orderbooks: hub,
+	}
 
-	fanOut := make(chan *pb.OrderBook, 64)
-	sm.orderbookSubs = append(sm.orderbookSubs, fanOut)
-
-	// TODO: add WaitGroup for stream goroutines
-	go sm.forwardOrderbooks(ctx, ch, fanOut)
+	go sm.forwardOrderbooks(subCtx, ch, hub)
 
 	sm.logger.Info("SubscribeOrderbook", "instrument_uid", instrumentUID, "depth", depth, "total_subs", len(sm.subscriptions))
-	return fanOut, nil
+	return out, nil
 }
 
 // SubscribeTrades subscribes to streaming trades for the given instrument.
@@ -189,8 +290,15 @@ func (sm *StreamManager) SubscribeTrades(ctx context.Context, instrumentUID stri
 	}
 
 	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: SubTrades}
-	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeTrades: already subscribed to trades for %s", instrumentUID)
+	if sub, exists := sm.subscriptions[key]; exists {
+		sub.refs++
+		ch, err := sub.trades.subscribe(ctx, 64)
+		if err != nil {
+			sub.refs--
+			return nil, fmt.Errorf("SubscribeTrades: %w", err)
+		}
+		sm.logger.Info("SubscribeTrades shared", "instrument_uid", instrumentUID, "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return ch, nil
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeTrades: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -201,17 +309,25 @@ func (sm *StreamManager) SubscribeTrades(ctx context.Context, instrumentUID stri
 		return nil, fmt.Errorf("SubscribeTrades: %w", err)
 	}
 
-	sm.subscriptions[key] = struct{}{}
-	sm.tradeChs = append(sm.tradeChs, ch)
+	subCtx, cancel := context.WithCancel(context.Background())
+	hub := newStreamFanout[*pb.Trade]()
+	out, err := hub.subscribe(ctx, 64)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("SubscribeTrades: %w", err)
+	}
+	sm.subscriptions[key] = &streamSubscription{
+		key:    key,
+		refs:   1,
+		ctx:    subCtx,
+		cancel: cancel,
+		trades: hub,
+	}
 
-	fanOut := make(chan *pb.Trade, 64)
-	sm.tradeSubs = append(sm.tradeSubs, fanOut)
-
-	// TODO: add WaitGroup for stream goroutines
-	go sm.forwardTrades(ctx, ch, fanOut)
+	go sm.forwardTrades(subCtx, ch, hub)
 
 	sm.logger.Info("SubscribeTrades", "instrument_uid", instrumentUID, "total_subs", len(sm.subscriptions))
-	return fanOut, nil
+	return out, nil
 }
 
 // SubscribeLastPrice subscribes to streaming last prices for the given instrument.
@@ -224,8 +340,15 @@ func (sm *StreamManager) SubscribeLastPrice(ctx context.Context, instrumentUID s
 	}
 
 	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: SubLastPrice}
-	if _, exists := sm.subscriptions[key]; exists {
-		return nil, fmt.Errorf("SubscribeLastPrice: already subscribed to last_price for %s", instrumentUID)
+	if sub, exists := sm.subscriptions[key]; exists {
+		sub.refs++
+		ch, err := sub.lastPrices.subscribe(ctx, 64)
+		if err != nil {
+			sub.refs--
+			return nil, fmt.Errorf("SubscribeLastPrice: %w", err)
+		}
+		sm.logger.Info("SubscribeLastPrice shared", "instrument_uid", instrumentUID, "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return ch, nil
 	}
 	if len(sm.subscriptions) >= sm.maxSubscriptions() {
 		return nil, fmt.Errorf("SubscribeLastPrice: max subscriptions (%d) reached", sm.maxSubscriptions())
@@ -236,17 +359,25 @@ func (sm *StreamManager) SubscribeLastPrice(ctx context.Context, instrumentUID s
 		return nil, fmt.Errorf("SubscribeLastPrice: %w", err)
 	}
 
-	sm.subscriptions[key] = struct{}{}
-	sm.lastPriceChs = append(sm.lastPriceChs, ch)
+	subCtx, cancel := context.WithCancel(context.Background())
+	hub := newStreamFanout[*pb.LastPrice]()
+	out, err := hub.subscribe(ctx, 64)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("SubscribeLastPrice: %w", err)
+	}
+	sm.subscriptions[key] = &streamSubscription{
+		key:        key,
+		refs:       1,
+		ctx:        subCtx,
+		cancel:     cancel,
+		lastPrices: hub,
+	}
 
-	fanOut := make(chan *pb.LastPrice, 64)
-	sm.lastPriceSubs = append(sm.lastPriceSubs, fanOut)
-
-	// TODO: add WaitGroup for stream goroutines
-	go sm.forwardLastPrices(ctx, ch, fanOut)
+	go sm.forwardLastPrices(subCtx, ch, hub)
 
 	sm.logger.Info("SubscribeLastPrice", "instrument_uid", instrumentUID, "total_subs", len(sm.subscriptions))
-	return fanOut, nil
+	return out, nil
 }
 
 // UnsubscribeCandles removes a candle subscription for the given instrument and interval.
@@ -259,8 +390,14 @@ func (sm *StreamManager) UnsubscribeCandles(instrumentUID string, interval pb.Su
 		SubscriptionType: SubCandles,
 		CandleInterval:   interval,
 	}
-	if _, exists := sm.subscriptions[key]; !exists {
+	sub, exists := sm.subscriptions[key]
+	if !exists {
 		return fmt.Errorf("UnsubscribeCandles: no subscription for %s interval %s", instrumentUID, interval.String())
+	}
+	sub.refs--
+	if sub.refs > 0 {
+		sm.logger.Info("UnsubscribeCandles shared", "instrument_uid", instrumentUID, "interval", interval.String(), "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return nil
 	}
 
 	if sm.stream != nil {
@@ -269,6 +406,10 @@ func (sm *StreamManager) UnsubscribeCandles(instrumentUID string, interval pb.Su
 		}
 	}
 
+	sub.cancel()
+	if sub.candles != nil {
+		sub.candles.close()
+	}
 	delete(sm.subscriptions, key)
 	sm.logger.Info("UnsubscribeCandles", "instrument_uid", instrumentUID, "interval", interval.String(), "total_subs", len(sm.subscriptions))
 	return nil
@@ -287,8 +428,14 @@ func (sm *StreamManager) UnsubscribeOrderbook(instrumentUID string, depth int32)
 		SubscriptionType: SubOrderbook,
 		OrderbookDepth:   depth,
 	}
-	if _, exists := sm.subscriptions[key]; !exists {
+	sub, exists := sm.subscriptions[key]
+	if !exists {
 		return fmt.Errorf("UnsubscribeOrderbook: no subscription for %s depth %d", instrumentUID, depth)
+	}
+	sub.refs--
+	if sub.refs > 0 {
+		sm.logger.Info("UnsubscribeOrderbook shared", "instrument_uid", instrumentUID, "depth", depth, "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return nil
 	}
 
 	if sm.stream != nil {
@@ -297,6 +444,10 @@ func (sm *StreamManager) UnsubscribeOrderbook(instrumentUID string, depth int32)
 		}
 	}
 
+	sub.cancel()
+	if sub.orderbooks != nil {
+		sub.orderbooks.close()
+	}
 	delete(sm.subscriptions, key)
 	sm.logger.Info("UnsubscribeOrderbook", "instrument_uid", instrumentUID, "depth", depth, "total_subs", len(sm.subscriptions))
 	return nil
@@ -312,8 +463,14 @@ func (sm *StreamManager) Unsubscribe(instrumentUID string, subType SubscriptionT
 	}
 
 	key := subscriptionKey{InstrumentUID: instrumentUID, SubscriptionType: subType}
-	if _, exists := sm.subscriptions[key]; !exists {
+	sub, exists := sm.subscriptions[key]
+	if !exists {
 		return fmt.Errorf("Unsubscribe: no subscription for %s/%s", instrumentUID, subType)
+	}
+	sub.refs--
+	if sub.refs > 0 {
+		sm.logger.Info("Unsubscribe shared", "instrument_uid", instrumentUID, "type", subType.String(), "refs", sub.refs, "total_subs", len(sm.subscriptions))
+		return nil
 	}
 
 	if sm.stream != nil {
@@ -331,6 +488,17 @@ func (sm *StreamManager) Unsubscribe(instrumentUID string, subType SubscriptionT
 		}
 	}
 
+	sub.cancel()
+	switch subType {
+	case SubTrades:
+		if sub.trades != nil {
+			sub.trades.close()
+		}
+	case SubLastPrice:
+		if sub.lastPrices != nil {
+			sub.lastPrices.close()
+		}
+	}
 	delete(sm.subscriptions, key)
 	sm.logger.Info("Unsubscribe", "instrument_uid", instrumentUID, "type", subType.String(), "total_subs", len(sm.subscriptions))
 	return nil
@@ -444,33 +612,41 @@ func (sm *StreamManager) reconnect(ctx context.Context) error {
 
 // resubscribeAll re-creates all SDK subscriptions on the current stream. Must be called under sm.mu.
 func (sm *StreamManager) resubscribeAll() error {
-	for key := range sm.subscriptions {
+	for key, sub := range sm.subscriptions {
 		switch key.SubscriptionType {
 		case SubCandles:
-			if _, err := sm.stream.SubscribeCandle(
+			ch, err := sm.stream.SubscribeCandle(
 				[]string{key.InstrumentUID},
 				key.CandleInterval,
 				candleStreamWaitClose,
 				nil,
-			); err != nil {
+			)
+			if err != nil {
 				return err
 			}
+			go sm.forwardCandles(sub.ctx, ch, sub.candles)
 		case SubOrderbook:
 			depth := key.OrderbookDepth
 			if depth <= 0 {
 				depth = 10
 			}
-			if _, err := sm.stream.SubscribeOrderBook([]string{key.InstrumentUID}, depth); err != nil {
+			ch, err := sm.stream.SubscribeOrderBook([]string{key.InstrumentUID}, depth)
+			if err != nil {
 				return err
 			}
+			go sm.forwardOrderbooks(sub.ctx, ch, sub.orderbooks)
 		case SubTrades:
-			if _, err := sm.stream.SubscribeTrade([]string{key.InstrumentUID}, pb.TradeSourceType_TRADE_SOURCE_UNSPECIFIED, false); err != nil {
+			ch, err := sm.stream.SubscribeTrade([]string{key.InstrumentUID}, pb.TradeSourceType_TRADE_SOURCE_UNSPECIFIED, false)
+			if err != nil {
 				return err
 			}
+			go sm.forwardTrades(sub.ctx, ch, sub.trades)
 		case SubLastPrice:
-			if _, err := sm.stream.SubscribeLastPrice([]string{key.InstrumentUID}); err != nil {
+			ch, err := sm.stream.SubscribeLastPrice([]string{key.InstrumentUID})
+			if err != nil {
 				return err
 			}
+			go sm.forwardLastPrices(sub.ctx, ch, sub.lastPrices)
 		}
 	}
 	return nil
@@ -483,9 +659,8 @@ func (sm *StreamManager) maxSubscriptions() int {
 	return 300
 }
 
-// forwardCandles reads from an SDK channel and dispatches to the subscriber + updates cache.
-func (sm *StreamManager) forwardCandles(ctx context.Context, src <-chan *pb.Candle, dst chan<- *pb.Candle) {
-	defer close(dst)
+// forwardCandles reads from an SDK channel and dispatches to downstream subscribers + updates cache.
+func (sm *StreamManager) forwardCandles(ctx context.Context, src <-chan *pb.Candle, dst *streamFanout[*pb.Candle]) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -498,17 +673,14 @@ func (sm *StreamManager) forwardCandles(ctx context.Context, src <-chan *pb.Cand
 				sm.prices.SetLastPrice(c.GetInstrumentUid(), quotationToFloat(c.GetClose()))
 			}
 			// Never drop: losing candles desyncs the strategy from the exchange session (evening bars missing on chart).
-			select {
-			case <-ctx.Done():
+			if ok := dst.publish(ctx, c, true); !ok {
 				return
-			case dst <- c:
 			}
 		}
 	}
 }
 
-func (sm *StreamManager) forwardOrderbooks(ctx context.Context, src <-chan *pb.OrderBook, dst chan<- *pb.OrderBook) {
-	defer close(dst)
+func (sm *StreamManager) forwardOrderbooks(ctx context.Context, src <-chan *pb.OrderBook, dst *streamFanout[*pb.OrderBook]) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -517,17 +689,14 @@ func (sm *StreamManager) forwardOrderbooks(ctx context.Context, src <-chan *pb.O
 			if !ok {
 				return
 			}
-			select {
-			case <-ctx.Done():
+			if ok := dst.publish(ctx, ob, false); !ok {
 				return
-			case dst <- ob:
 			}
 		}
 	}
 }
 
-func (sm *StreamManager) forwardTrades(ctx context.Context, src <-chan *pb.Trade, dst chan<- *pb.Trade) {
-	defer close(dst)
+func (sm *StreamManager) forwardTrades(ctx context.Context, src <-chan *pb.Trade, dst *streamFanout[*pb.Trade]) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -539,17 +708,14 @@ func (sm *StreamManager) forwardTrades(ctx context.Context, src <-chan *pb.Trade
 			if t != nil && t.GetPrice() != nil {
 				sm.prices.SetLastPrice(t.GetInstrumentUid(), quotationToFloat(t.GetPrice()))
 			}
-			select {
-			case <-ctx.Done():
+			if ok := dst.publish(ctx, t, false); !ok {
 				return
-			case dst <- t:
 			}
 		}
 	}
 }
 
-func (sm *StreamManager) forwardLastPrices(ctx context.Context, src <-chan *pb.LastPrice, dst chan<- *pb.LastPrice) {
-	defer close(dst)
+func (sm *StreamManager) forwardLastPrices(ctx context.Context, src <-chan *pb.LastPrice, dst *streamFanout[*pb.LastPrice]) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -561,10 +727,8 @@ func (sm *StreamManager) forwardLastPrices(ctx context.Context, src <-chan *pb.L
 			if lp != nil && lp.GetPrice() != nil {
 				sm.prices.SetLastPrice(lp.GetInstrumentUid(), quotationToFloat(lp.GetPrice()))
 			}
-			select {
-			case <-ctx.Done():
+			if ok := dst.publish(ctx, lp, false); !ok {
 				return
-			case dst <- lp:
 			}
 		}
 	}

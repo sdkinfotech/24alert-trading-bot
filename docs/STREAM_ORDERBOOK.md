@@ -136,7 +136,7 @@ wss://gateway.24alert.ru:8080/api/v1/stream/orderbook?uids=e6123145-...,962e2a95
 | Ширина кадра | ~400 байт для depth=20 |
 | Сетевой объём | ≈ 200 KB/s исходящего для 200 UID при 1–5 Hz |
 
-При необходимости более 50 UID — разнесение по нескольким WS-соединениям либо доработка gateway limit/hub. Для AI Trader предпочтительнее shared `OrderBookHub` с ref-count, reconnect и drop counters.
+При необходимости более 50 UID — разнесение по нескольким WS-соединениям либо поднятие gateway limit. Gateway `StreamManager` использует shared fan-out/ref-count для одинаковых подписок, поэтому Traderbook, smoke-клиенты и будущий AI Trader могут читать один и тот же `(uid, depth)` без duplicate upstream T-Invest subscription. Следующий production gap для AI Trader — явные drop counters/freshness metrics.
 
 ## 6. Метрики
 

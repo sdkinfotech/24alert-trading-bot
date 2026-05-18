@@ -56,11 +56,13 @@ Market data:
   - `GET /api/v1/stream/last-price`
 - `internal/marketdata/stream.go` has internal `SubscribeTrades` and
   `SubscribeLastPrice`; gateway now exposes them as read-only WebSocket APIs.
+- `StreamManager` now uses shared fan-out/ref-count subscriptions, so multiple
+  downstream consumers can read the same `(uid, stream type, depth)` without
+  opening duplicate upstream T-Invest subscriptions.
 - Order book stream currently limits `uids` to 50 in code and sends snapshots
   only.
 - Slow consumers can cause silent snapshot drops.
-- Duplicate orderbook subscriptions can fail because there is no shared
-  `OrderBookHub` keyed by `(uid, depth)`.
+- Reconnect re-subscribes upstream and keeps downstream fan-out hubs alive.
 
 Orders:
 
@@ -277,7 +279,7 @@ Persist every decision with:
 
 1. Add the docs and safety spec.
 2. Add trades/last-price/unified gateway streams.
-3. Add orderbook/trade hubs with reconnect and drop counters.
+3. Add explicit drop counters/freshness metrics to existing orderbook/trade/last-price hubs.
 4. Add persistent order-control schema and action model.
 5. Add `advisor-svc` in `observe` and `paper`.
 6. Add dashboard AI Trader panel without live execution.
