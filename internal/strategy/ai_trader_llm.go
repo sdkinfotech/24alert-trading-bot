@@ -14,7 +14,7 @@ const (
 	defaultAITraderLLMInterval = 15 * time.Second
 	aiTraderLLMTimeout         = 45 * time.Second
 	// Free high-frequency model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
-	defaultAITraderModel = "nvidia/nemotron-3-super-120b-a12b:free"
+	defaultAITraderModel = "google/gemma-4-31b-it:free"
 )
 
 type aiTraderLLMOutput struct {
