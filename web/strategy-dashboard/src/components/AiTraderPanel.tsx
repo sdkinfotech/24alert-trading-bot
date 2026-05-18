@@ -97,6 +97,11 @@ export function AiTraderPanel({ instances }: Props) {
 
   const f = session?.features;
   const d = session?.last_decision;
+  const analysisLabel = d?.analysis_source === 'llm'
+    ? t('analysisLLM')
+    : d?.analysis_source === 'rules_fallback'
+      ? t('analysisFallback')
+      : t('analysisRules');
 
   return (
     <div className="space-y-6">
@@ -155,6 +160,29 @@ export function AiTraderPanel({ instances }: Props) {
             <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : '—'} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
             <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : '—'} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
           </div>
+
+          <Card title={t('aiTraderConclusion')}>
+            {d ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={d.analysis_source === 'llm' ? 'info' : d.analysis_source === 'rules_fallback' ? 'warning' : 'neutral'}>
+                    {t('analysisSource')}: {analysisLabel}
+                  </Badge>
+                  <Badge tone={d.market_bias === 'blocked' ? 'danger' : d.market_bias === 'bullish' ? 'success' : d.market_bias === 'bearish' ? 'warning' : 'neutral'}>
+                    {t('marketBias')}: {d.market_bias ?? 'neutral'}
+                  </Badge>
+                  <Badge tone={d.action === 'block' ? 'danger' : d.action.includes('plan') ? 'warning' : 'info'}>{d.action}</Badge>
+                </div>
+                <p className="text-base font-medium text-[var(--text)]">{d.summary ?? d.reason}</p>
+                {d.next_watch && (
+                  <p><span className="font-semibold">{t('nextWatch')}:</span> {d.next_watch}</p>
+                )}
+                {d.operator_note && (
+                  <p className="text-xs text-[var(--muted)]">{t('operatorNote')}: {d.operator_note}</p>
+                )}
+              </div>
+            ) : <EmptyState>{t('noEvents')}</EmptyState>}
+          </Card>
 
           <Card title={t('lastDecision')}>
             {d ? (
@@ -217,7 +245,8 @@ export function AiTraderPanel({ instances }: Props) {
                       <Badge tone={ev.action === 'block' ? 'danger' : 'info'}>{ev.action}</Badge>
                       <span className="text-[var(--muted)]">{formatDateTime(ev.time, lang)}</span>
                     </div>
-                    <div className="mt-1">{ev.reason}</div>
+                    <div className="mt-1">{ev.summary ?? ev.reason}</div>
+                    {ev.next_watch && <div className="mt-1 text-xs text-[var(--muted)]">{ev.next_watch}</div>}
                   </div>
                 ))}
               </div>

@@ -257,8 +257,13 @@ export interface AiTraderDecisionEvent {
   action: string;
   intent: string;
   reason: string;
+  summary?: string;
+  market_bias?: string;
+  next_watch?: string;
+  operator_note?: string;
   confidence: number;
   risk_result: string;
+  analysis_source?: 'llm' | 'rules' | 'rules_fallback';
   features?: AiTraderFeatures;
 }
 

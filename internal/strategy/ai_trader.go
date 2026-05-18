@@ -68,7 +68,8 @@ type AITraderSession struct {
 	LastDecision *AITraderDecisionEvent  `json:"last_decision,omitempty"`
 	Events       []AITraderDecisionEvent `json:"events,omitempty"`
 
-	cancel context.CancelFunc `json:"-"`
+	cancel    context.CancelFunc `json:"-"`
+	lastLLMAt time.Time          `json:"-"`
 }
 
 type AITraderFeatures struct {
@@ -111,15 +112,20 @@ type AITraderWall struct {
 }
 
 type AITraderDecisionEvent struct {
-	Time       string            `json:"time"`
-	SessionID  string            `json:"session_id"`
-	Mode       string            `json:"mode"`
-	Action     string            `json:"action"`
-	Intent     string            `json:"intent"`
-	Reason     string            `json:"reason"`
-	Confidence float64           `json:"confidence"`
-	RiskResult string            `json:"risk_result"`
-	Features   *AITraderFeatures `json:"features,omitempty"`
+	Time           string            `json:"time"`
+	SessionID      string            `json:"session_id"`
+	Mode           string            `json:"mode"`
+	Action         string            `json:"action"`
+	Intent         string            `json:"intent"`
+	Reason         string            `json:"reason"`
+	Summary        string            `json:"summary"`
+	MarketBias     string            `json:"market_bias"`
+	NextWatch      string            `json:"next_watch"`
+	OperatorNote   string            `json:"operator_note"`
+	Confidence     float64           `json:"confidence"`
+	RiskResult     string            `json:"risk_result"`
+	AnalysisSource string            `json:"analysis_source,omitempty"`
+	Features       *AITraderFeatures `json:"features,omitempty"`
 }
 
 type AITraderManager struct {
@@ -369,9 +375,11 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 		return
 	}
 	features := computeAITraderFeatures(book, s.Ticker, s.Limits.StaleDataMS)
-	decision := decideAITrader(s, features)
-	r.updateAITraderState(s, features, decision)
-	r.appendAITraderEvent(decision)
+	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
+	if journal {
+		r.updateAITraderState(s, features, decision)
+		r.appendAITraderEvent(decision)
+	}
 }
 
 func computeAITraderFeatures(book *marketdata.Orderbook, ticker string, staleMS int64) *AITraderFeatures {
@@ -417,10 +425,11 @@ func computeAITraderFeatures(book *marketdata.Orderbook, ticker string, staleMS 
 	return f
 }
 
-func decideAITrader(s *AITraderSession, f *AITraderFeatures) AITraderDecisionEvent {
+func decideAITraderRules(s *AITraderSession, f *AITraderFeatures) AITraderDecisionEvent {
 	action := "hold"
 	intent := "observe"
 	reason := "no actionable microstructure edge; live orders are disabled"
+	bias := "neutral"
 	confidence := 0.45
 	risk := "allowed_observe_only"
 
@@ -429,44 +438,115 @@ func decideAITrader(s *AITraderSession, f *AITraderFeatures) AITraderDecisionEve
 		action = "block"
 		intent = "wait_for_fresh_feed"
 		reason = fmt.Sprintf("orderbook is stale: %dms > limit %dms", f.DataFreshnessMS, s.Limits.StaleDataMS)
+		bias = "blocked"
 		confidence = 0.95
 		risk = "blocked_stale_feed"
 	case s.Limits.MaxSpreadBPS > 0 && f.SpreadBPS > s.Limits.MaxSpreadBPS:
 		action = "hold"
 		intent = "avoid_wide_spread"
 		reason = fmt.Sprintf("spread %.2fbps exceeds limit %.2fbps", f.SpreadBPS, s.Limits.MaxSpreadBPS)
+		bias = "blocked"
 		confidence = 0.85
 		risk = "blocked_spread"
 	case f.Imbalance > 0.35:
 		action = "paper_plan"
 		intent = "bid_pressure_passive_long_watch"
 		reason = fmt.Sprintf("top depth imbalance %.2f favors bids; observe pull/add before any entry", f.Imbalance)
+		bias = "bullish"
 		confidence = math.Min(0.9, 0.5+math.Abs(f.Imbalance)/2)
 	case f.Imbalance < -0.35:
 		action = "paper_plan"
 		intent = "ask_pressure_passive_short_watch"
 		reason = fmt.Sprintf("top depth imbalance %.2f favors asks; observe prints confirmation before any entry", f.Imbalance)
+		bias = "bearish"
 		confidence = math.Min(0.9, 0.5+math.Abs(f.Imbalance)/2)
-	case f.LargestBidWall.Quantity > 0 || f.LargestAskWall.Quantity > 0:
+	case notableAITraderWall(f):
 		action = "observe_wall"
 		intent = "track_liquidity_wall"
-		reason = "large visible wall detected; track persistence and pull/add behavior"
+		reason = fmt.Sprintf("visible liquidity wall detected: %s; track persistence and pull/add behavior", describeAITraderWall(f))
 		confidence = 0.55
 	}
 	if s.Mode == AITraderModeObserve && action == "paper_plan" {
 		action = "observe_plan"
 	}
+	summary, nextWatch, note := buildAITraderConclusion(action, bias, s, f)
 	return AITraderDecisionEvent{
-		Time:       time.Now().UTC().Format(time.RFC3339),
-		SessionID:  s.ID,
-		Mode:       s.Mode,
-		Action:     action,
-		Intent:     intent,
-		Reason:     reason,
-		Confidence: confidence,
-		RiskResult: risk,
-		Features:   f,
+		Time:           time.Now().UTC().Format(time.RFC3339),
+		SessionID:      s.ID,
+		Mode:           s.Mode,
+		Action:         action,
+		Intent:         intent,
+		Reason:         reason,
+		Summary:        summary,
+		MarketBias:     bias,
+		NextWatch:      nextWatch,
+		OperatorNote:   note,
+		Confidence:     confidence,
+		RiskResult:     risk,
+		AnalysisSource: "rules",
+		Features:       f,
 	}
+}
+
+func buildAITraderConclusion(action, bias string, s *AITraderSession, f *AITraderFeatures) (string, string, string) {
+	note := "Real broker orders are disabled in this AI Trader mode."
+	if s.Mode == AITraderModePaper {
+		note = "Paper mode only: this is a market read, not a broker order."
+	}
+	if f == nil {
+		return "No market data is available yet.", "Wait for a fresh order book snapshot.", note
+	}
+	switch action {
+	case "block":
+		return "The agent blocks trading analysis because market data or spread conditions are unsafe.",
+			"Wait until feed freshness and spread return inside limits.", note
+	case "observe_plan", "paper_plan":
+		if bias == "bullish" {
+			return fmt.Sprintf("Bid-side pressure dominates: top bid volume %d vs ask volume %d, imbalance %.2f. Long idea is only a watch candidate.", f.TopBidVolume, f.TopAskVolume, f.Imbalance),
+				fmt.Sprintf("Watch whether bids keep adding near %.4f and whether asks are consumed without the bid wall being pulled.", f.BestBid), note
+		}
+		if bias == "bearish" {
+			return fmt.Sprintf("Ask-side pressure dominates: top ask volume %d vs bid volume %d, imbalance %.2f. Short idea is only a watch candidate.", f.TopAskVolume, f.TopBidVolume, f.Imbalance),
+				fmt.Sprintf("Watch whether asks keep adding near %.4f and whether bids are consumed without the ask wall being pulled.", f.BestAsk), note
+		}
+	case "observe_wall":
+		wall := dominantAITraderWall(f)
+		return fmt.Sprintf("The book has a visible %s liquidity wall at %.4f x %d. This can be support/resistance, but it can also be pulled.", wall.Side, wall.Price, wall.Quantity),
+			"Watch if the wall stays, grows, gets hit by prints, or disappears before price reaches it.", note
+	}
+	return fmt.Sprintf("No clear edge: spread %.2fbps, imbalance %.2f, bid volume %d vs ask volume %d.", f.SpreadBPS, f.Imbalance, f.TopBidVolume, f.TopAskVolume),
+		"Keep observing until pressure, walls, and prints align into a clearer setup.", note
+}
+
+func notableAITraderWall(f *AITraderFeatures) bool {
+	wall := dominantAITraderWall(f)
+	if wall.Quantity <= 0 {
+		return false
+	}
+	sideTotal := f.TopBidVolume
+	if wall.Side == "ask" {
+		sideTotal = f.TopAskVolume
+	}
+	avg := float64(sideTotal) / 5
+	return avg > 0 && float64(wall.Quantity) >= avg*1.6
+}
+
+func dominantAITraderWall(f *AITraderFeatures) AITraderWall {
+	if f == nil {
+		return AITraderWall{}
+	}
+	if f.LargestAskWall.Quantity > f.LargestBidWall.Quantity {
+		return f.LargestAskWall
+	}
+	return f.LargestBidWall
+}
+
+func describeAITraderWall(f *AITraderFeatures) string {
+	wall := dominantAITraderWall(f)
+	if wall.Quantity <= 0 {
+		return "none"
+	}
+	return fmt.Sprintf("%s %.4f x %d", wall.Side, wall.Price, wall.Quantity)
 }
 
 func firstBookRows(rows []marketdata.OrderbookRow, n int) []marketdata.OrderbookRow {

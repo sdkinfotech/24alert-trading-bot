@@ -46,8 +46,34 @@ func TestDecideAITraderRejectsStale(t *testing.T) {
 		Limits: defaultAITraderLimits(),
 	}
 	f := &AITraderFeatures{Stale: true, DataFreshnessMS: 5000}
-	ev := decideAITrader(s, f)
+	ev := decideAITraderRules(s, f)
 	if ev.Action != "block" || ev.RiskResult != "blocked_stale_feed" {
 		t.Fatalf("unexpected stale decision: %+v", ev)
+	}
+	if ev.Summary == "" || ev.NextWatch == "" || ev.OperatorNote == "" || ev.MarketBias != "blocked" {
+		t.Fatalf("expected human-readable blocked conclusion: %+v", ev)
+	}
+}
+
+func TestDecideAITraderBuildsReadableConclusion(t *testing.T) {
+	s := &AITraderSession{
+		ID:     "s1",
+		Mode:   AITraderModePaper,
+		Limits: defaultAITraderLimits(),
+	}
+	f := &AITraderFeatures{
+		BestBid:      100,
+		BestAsk:      100.1,
+		SpreadBPS:    1,
+		TopBidVolume: 200,
+		TopAskVolume: 600,
+		Imbalance:    -0.5,
+	}
+	ev := decideAITraderRules(s, f)
+	if ev.Action != "paper_plan" || ev.MarketBias != "bearish" {
+		t.Fatalf("unexpected pressure decision: %+v", ev)
+	}
+	if ev.Summary == "" || ev.NextWatch == "" {
+		t.Fatalf("expected readable conclusion: %+v", ev)
 	}
 }

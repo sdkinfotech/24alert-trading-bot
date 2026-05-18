@@ -299,9 +299,18 @@ Runtime API:
 - `GET /ai-trader/sessions/{instance_id}`
 - `POST /ai-trader/sessions/{instance_id}/stop`
 
-Safety properties:
+ Decision brain:
 
-- supported modes are only `observe` and `paper`;
+ - microstructure features are computed locally from the order book;
+ - hard safety gates (stale feed, wide spread) stay rule-based;
+ - interpretive conclusions use OpenRouter LLM (`OPENROUTER_API_KEY`), about once
+   every 15s (`AI_TRADER_LLM_INTERVAL_SEC`), with `analysis_source=llm` in the API;
+ - if LLM is unavailable, the session falls back to rule-based text
+   (`analysis_source=rules_fallback`).
+
+ Safety properties:
+
+ - supported modes are only `observe` and `paper`;
 - `armed_live` is rejected server-side;
 - a session is created from `account_id + instrument_uid + operator prompt`;
 - `instance_id` is only a backward-compatible fallback for prefilling
