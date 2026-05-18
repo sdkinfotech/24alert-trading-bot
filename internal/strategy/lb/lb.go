@@ -89,15 +89,18 @@ type Bounce struct {
 	prevClose  float64
 
 	// Intraday state: pos is confirmed by fills; pending* tracks orders not yet acknowledged.
-	pos          int64
-	pendingEntry int64 // +1/-1 entry signal sent, awaiting fill or dispatch failure
-	pendingExit  bool  // exit signal sent, awaiting fill or dispatch failure
-	entryPrice   float64
-	stopLoss     float64
-	takeProfit   float64
-	currentDay   string
-	eodSent      bool
-	stopped      bool
+	pos            int64
+	pendingEntry   int64 // +1/-1 entry signal sent, awaiting fill or dispatch failure
+	pendingExit    bool  // exit signal sent, awaiting fill or dispatch failure
+	entryPrice     float64
+	stopLoss       float64
+	takeProfit     float64
+	currentDay     string
+	eodSent        bool
+	stopped        bool
+	lastEntryDay   string
+	lastEntryDir   string
+	lastEntryLevel float64
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -164,6 +167,9 @@ func (b *Bounce) Configure(params map[string]string) error {
 	b.takeProfit = 0
 	b.currentDay = ""
 	b.eodSent = false
+	b.lastEntryDay = ""
+	b.lastEntryDir = ""
+	b.lastEntryLevel = 0
 	return nil
 }
 
@@ -270,8 +276,6 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 		return nil
 	}
 
-	threshold := b.atr * b.atrMult
-
 	// EOD flatten
 	cutoff := time.Date(t.Year(), t.Month(), t.Day(), b.cutoffHour, b.cutoffMin, 0, 0, b.tz)
 	if !t.Before(cutoff) {
@@ -357,12 +361,13 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 
 	// Bounce off support → BUY
 	for _, s := range b.support {
-		if k.Low <= s+threshold && k.Close > s {
+		if k.Low <= s && k.Close > s && !b.entryAlreadySent(day, "buy", s) {
 			b.entryPrice = k.Close
 			b.stopLoss = s - b.atr*b.slMult
 			b.takeProfit = b.entryPrice + b.atr*b.tpMult
 			b.pendingEntry = 1
 			reason := fmt.Sprintf("bounce S=%.1f", s)
+			b.markEntrySignal(day, "buy", s)
 			b.recordSignal(k.Time, "buy", reason, k.Close)
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
@@ -377,12 +382,13 @@ func (b *Bounce) OnCandle(k strategy.Candle) []strategy.Signal {
 
 	// Rejection from resistance → SELL
 	for _, r := range b.resistance {
-		if k.High >= r-threshold && k.Close < r {
+		if k.High >= r && k.Close < r && !b.entryAlreadySent(day, "sell", r) {
 			b.entryPrice = k.Close
 			b.stopLoss = r + b.atr*b.slMult
 			b.takeProfit = b.entryPrice - b.atr*b.tpMult
 			b.pendingEntry = -1
 			reason := fmt.Sprintf("reject R=%.1f", r)
+			b.markEntrySignal(day, "sell", r)
 			b.recordSignal(k.Time, "sell", reason, k.Close)
 			return []strategy.Signal{{
 				InstrumentUID: k.InstrumentUID,
@@ -464,6 +470,9 @@ func (b *Bounce) ResetTradingStateAfterWarmup() {
 	b.clearEntryLevels()
 	b.eodSent = false
 	b.currentDay = ""
+	b.lastEntryDay = ""
+	b.lastEntryDir = ""
+	b.lastEntryLevel = 0
 	// Warmup replays historical candles and may generate theoretical signals.
 	// They were never dispatched to risk/order services, so do not show them as chart markers.
 	b.signals = nil
@@ -486,6 +495,18 @@ func (b *Bounce) recordSignal(t time.Time, dir, reason string, price float64) {
 	if len(b.signals) > maxHistoryLen {
 		b.signals = b.signals[len(b.signals)-maxHistoryLen:]
 	}
+}
+
+func (b *Bounce) entryAlreadySent(day, dir string, level float64) bool {
+	return b.lastEntryDay == day &&
+		b.lastEntryDir == dir &&
+		math.Abs(b.lastEntryLevel-level) < 1e-9
+}
+
+func (b *Bounce) markEntrySignal(day, dir string, level float64) {
+	b.lastEntryDay = day
+	b.lastEntryDir = dir
+	b.lastEntryLevel = level
 }
 
 // IndicatorData returns the full indicator snapshot for visualization.
@@ -521,31 +542,34 @@ func (b *Bounce) IndicatorData() interface{} {
 // --- StatefulStrategy ---
 
 type lbState struct {
-	ATRMult      float64       `json:"atr_mult"`
-	SLMult       float64       `json:"sl_mult"`
-	TPMult       float64       `json:"tp_mult"`
-	LevelDays    int           `json:"level_days"`
-	Qty          int64         `json:"qty"`
-	CutoffHour   int           `json:"cutoff_hour"`
-	CutoffMin    int           `json:"cutoff_min"`
-	Support      []float64     `json:"support"`
-	Resistance   []float64     `json:"resistance"`
-	DailyDates   []string      `json:"daily_dates"`
-	ATR          float64       `json:"atr"`
-	DailyHighs   []float64     `json:"daily_highs"`
-	DailyLows    []float64     `json:"daily_lows"`
-	DailyTRs     []float64     `json:"daily_trs"`
-	PrevClose    float64       `json:"prev_close"`
-	Pos          int64         `json:"pos"`
-	PendingEntry int64         `json:"pending_entry"`
-	PendingExit  bool          `json:"pending_exit"`
-	EntryPrice   float64       `json:"entry_price"`
-	StopLoss     float64       `json:"stop_loss"`
-	TakeProfit   float64       `json:"take_profit"`
-	CurrentDay   string        `json:"current_day"`
-	EodSent      bool          `json:"eod_sent"`
-	History      []CandlePoint `json:"history,omitempty"`
-	Signals      []SignalPoint `json:"signals,omitempty"`
+	ATRMult        float64       `json:"atr_mult"`
+	SLMult         float64       `json:"sl_mult"`
+	TPMult         float64       `json:"tp_mult"`
+	LevelDays      int           `json:"level_days"`
+	Qty            int64         `json:"qty"`
+	CutoffHour     int           `json:"cutoff_hour"`
+	CutoffMin      int           `json:"cutoff_min"`
+	Support        []float64     `json:"support"`
+	Resistance     []float64     `json:"resistance"`
+	DailyDates     []string      `json:"daily_dates"`
+	ATR            float64       `json:"atr"`
+	DailyHighs     []float64     `json:"daily_highs"`
+	DailyLows      []float64     `json:"daily_lows"`
+	DailyTRs       []float64     `json:"daily_trs"`
+	PrevClose      float64       `json:"prev_close"`
+	Pos            int64         `json:"pos"`
+	PendingEntry   int64         `json:"pending_entry"`
+	PendingExit    bool          `json:"pending_exit"`
+	EntryPrice     float64       `json:"entry_price"`
+	StopLoss       float64       `json:"stop_loss"`
+	TakeProfit     float64       `json:"take_profit"`
+	CurrentDay     string        `json:"current_day"`
+	EodSent        bool          `json:"eod_sent"`
+	LastEntryDay   string        `json:"last_entry_day"`
+	LastEntryDir   string        `json:"last_entry_dir"`
+	LastEntryLevel float64       `json:"last_entry_level"`
+	History        []CandlePoint `json:"history,omitempty"`
+	Signals        []SignalPoint `json:"signals,omitempty"`
 }
 
 func (b *Bounce) Snapshot() ([]byte, error) {
@@ -563,6 +587,7 @@ func (b *Bounce) Snapshot() ([]byte, error) {
 		EntryPrice:   b.entryPrice,
 		StopLoss:     b.stopLoss, TakeProfit: b.takeProfit,
 		CurrentDay: b.currentDay, EodSent: b.eodSent,
+		LastEntryDay: b.lastEntryDay, LastEntryDir: b.lastEntryDir, LastEntryLevel: b.lastEntryLevel,
 		History: b.history, Signals: b.signals,
 	})
 }
@@ -618,6 +643,9 @@ func (b *Bounce) Restore(blob []byte) error {
 	b.takeProfit = st.TakeProfit
 	b.currentDay = st.CurrentDay
 	b.eodSent = st.EodSent
+	b.lastEntryDay = st.LastEntryDay
+	b.lastEntryDir = st.LastEntryDir
+	b.lastEntryLevel = st.LastEntryLevel
 	b.history = st.History
 	b.signals = st.Signals
 	return nil

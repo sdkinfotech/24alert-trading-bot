@@ -113,6 +113,65 @@ func TestBounce_OnCandle_entryUsesPendingNotPos(t *testing.T) {
 	}
 }
 
+func TestBounce_OnCandle_rejectRequiresActualResistanceTouch(t *testing.T) {
+	b := New()
+	if err := b.Configure(map[string]string{
+		"quantity": "1", "timezone": "Europe/Moscow", "cutoff_hour": "23", "cutoff_min": "59",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b.support = []float64{90}
+	b.resistance = []float64{110}
+	b.atr = 10
+	ts := time.Date(2026, 5, 15, 12, 0, 0, 0, b.tz)
+
+	// Previously this was a SELL because high was inside R - ATR*atr_mult.
+	// It is not a rejection unless the candle actually touches the level.
+	sigs := b.OnCandle(strategy.Candle{
+		InstrumentUID: "uid",
+		Open:          107, High: 109, Low: 106, Close: 108,
+		Time:       ts,
+		IsComplete: true,
+	})
+	if len(sigs) != 0 {
+		t.Fatalf("want no sell before actual resistance touch, got %#v", sigs)
+	}
+}
+
+func TestBounce_OnCandle_doesNotRepeatSameLevelSameDayAfterDispatchFailure(t *testing.T) {
+	b := New()
+	if err := b.Configure(map[string]string{
+		"quantity": "1", "timezone": "Europe/Moscow", "cutoff_hour": "23", "cutoff_min": "59",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b.support = []float64{90}
+	b.resistance = []float64{110}
+	b.atr = 10
+	ts := time.Date(2026, 5, 15, 12, 0, 0, 0, b.tz)
+
+	first := b.OnCandle(strategy.Candle{
+		InstrumentUID: "uid",
+		Open:          108, High: 111, Low: 107, Close: 109,
+		Time:       ts,
+		IsComplete: true,
+	})
+	if len(first) != 1 || first[0].Direction != "sell" {
+		t.Fatalf("want first sell rejection, got %#v", first)
+	}
+	b.OnSignalDispatchFailed(first[0], "session_blocked")
+
+	second := b.OnCandle(strategy.Candle{
+		InstrumentUID: "uid",
+		Open:          108, High: 111, Low: 107, Close: 109,
+		Time:       ts.Add(15 * time.Minute),
+		IsComplete: true,
+	})
+	if len(second) != 0 {
+		t.Fatalf("want no repeated same-level sell on same day, got %#v", second)
+	}
+}
+
 func TestBounce_OnDailyCandle_recordsLevelSources(t *testing.T) {
 	b := New()
 	base := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
