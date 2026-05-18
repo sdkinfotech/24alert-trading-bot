@@ -21,7 +21,8 @@ interface PriceRow {
 
 const LADDER_TICKS_EACH_SIDE = 56;
 const MAX_LADDER_ROWS = 160;
-const ROW_HEIGHT = 22;
+const ROW_HEIGHT = 18;
+const FOOTPRINT_COL_MIN = 50;
 
 function isBuy(dir: string): boolean {
   return dir.toLowerCase().includes('buy');
@@ -186,7 +187,7 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
       <div className="scalper-dom-grid">
         <div
           className="scalper-col-header scalper-footprint-header"
-          style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(64px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(${FOOTPRINT_COL_MIN}px, 1fr))` }}
         >
           {cols.map((col) => (
             <div key={col.time} className="scalper-col-label">{col.label}</div>
@@ -207,7 +208,7 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
                 <div
                   key={row.price}
                   className={`scalper-row ${row.isBestBid || row.isBestAsk ? 'scalper-row-mid' : ''} ${row.isLast ? 'scalper-row-last' : ''}`}
-                  style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(64px, 1fr))` }}
+                  style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(${FOOTPRINT_COL_MIN}px, 1fr))` }}
                 >
                   {cols.map((col) => {
                     const cell = cellLookup.get(minuteCellKey(col, row.price, tick));
@@ -281,7 +282,7 @@ export function ScalperDOM({ mc, features, ticker, lang }: Props) {
 
         <div
           className="scalper-footprint-footer"
-          style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(64px, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(${FOOTPRINT_COL_MIN}px, 1fr))` }}
         >
           {cols.map((col) => (
             <div key={`f-${col.time}`} className="scalper-footer-cell">
