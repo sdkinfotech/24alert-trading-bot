@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createChart,
   createSeriesMarkers,
@@ -8,13 +8,23 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type Time,
   ColorType,
   CrosshairMode,
+  type UTCTimestamp,
 } from 'lightweight-charts';
-import type { IndicatorData } from '../api/types';
+import type { IndicatorData, PortfolioSnapshot, TimelineEvent } from '../api/types';
+import type { ChartTheme } from '../theme';
+import type { Lang } from '../i18n';
+import { formatDateTime } from '../format';
 
 interface Props {
   data: IndicatorData | null;
+  events?: TimelineEvent[];
+  portfolio?: PortfolioSnapshot | null;
+  chartTheme?: ChartTheme;
+  lang?: Lang;
 }
 
 function isORB(data: IndicatorData): boolean {
@@ -65,54 +75,56 @@ function formatLevelSources(
     .join(' · ')}`;
 }
 
-const MSK_TZ = 'Europe/Moscow';
+const fallbackTheme: ChartTheme = {
+  background: '#0f172a',
+  text: '#94a3b8',
+  grid: '#243044',
+  border: '#334155',
+  up: '#22c55e',
+  down: '#f87171',
+  fast: '#60a5fa',
+  slow: '#fbbf24',
+  support: '#4ade80',
+  resistance: '#f87171',
+  brokerAvg: '#c4b5fd',
+  trailing: '#fb923c',
+  fill: '#c084fc',
+};
 
-function formatMskTime(time: number | string): string {
-  if (typeof time === 'number') {
-    return new Date(time * 1000).toLocaleString('ru-RU', {
-      timeZone: MSK_TZ,
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return String(time);
-}
-
-export function IndicatorChart({ data }: Props) {
+export function IndicatorChart({ data, events = [], portfolio = null, chartTheme = fallbackTheme, lang = 'ru' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const isFirstDataPaintRef = useRef(true);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const line1Ref = useRef<ISeriesApi<'Line'> | null>(null);
   const line2Ref = useRef<ISeriesApi<'Line'> | null>(null);
-  const markersRef = useRef<ReturnType<typeof createSeriesMarkers> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const [hover, setHover] = useState<string>('');
 
   useEffect(() => {
     if (!containerRef.current) return;
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0a0a0f' },
-        textColor: '#9ca3af',
+        background: { type: ColorType.Solid, color: chartTheme.background },
+        textColor: chartTheme.text,
       },
       localization: {
-        locale: 'ru-RU',
-        timeFormatter: (t: number | string) => formatMskTime(t),
+        locale: lang === 'ru' ? 'ru-RU' : 'en-US',
+        timeFormatter: (t: number | string) => typeof t === 'number' ? formatDateTime(t, lang) : String(t),
       },
       grid: {
-        vertLines: { color: '#1f2937' },
-        horzLines: { color: '#1f2937' },
+        vertLines: { color: chartTheme.grid },
+        horzLines: { color: chartTheme.grid },
       },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#374151' },
+      rightPriceScale: { borderColor: chartTheme.border },
       timeScale: {
-        borderColor: '#374151',
+        borderColor: chartTheme.border,
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 8,
-        tickMarkFormatter: (t: number | string) => formatMskTime(t),
+        tickMarkFormatter: (t: number | string) => typeof t === 'number' ? formatDateTime(t, lang) : String(t),
       },
       width: containerRef.current.clientWidth,
       height: 420,
@@ -120,16 +132,25 @@ export function IndicatorChart({ data }: Props) {
     chartRef.current = chart;
 
     candleRef.current = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: chartTheme.up,
+      downColor: chartTheme.down,
+      borderUpColor: chartTheme.up,
+      borderDownColor: chartTheme.down,
+      wickUpColor: chartTheme.up,
+      wickDownColor: chartTheme.down,
     });
 
-    line1Ref.current = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2 });
-    line2Ref.current = chart.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2 });
+    line1Ref.current = chart.addSeries(LineSeries, { color: chartTheme.fast, lineWidth: 2 });
+    line2Ref.current = chart.addSeries(LineSeries, { color: chartTheme.slow, lineWidth: 2 });
+    chart.subscribeCrosshairMove((param) => {
+      const point = param.seriesData.get(candleRef.current!);
+      if (!point || !('open' in point)) {
+        setHover('');
+        return;
+      }
+      const bar = point as { open: number; high: number; low: number; close: number };
+      setHover(`O ${bar.open.toFixed(4)} · H ${bar.high.toFixed(4)} · L ${bar.low.toFixed(4)} · C ${bar.close.toFixed(4)}`);
+    });
 
     const ro = new ResizeObserver((entries) => {
       for (const e of entries) {
@@ -141,7 +162,7 @@ export function IndicatorChart({ data }: Props) {
       ro.disconnect();
       chart.remove();
     };
-  }, []);
+  }, [chartTheme, lang]);
 
   useEffect(() => {
     if (!data || !candleRef.current || !line1Ref.current || !line2Ref.current) return;
@@ -153,7 +174,7 @@ export function IndicatorChart({ data }: Props) {
     }
     priceLinesRef.current = [];
 
-    const toUnix = (t: string) => Math.floor(new Date(t).getTime() / 1000) as any;
+    const toUnix = (t: string): UTCTimestamp => Math.floor(new Date(t).getTime() / 1000) as UTCTimestamp;
 
     const candles = data.candles.map((c) => ({
       time: toUnix(c.time),
@@ -183,8 +204,8 @@ export function IndicatorChart({ data }: Props) {
       line2Ref.current.setData([]);
 
       const { support, resistance } = levelBounceLevels(data);
-      const supColors = ['#22c55e', '#4ade80', '#86efac'];
-      const resColors = ['#ef4444', '#f87171', '#fca5a5'];
+      const supColors = [chartTheme.support, chartTheme.up, '#86efac'];
+      const resColors = [chartTheme.resistance, chartTheme.down, '#fca5a5'];
 
       let si = 0;
       for (const p of support) {
@@ -218,51 +239,70 @@ export function IndicatorChart({ data }: Props) {
         .map((c) => ({ time: toUnix(c.time), value: c.range_high! }));
       line1Ref.current.setData(rangeHighData);
       line1Ref.current.applyOptions({
-        color: '#22c55e',
+        color: chartTheme.support,
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
-        title: 'Range High',
-      } as any);
+      });
 
       const rangeLowData = data.candles
         .filter((c) => (c.range_low ?? 0) > 0)
         .map((c) => ({ time: toUnix(c.time), value: c.range_low! }));
       line2Ref.current.setData(rangeLowData);
       line2Ref.current.applyOptions({
-        color: '#ef4444',
+        color: chartTheme.resistance,
         lineWidth: 2,
         lineStyle: LineStyle.Dashed,
-        title: 'Range Low',
-      } as any);
+      });
     } else if (smaMode) {
       const fastData = data.candles
         .filter((c) => (c.fast_sma ?? 0) > 0)
         .map((c) => ({ time: toUnix(c.time), value: c.fast_sma! }));
       line1Ref.current.setData(fastData);
       line1Ref.current.applyOptions({
-        color: '#3b82f6',
+        color: chartTheme.fast,
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
-        title: 'Fast SMA',
-      } as any);
+      });
 
       const slowData = data.candles
         .filter((c) => (c.slow_sma ?? 0) > 0)
         .map((c) => ({ time: toUnix(c.time), value: c.slow_sma! }));
       line2Ref.current.setData(slowData);
       line2Ref.current.applyOptions({
-        color: '#f59e0b',
+        color: chartTheme.slow,
         lineWidth: 2,
         lineStyle: LineStyle.Solid,
-        title: 'Slow SMA',
-      } as any);
+      });
     } else {
       line1Ref.current.setData([]);
       line2Ref.current.setData([]);
     }
 
-    if (data.signals.length > 0) {
-      const markers = data.signals.map((s) => {
+    for (const p of portfolio?.positions ?? []) {
+      if (!p.in_instance || p.quantity === 0 || p.average_price <= 0) continue;
+      const pl = series.createPriceLine({
+        price: p.average_price,
+        color: chartTheme.brokerAvg,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: `Broker avg ${p.quantity > 0 ? 'LONG' : 'SHORT'} ${p.ticker || ''}`.trim(),
+      });
+      priceLinesRef.current.push(pl);
+    }
+    if (data.trailing_stop_active && (data.trailing_stop_price ?? 0) > 0) {
+      const pl = series.createPriceLine({
+        price: data.trailing_stop_price!,
+        color: chartTheme.trailing,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `Trailing ${(data.trailing_stop_pct! * 100).toFixed(2)}%`,
+      });
+      priceLinesRef.current.push(pl);
+    }
+
+    const signalMarkers = data.signals.map((s) => {
         const rawT = toUnix(s.time) as number;
         const t = clampBarTime(rawT);
         const eod = (s.reason ?? '').toLowerCase().includes('eod');
@@ -270,13 +310,30 @@ export function IndicatorChart({ data }: Props) {
         let text = s.direction.toUpperCase();
         if (eod) text = clipped ? `${text} EOD*` : `${text} EOD`;
         return {
-          time: t as any,
+          time: t as UTCTimestamp,
           position: s.direction === 'buy' ? ('belowBar' as const) : ('aboveBar' as const),
-          color: s.direction === 'buy' ? '#22c55e' : '#ef4444',
+          color: s.direction === 'buy' ? chartTheme.up : chartTheme.down,
           shape: s.direction === 'buy' ? ('arrowUp' as const) : ('arrowDown' as const),
           text,
         };
       });
+    const executionMarkers = events
+      .filter((e) => e.type === 'execution' && e.avg_price && e.avg_price > 0)
+      .map((e) => {
+        const rawT = toUnix(e.time) as number;
+        const t = clampBarTime(rawT);
+        const status = (e.status ?? '').toLowerCase();
+        const filled = status.includes('filled');
+        return {
+          time: t as UTCTimestamp,
+          position: 'inBar' as const,
+          color: filled ? chartTheme.fill : chartTheme.text,
+          shape: 'circle' as const,
+          text: `FILL ${e.filled_qty ?? 0} @ ${e.avg_price?.toFixed(2)}`,
+        };
+      });
+    const markers = [...signalMarkers, ...executionMarkers].sort((a, b) => Number(a.time) - Number(b.time));
+    if (markers.length > 0) {
       if (markersRef.current) {
         markersRef.current.setMarkers(markers);
       } else {
@@ -296,7 +353,7 @@ export function IndicatorChart({ data }: Props) {
       }
       ts.scrollToRealTime();
     });
-  }, [data]);
+  }, [data, events, portfolio, chartTheme]);
 
   const buyCount = data?.signals.filter((s) => s.direction === 'buy').length ?? 0;
   const sellCount = data?.signals.filter((s) => s.direction === 'sell').length ?? 0;
@@ -310,6 +367,12 @@ export function IndicatorChart({ data }: Props) {
       : data?.position === -1
         ? 'text-red-400'
         : 'text-gray-400';
+
+  const brokerPositions = portfolio?.positions.filter((p) => p.in_instance && p.quantity !== 0) ?? [];
+  const brokerLabel = brokerPositions.length
+    ? brokerPositions.map((p) => `${p.quantity > 0 ? 'LONG' : 'SHORT'} ${p.quantity} ${p.ticker || p.instrument_uid.slice(0, 8)}`).join(', ')
+    : 'FLAT';
+  const brokerColor = brokerPositions.length ? 'text-blue-300' : 'text-gray-400';
 
   const orbMode = data ? isORB(data) : false;
   const lbMode = data ? isLevelBounce(data) : false;
@@ -330,6 +393,9 @@ export function IndicatorChart({ data }: Props) {
     headerLabel = `ORB (Range ${data.range_formed ? 'formed' : 'forming'}: ${data.range_high?.toFixed(2) ?? '?'} / ${data.range_low?.toFixed(2) ?? '?'})`;
   } else if (smaMode && data) {
     headerLabel = `SMA(${data.fast_period ?? '?'}/${data.slow_period ?? '?'})`;
+    if (data.trailing_stop_pct && data.trailing_stop_pct > 0) {
+      headerLabel += ` · trailing ${(data.trailing_stop_pct * 100).toFixed(2)}%`;
+    }
   } else if (data) {
     headerLabel = data.strategy_type ?? 'Strategy';
   }
@@ -337,22 +403,23 @@ export function IndicatorChart({ data }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2 px-1">
-        <div className="text-sm text-gray-400">
+        <div className="text-sm text-[var(--muted)]">
           {headerLabel}
           {intervalHint && (
             <>
               {' '}
-              &middot; <span className="text-gray-500">свеча: {intervalHint}</span>
+              &middot; <span className="text-[var(--muted)]">свеча: {intervalHint}</span>
             </>
           )}
           {' '}
           &middot;{' '}
-          Signals: <span className="text-white font-medium">{total}</span>{' '}
-          <span className="text-green-400">({buyCount} buy</span> /{' '}
-          <span className="text-red-400">{sellCount} sell)</span>
+          Signals: <span className="font-medium text-[var(--text)]">{total}</span>{' '}
+          <span className="text-[var(--success)]">({buyCount} buy</span> /{' '}
+          <span className="text-[var(--danger)]">{sellCount} sell)</span>
         </div>
-        <div className={`text-sm font-semibold ${posColor}`}>
-          Position: {posLabel}
+        <div className="text-right text-sm">
+          <div className={`font-semibold ${brokerColor}`}>Broker: {brokerLabel}</div>
+          <div className={`text-xs ${posColor}`}>Strategy state: {posLabel}</div>
         </div>
       </div>
       {lbMode && (
@@ -376,7 +443,22 @@ export function IndicatorChart({ data }: Props) {
           </p>
         </div>
       )}
-      <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800" />
+      {smaMode && data?.trailing_stop_pct && data.trailing_stop_pct > 0 ? (
+        <div className="text-xs text-gray-500 mb-1 px-1">
+          <span className="text-orange-300">Trailing stop:</span>{' '}
+          {data.trailing_stop_active && data.trailing_stop_price
+            ? `active at ${data.trailing_stop_price.toFixed(4)} (best ${data.trailing_best_price?.toFixed(4) ?? '—'})`
+            : 'configured, waiting for an open position'}
+        </div>
+      ) : null}
+      <div className="relative">
+        {hover && (
+          <div className="absolute left-3 top-3 z-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] shadow">
+            {hover}
+          </div>
+        )}
+        <div ref={containerRef} className="rounded-lg overflow-hidden border border-[var(--border)]" />
+      </div>
     </div>
   );
 }

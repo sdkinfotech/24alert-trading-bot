@@ -4,6 +4,8 @@ export interface Instance {
   /** MOEX tickers from instrument cache (comma-separated if several UIDs). */
   tickers?: string;
   account_id: string;
+  instruments?: string[];
+  params?: Record<string, string>;
   enabled_in_config: boolean;
   running: boolean;
 }
@@ -13,6 +15,7 @@ export interface PnlData {
   realized_rub: number;
   unrealized_rub: number;
   total_rub: number;
+  source?: string;
 }
 
 export interface LedgerData {
@@ -20,6 +23,35 @@ export interface LedgerData {
   quantities: Record<string, number>;
   avg_prices: Record<string, number>;
   realized_rub: number;
+}
+
+export interface PortfolioPosition {
+  instrument_uid: string;
+  ticker?: string;
+  instrument_type?: string;
+  figi?: string;
+  quantity: number;
+  average_price: number;
+  current_price: number;
+  expected_yield: number;
+  currency?: string;
+  blocked: boolean;
+  in_instance: boolean;
+}
+
+export interface PortfolioSnapshot {
+  instance_id: string;
+  account_id: string;
+  total_amount_shares: number;
+  total_amount_bonds: number;
+  total_amount_etf: number;
+  total_amount_currencies: number;
+  total_amount_futures: number;
+  expected_yield: number;
+  positions: PortfolioPosition[];
+  instance_position_count: number;
+  last_broker_sync: string;
+  portfolio_error?: string;
 }
 
 export interface CandlePoint {
@@ -56,6 +88,10 @@ export interface IndicatorData {
   strategy_type?: string;
   fast_period?: number;
   slow_period?: number;
+  trailing_stop_pct?: number;
+  trailing_best_price?: number;
+  trailing_stop_price?: number;
+  trailing_stop_active?: boolean;
   position: number;
   candles: CandlePoint[];
   signals: SignalPoint[];
@@ -89,6 +125,41 @@ export interface SignalRecord {
   RefPrice: number;
   Reason: string;
   CreatedAt: string;
+}
+
+export interface OrderRecord {
+  InstanceID: string;
+  OrderID: string;
+  InstrumentUID: string;
+  Direction: string;
+  Quantity: number;
+  OrderType: string;
+  RefPrice: number;
+  CreatedAt: string;
+}
+
+export interface ExecutionRecord {
+  InstanceID: string;
+  OrderID: string;
+  InstrumentUID: string;
+  Status: string;
+  FilledQty: number;
+  AvgPrice: number;
+  Message: string;
+  CreatedAt: string;
+}
+
+export interface StopOrder {
+  stop_order_id: string;
+  instrument_uid: string;
+  direction: string;
+  stop_order_type: string;
+  lots: number;
+  stop_price: number;
+  price: number;
+  status: string;
+  created_at?: string;
+  expiration_at?: string;
 }
 
 export interface TimelineEvent {

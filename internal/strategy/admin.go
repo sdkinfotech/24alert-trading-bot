@@ -31,12 +31,14 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 	})
 	mux.HandleFunc("GET /instances", func(w http.ResponseWriter, _ *http.Request) {
 		type row struct {
-			ID            string `json:"id"`
-			Type          string `json:"type"`
-			Tickers       string `json:"tickers,omitempty"`
-			AccountID     string `json:"account_id"`
-			EnabledConfig bool   `json:"enabled_in_config"`
-			Running       bool   `json:"running"`
+			ID            string            `json:"id"`
+			Type          string            `json:"type"`
+			Tickers       string            `json:"tickers,omitempty"`
+			AccountID     string            `json:"account_id"`
+			Instruments   []string          `json:"instruments"`
+			Params        map[string]string `json:"params,omitempty"`
+			EnabledConfig bool              `json:"enabled_in_config"`
+			Running       bool              `json:"running"`
 		}
 		var out []row
 		for _, inst := range r.strategiesCfg.Instances {
@@ -45,6 +47,8 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 				Type:          inst.Type,
 				Tickers:       r.InstanceTickers(inst),
 				AccountID:     inst.AccountID,
+				Instruments:   append([]string(nil), inst.Instruments...),
+				Params:        inst.Params,
 				EnabledConfig: inst.Enabled,
 				Running:       r.InstanceRunning(inst.ID),
 			})
@@ -81,7 +85,9 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 	})
 	mux.HandleFunc("GET /instances/{id}/pnl", func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
-		rl, un, tot, ok := r.InstancePNL(id)
+		ctx, cancel := context.WithTimeout(req.Context(), 8*time.Second)
+		defer cancel()
+		rl, un, tot, source, ok := r.InstancePNLBrokerAware(ctx, id)
 		if !ok {
 			http.Error(w, "instance not running", http.StatusNotFound)
 			return
@@ -92,6 +98,7 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 			"realized_rub":   rl,
 			"unrealized_rub": un,
 			"total_rub":      tot,
+			"source":         source,
 		})
 	})
 	mux.HandleFunc("GET /instances/{id}/ledger", func(w http.ResponseWriter, req *http.Request) {
@@ -109,6 +116,22 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 			"realized_rub": realized,
 		})
 	})
+	mux.HandleFunc("GET /instances/{id}/portfolio", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		ctx, cancel := context.WithTimeout(req.Context(), 8*time.Second)
+		defer cancel()
+		data, ok, err := r.InstancePortfolio(ctx, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "unknown instance", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
+	})
 	mux.HandleFunc("GET /instances/{id}/executions", func(w http.ResponseWriter, req *http.Request) {
 		id := req.PathValue("id")
 		limit := 50
@@ -120,6 +143,38 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		rows, err := r.InstanceRecentExecutions(req.Context(), id, limit)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	mux.HandleFunc("GET /instances/{id}/orders", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		limit := 50
+		if v := req.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
+				limit = n
+			}
+		}
+		rows, err := r.InstanceRecentOrders(req.Context(), id, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	})
+	mux.HandleFunc("GET /instances/{id}/stop-orders", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		ctx, cancel := context.WithTimeout(req.Context(), 8*time.Second)
+		defer cancel()
+		rows, ok, err := r.InstanceStopOrders(ctx, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "unknown instance", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

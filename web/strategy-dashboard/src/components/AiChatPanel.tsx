@@ -49,10 +49,10 @@ export function AiChatPanel() {
           { role: 'assistant', text: res.reply ?? '', time: new Date() },
         ]);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       setMessages((prev) => [
         ...prev,
-        { role: 'error', text: e.message ?? 'Network error', time: new Date() },
+        { role: 'error', text: e instanceof Error ? e.message : 'Network error', time: new Date() },
       ]);
     } finally {
       setLoading(false);

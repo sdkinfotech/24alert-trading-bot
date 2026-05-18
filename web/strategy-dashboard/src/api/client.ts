@@ -2,9 +2,14 @@ import type {
   Instance,
   PnlData,
   LedgerData,
+  PortfolioSnapshot,
   IndicatorData,
   TimelineEvent,
   DailySummary,
+  OrderRecord,
+  SignalRecord,
+  ExecutionRecord,
+  StopOrder,
   AiChatResponse,
   AiChatStatus,
 } from './types';
@@ -31,9 +36,17 @@ export const api = {
   instances: () => get<Instance[]>('/instances'),
   pnl: (id: string) => get<PnlData>(`/instances/${id}/pnl`),
   ledger: (id: string) => get<LedgerData>(`/instances/${id}/ledger`),
+  portfolio: (id: string) => get<PortfolioSnapshot>(`/instances/${id}/portfolio`),
   indicator: (id: string) => get<IndicatorData>(`/instances/${id}/indicator`),
   events: (id: string, limit = 200) =>
     get<TimelineEvent[]>(`/instances/${id}/events?limit=${limit}`),
+  signals: (id: string, limit = 200) =>
+    get<SignalRecord[]>(`/instances/${id}/signals?limit=${limit}`),
+  orders: (id: string, limit = 200) =>
+    get<OrderRecord[]>(`/instances/${id}/orders?limit=${limit}`),
+  executions: (id: string, limit = 200) =>
+    get<ExecutionRecord[]>(`/instances/${id}/executions?limit=${limit}`),
+  stopOrders: (id: string) => get<StopOrder[]>(`/instances/${id}/stop-orders`),
   daily: (date?: string) =>
     get<DailySummary>(`/report/daily${date ? `?date=${date}` : ''}`),
   aiChat: (message: string) =>

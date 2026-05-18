@@ -1,4 +1,6 @@
 import type { Instance } from '../api/types';
+import { useI18n } from '../i18n';
+import { Badge } from './ui';
 
 interface Props {
   instances: Instance[];
@@ -7,12 +9,13 @@ interface Props {
 }
 
 export function InstanceSelector({ instances, selected, onSelect }: Props) {
+  const { t } = useI18n();
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-wrap items-center justify-end gap-3">
       <select
         value={selected}
         onChange={(e) => onSelect(e.target.value)}
-        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+        className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
       >
         {instances.map((inst) => (
           <option key={inst.id} value={inst.id}>
@@ -23,21 +26,13 @@ export function InstanceSelector({ instances, selected, onSelect }: Props) {
       </select>
       {instances.map((inst) =>
         inst.id === selected ? (
-          <div key={inst.id} className="flex items-center gap-2 text-xs">
-            <span
-              className={`inline-block w-2 h-2 rounded-full ${
-                inst.running ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            />
-            <span className={inst.running ? 'text-green-400' : 'text-red-400'}>
-              {inst.running ? 'Running' : 'Stopped'}
-            </span>
-            <span className="text-gray-600">|</span>
-            <span className="text-gray-500">Account: {inst.account_id}</span>
+          <div key={inst.id} className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+            <Badge tone={inst.running ? 'success' : 'danger'}>{inst.running ? t('running') : t('stopped')}</Badge>
+            <Badge tone={inst.enabled_in_config ? 'info' : 'warning'}>{inst.enabled_in_config ? t('enabled') : t('disabled')}</Badge>
+            <span>{t('account')}: <span className="font-mono text-[var(--text)]">{inst.account_id}</span></span>
             {inst.tickers && (
               <>
-                <span className="text-gray-600">|</span>
-                <span className="text-amber-400 font-medium">{inst.tickers}</span>
+                <span className="text-[var(--warning)] font-medium">{inst.tickers}</span>
               </>
             )}
           </div>
