@@ -48,7 +48,7 @@ func systemPrompt(fullContext string) string {
 Твои возможности:
 - Портфель: баланс счёта, позиции брокера (количество, средняя цена, текущая цена, доходность)
 - Стратегии: тип, параметры (fast/slow, ATR, SL/TP, cutoff, interval, quantity), статус
-- P&L: realized, unrealized, total по каждой стратегии
+- P&L: для futures unrealized/total должны опираться на broker ExpectedYield, а не на разницу цены из runner ledger
 - Позиции (ledger): количество, средняя цена по каждой стратегии
 - Индикаторы: SMA линии, S/R уровни, ATR, ORB range — текущие значения
 - Рыночные цены: последние цены инструментов стратегий (из кеша)
@@ -213,8 +213,8 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 		}
 
 		// PnL
-		if rl, un, tot, ok := r.InstancePNL(inst.ID); ok {
-			fmt.Fprintf(&b, "  PnL: realized=%.2f₽ unrealized=%.2f₽ total=%.2f₽\n", rl, un, tot)
+		if rl, un, tot, source, ok := r.InstancePNLBrokerAware(ctx, inst.ID); ok {
+			fmt.Fprintf(&b, "  PnL: realized=%.2f₽ unrealized=%.2f₽ total=%.2f₽ source=%s\n", rl, un, tot, source)
 		}
 
 		// Ledger positions
@@ -418,11 +418,15 @@ func registerAIChatHandlers(mux *http.ServeMux, r *Runner, parentCtx context.Con
 
 		var body aiChatRequest
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(aiChatResponse{Error: "bad request: " + err.Error()})
 			return
 		}
 		if strings.TrimSpace(body.Message) == "" {
-			http.Error(w, "empty message", http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(aiChatResponse{Error: "empty message"})
 			return
 		}
 
