@@ -303,9 +303,13 @@ Safety properties:
 
 - supported modes are only `observe` and `paper`;
 - `armed_live` is rejected server-side;
+- a session is created from `account_id + instrument_uid + operator prompt`;
+- `instance_id` is only a backward-compatible fallback for prefilling
+  account/instrument and must not be treated as ownership by a standard
+  strategy;
 - no `PostOrder`, `CancelOrder`, `ReplaceOrder`, or stop-order call is reachable
   from the AI Trader code path;
-- one running AI Trader session per strategy instance;
+- one running AI Trader session per account/instrument;
 - session timeout and conservative default limits are applied;
 - decisions are appended to JSONL audit at `AI_TRADER_JOURNAL_PATH`, default
   `data/ai_trader_journal.jsonl`.

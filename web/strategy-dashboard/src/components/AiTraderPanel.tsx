@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
@@ -6,29 +6,41 @@ import { formatDateTime, formatMoney, formatNumber } from '../format';
 import { Badge, Button, Card, EmptyState, Stat, Table } from './ui';
 
 interface Props {
-  instance: Instance | null;
+  instances: Instance[];
 }
 
 const defaultInstruction = 'наблюдай стакан, ищи плотности/перекосы, real orders запрещены';
 
-export function AiTraderPanel({ instance }: Props) {
+export function AiTraderPanel({ instances }: Props) {
   const { t, lang } = useI18n();
+  const [selectedKey, setSelectedKey] = useState('');
   const [session, setSession] = useState<AiTraderSession | null>(null);
   const [instruction, setInstruction] = useState(defaultInstruction);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const instanceID = instance?.id;
+  const instruments = useMemo(() => instances.flatMap((inst) =>
+    (inst.instruments ?? []).map((uid, index) => ({
+      key: `${inst.account_id}:${uid}`,
+      accountID: inst.account_id,
+      uid,
+      ticker: (inst.tickers ?? '').split(',')[index]?.trim() || inst.tickers || uid.slice(0, 8),
+      sourceInstanceID: inst.id,
+      sourceType: inst.type,
+    })),
+  ), [instances]);
+  const selected = instruments.find((item) => item.key === selectedKey) ?? instruments[0];
+  const sessionLookup = session?.id ?? selected?.key ?? '';
 
   const load = useCallback(async () => {
-    if (!instanceID) return;
+    if (!sessionLookup) return;
     try {
-      const data = await api.aiTraderSession(instanceID);
+      const data = await api.aiTraderSession(sessionLookup);
       setSession(data);
       setError(null);
     } catch {
       setSession(null);
     }
-  }, [instanceID]);
+  }, [sessionLookup]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void load(), 0);
@@ -40,11 +52,13 @@ export function AiTraderPanel({ instance }: Props) {
   }, [load]);
 
   async function start(mode: 'observe' | 'paper') {
-    if (!instanceID) return;
+    if (!selected) return;
     setLoading(true);
     try {
       const data = await api.startAiTraderSession({
-        instance_id: instanceID,
+        account_id: selected.accountID,
+        instrument_uid: selected.uid,
+        ticker: selected.ticker,
         mode,
         instruction,
         depth: 20,
@@ -68,10 +82,10 @@ export function AiTraderPanel({ instance }: Props) {
   }
 
   async function stop() {
-    if (!instanceID) return;
+    if (!session) return;
     setLoading(true);
     try {
-      const data = await api.stopAiTraderSession(instanceID);
+      const data = await api.stopAiTraderSession(session.id);
       setSession(data);
       setError(null);
     } catch (e) {
@@ -93,6 +107,21 @@ export function AiTraderPanel({ instance }: Props) {
       >
         <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
           <div>
+            <label className="text-xs font-semibold text-[var(--muted)]">{t('aiTraderInstrument')}</label>
+            <select
+              value={selected?.key ?? ''}
+              onChange={(e) => {
+                setSelectedKey(e.target.value);
+                setSession(null);
+              }}
+              className="mt-1 mb-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
+            >
+              {instruments.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.ticker} · account {item.accountID}
+                </option>
+              ))}
+            </select>
             <label className="text-xs font-semibold text-[var(--muted)]">{t('instruction')}</label>
             <textarea
               value={instruction}
@@ -101,13 +130,16 @@ export function AiTraderPanel({ instance }: Props) {
               className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
             <p className="mt-2 text-xs text-[var(--muted)]">
-              {instance?.tickers ?? instance?.id ?? '—'} · {instance?.instruments?.[0] ?? 'no uid'} · live orders disabled
+              {t('aiTraderSeparate')}
+            </p>
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              {selected ? `${selected.ticker} · ${selected.uid} · source list: ${selected.sourceInstanceID} (${selected.sourceType}) · live orders disabled` : 'no instrument'}
             </p>
             {error && <p className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
           <div className="flex flex-col gap-2 lg:w-44">
-            <Button disabled={loading || !instance} onClick={() => void start('observe')} variant="primary">{t('startObserve')}</Button>
-            <Button disabled={loading || !instance} onClick={() => void start('paper')} variant="secondary">{t('startPaper')}</Button>
+            <Button disabled={loading || !selected} onClick={() => void start('observe')} variant="primary">{t('startObserve')}</Button>
+            <Button disabled={loading || !selected} onClick={() => void start('paper')} variant="secondary">{t('startPaper')}</Button>
             <Button disabled={loading || !session} onClick={() => void stop()} variant="ghost">{t('stopSession')}</Button>
           </div>
         </div>

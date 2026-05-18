@@ -26,11 +26,14 @@ const aiTraderMaxEvents = 200
 // AITraderSessionRequest starts a safe observe/paper session. armed_live is
 // intentionally rejected until OrderControl and live risk gates are implemented.
 type AITraderSessionRequest struct {
-	InstanceID  string         `json:"instance_id"`
-	Mode        string         `json:"mode"`
-	Instruction string         `json:"instruction"`
-	Depth       int32          `json:"depth"`
-	Limits      AITraderLimits `json:"limits"`
+	InstanceID    string         `json:"instance_id,omitempty"`
+	AccountID     string         `json:"account_id"`
+	InstrumentUID string         `json:"instrument_uid"`
+	Ticker        string         `json:"ticker,omitempty"`
+	Mode          string         `json:"mode"`
+	Instruction   string         `json:"instruction"`
+	Depth         int32          `json:"depth"`
+	Limits        AITraderLimits `json:"limits"`
 }
 
 type AITraderLimits struct {
@@ -49,7 +52,7 @@ type AITraderLimits struct {
 
 type AITraderSession struct {
 	ID           string                  `json:"id"`
-	InstanceID   string                  `json:"instance_id"`
+	InstanceID   string                  `json:"instance_id,omitempty"`
 	AccountID    string                  `json:"account_id"`
 	InstrumentID string                  `json:"instrument_uid"`
 	Ticker       string                  `json:"ticker,omitempty"`
@@ -193,16 +196,31 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 	if mode != AITraderModeObserve && mode != AITraderModePaper {
 		return nil, fmt.Errorf("unsupported ai trader mode %q", req.Mode)
 	}
-	inst, ok := r.byID[strings.TrimSpace(req.InstanceID)]
-	if !ok {
-		return nil, fmt.Errorf("unknown instance %q", req.InstanceID)
+	instanceID := strings.TrimSpace(req.InstanceID)
+	accountID := strings.TrimSpace(req.AccountID)
+	uid := strings.TrimSpace(req.InstrumentUID)
+	ticker := strings.TrimSpace(req.Ticker)
+	if instanceID != "" && (accountID == "" || uid == "") {
+		inst, ok := r.byID[instanceID]
+		if !ok {
+			return nil, fmt.Errorf("unknown instance %q", req.InstanceID)
+		}
+		accountID = strings.TrimSpace(inst.AccountID)
+		if len(inst.Instruments) == 1 {
+			uid = strings.TrimSpace(inst.Instruments[0])
+		}
+		if ticker == "" {
+			ticker = r.InstanceTickers(inst)
+		}
 	}
-	if len(inst.Instruments) != 1 {
-		return nil, fmt.Errorf("ai trader requires exactly one selected futures instrument")
+	if accountID == "" {
+		return nil, fmt.Errorf("account_id is required")
 	}
-	uid := strings.TrimSpace(inst.Instruments[0])
 	if uid == "" {
-		return nil, fmt.Errorf("instance %q has empty instrument uid", inst.ID)
+		return nil, fmt.Errorf("instrument_uid is required")
+	}
+	if ticker == "" {
+		ticker = shortUID(uid)
 	}
 	limits := mergeAITraderLimits(req.Limits)
 	depth := req.Depth
@@ -225,13 +243,14 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		ctx, cancel = context.WithTimeout(parent, time.Duration(limits.SessionTimeoutMinutes)*time.Minute)
 	}
 	now := time.Now().UTC()
-	id := fmt.Sprintf("ai-trader-%s-%s", inst.ID, now.Format("20060102-150405"))
+	sessionKey := aiTraderSessionKey(accountID, uid)
+	id := fmt.Sprintf("ai-trader-%s-%s", sanitizeAITraderID(ticker), now.Format("20060102-150405"))
 	s := &AITraderSession{
 		ID:           id,
-		InstanceID:   inst.ID,
-		AccountID:    inst.AccountID,
+		InstanceID:   instanceID,
+		AccountID:    accountID,
 		InstrumentID: uid,
-		Ticker:       r.InstanceTickers(inst),
+		Ticker:       ticker,
 		Mode:         mode,
 		Instruction:  strings.TrimSpace(req.Instruction),
 		Limits:       limits,
@@ -241,13 +260,13 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		cancel:       cancel,
 	}
 	r.aiTrader.mu.Lock()
-	if old := r.aiTrader.sessions[inst.ID]; old != nil && old.cancel != nil && old.Status == "running" {
+	if old := r.aiTrader.sessions[sessionKey]; old != nil && old.cancel != nil && old.Status == "running" {
 		old.cancel()
 		old.Status = "stopped"
 		old.StoppedAt = now.Format(time.RFC3339)
 		old.UpdatedAt = now.Format(time.RFC3339)
 	}
-	r.aiTrader.sessions[inst.ID] = s
+	r.aiTrader.sessions[sessionKey] = s
 	r.aiTrader.mu.Unlock()
 
 	r.appendAITraderEvent(AITraderDecisionEvent{
@@ -267,7 +286,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 func (r *Runner) StopAITraderSession(instanceID string) (*AITraderSession, bool) {
 	r.aiTrader.mu.Lock()
 	defer r.aiTrader.mu.Unlock()
-	s := r.aiTrader.sessions[instanceID]
+	s := r.aiTrader.findLocked(instanceID)
 	if s == nil {
 		return nil, false
 	}
@@ -295,11 +314,26 @@ func (r *Runner) AITraderSessions() []*AITraderSession {
 func (r *Runner) AITraderSession(instanceID string) (*AITraderSession, bool) {
 	r.aiTrader.mu.Lock()
 	defer r.aiTrader.mu.Unlock()
-	s := r.aiTrader.sessions[instanceID]
+	s := r.aiTrader.findLocked(instanceID)
 	if s == nil {
 		return nil, false
 	}
 	return cloneAITraderSession(s), true
+}
+
+func (m *AITraderManager) findLocked(idOrKey string) *AITraderSession {
+	if s := m.sessions[idOrKey]; s != nil {
+		return s
+	}
+	for key, s := range m.sessions {
+		if s == nil {
+			continue
+		}
+		if s.ID == idOrKey || s.InstanceID == idOrKey || key == idOrKey {
+			return s
+		}
+	}
+	return nil
 }
 
 func (r *Runner) runAITraderSession(ctx context.Context, s *AITraderSession, depth int32) {
@@ -476,7 +510,7 @@ func largestWall(side string, rows []marketdata.OrderbookRow) AITraderWall {
 func (r *Runner) updateAITraderState(s *AITraderSession, f *AITraderFeatures, ev AITraderDecisionEvent) {
 	r.aiTrader.mu.Lock()
 	defer r.aiTrader.mu.Unlock()
-	cur := r.aiTrader.sessions[s.InstanceID]
+	cur := r.aiTrader.findLocked(s.ID)
 	if cur == nil || cur.ID != s.ID {
 		return
 	}
@@ -493,7 +527,7 @@ func (r *Runner) updateAITraderState(s *AITraderSession, f *AITraderFeatures, ev
 func (r *Runner) updateAITraderError(s *AITraderSession, msg string) {
 	r.aiTrader.mu.Lock()
 	defer r.aiTrader.mu.Unlock()
-	cur := r.aiTrader.sessions[s.InstanceID]
+	cur := r.aiTrader.findLocked(s.ID)
 	if cur == nil || cur.ID != s.ID {
 		return
 	}
@@ -504,7 +538,7 @@ func (r *Runner) updateAITraderError(s *AITraderSession, msg string) {
 func (r *Runner) finishAITraderSession(s *AITraderSession, err error) {
 	r.aiTrader.mu.Lock()
 	defer r.aiTrader.mu.Unlock()
-	cur := r.aiTrader.sessions[s.InstanceID]
+	cur := r.aiTrader.findLocked(s.ID)
 	if cur == nil || cur.ID != s.ID || cur.Status != "running" {
 		return
 	}
@@ -515,6 +549,32 @@ func (r *Runner) finishAITraderSession(s *AITraderSession, err error) {
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
 		cur.LastError = err.Error()
 	}
+}
+
+func aiTraderSessionKey(accountID, uid string) string {
+	return strings.TrimSpace(accountID) + ":" + strings.TrimSpace(uid)
+}
+
+func sanitizeAITraderID(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return "manual"
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() == 0 {
+		return "manual"
+	}
+	return b.String()
 }
 
 func cloneAITraderSession(s *AITraderSession) *AITraderSession {

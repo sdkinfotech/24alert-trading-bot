@@ -80,7 +80,10 @@ export const api = {
   aiTraderSession: (instanceID: string) =>
     get<AiTraderSession>(`/ai-trader/sessions/${instanceID}`),
   startAiTraderSession: (body: {
-    instance_id: string;
+    instance_id?: string;
+    account_id: string;
+    instrument_uid: string;
+    ticker?: string;
     mode: 'observe' | 'paper';
     instruction: string;
     depth?: number;

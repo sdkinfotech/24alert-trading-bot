@@ -8,7 +8,7 @@ The strategy dashboard is the operator UI for live strategy control and post-tra
 - `Chart`: candles, SMA/range/level lines, broker average price, trailing stop line, signal/fill markers, hover OHLC tooltip.
 - `Portfolio`: account totals, broker truth positions, runner ledger mismatch status, active broker stop orders.
 - `History`: unified event timeline plus persisted orders, executions, and broker stop orders.
-- `AI Trader`: safe observe/paper market-context panel for the selected futures instance; live orders are disabled.
+- `AI Trader`: separate prompt-driven observe/paper strategy for a selected account and futures instrument; it is not part of SMA/Level/ORB instances and live orders are disabled.
 - `Guide`: RU/EN explanations for broker truth, runner ledger, strategy state, expected yield, trailing stop, protective stop, cancelled signals, and watchdog flatten.
 
 ## Themes and localization

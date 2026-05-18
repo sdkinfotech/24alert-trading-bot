@@ -185,8 +185,14 @@ function DashboardApp() {
           <h1 className="text-2xl font-bold text-[var(--text)]">{t('appTitle')}</h1>
           <Tabs tabs={tabs} active={tab} onChange={selectTab} />
           <p className="text-xs text-[var(--muted)]">
-            {current?.tickers ? <span className="font-semibold text-[var(--warning)]">{current.tickers} · </span> : null}
-            {current?.type ?? 'strategy'} · {t('autoRefresh')} ~{REFRESH_VISIBLE_MS / 1000}s
+            {tab === 'ai-trader' ? (
+              <span className="font-semibold text-[var(--warning)]">{t('aiTraderSeparate')}</span>
+            ) : (
+              <>
+                {current?.tickers ? <span className="font-semibold text-[var(--warning)]">{current.tickers} · </span> : null}
+                {current?.type ?? 'strategy'} · {t('autoRefresh')} ~{REFRESH_VISIBLE_MS / 1000}s
+              </>
+            )}
             {lastUpdate ? ` · ${t('lastUpdate')}: ${formatDateTime(lastUpdate.toISOString(), lang)}` : ''}
           </p>
         </div>
@@ -199,7 +205,7 @@ function DashboardApp() {
               {t('theme')}: {mode === 'dark' ? t('dark') : t('light')}
             </button>
           </div>
-          {instances.length > 0 && (
+          {tab !== 'ai-trader' && instances.length > 0 && (
             <InstanceSelector instances={instances} selected={selected} onSelect={setSelected} />
           )}
         </div>
@@ -258,7 +264,7 @@ function DashboardApp() {
         </div>
       )}
 
-      {tab === 'ai-trader' && <AiTraderPanel instance={current} />}
+      {tab === 'ai-trader' && <AiTraderPanel instances={instances} />}
 
       {tab === 'guide' && <GuidePage />}
 
