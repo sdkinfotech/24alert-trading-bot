@@ -98,6 +98,7 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 	}
 	if !r.shouldRunAITraderLLM(s) {
 		r.refreshAITraderFeaturesOnly(s, f)
+		r.attachAITraderMarketContext(s)
 		return base, false
 	}
 
@@ -111,7 +112,8 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 	llmCtx, cancel := context.WithTimeout(ctx, aiTraderLLMTimeout)
 	defer cancel()
 
-	ev, err := r.callAITraderLLM(llmCtx, apiKey, s, f, base)
+	mctx := r.snapshotAITraderContext(s)
+	ev, err := r.callAITraderLLM(llmCtx, apiKey, s, f, mctx, base)
 	if err != nil {
 		r.logger.Warn("ai trader llm", "session", s.ID, "error", err)
 		base.AnalysisSource = "rules_fallback"
@@ -124,8 +126,8 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 	return ev, true
 }
 
-func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITraderSession, f *AITraderFeatures, base AITraderDecisionEvent) (AITraderDecisionEvent, error) {
-	msgs := buildAITraderLLMMessages(s, f, base)
+func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) (AITraderDecisionEvent, error) {
+	msgs := buildAITraderLLMMessages(s, f, mctx, base)
 	raw, err := callOpenRouter(apiKey, aiTraderModel(), msgs)
 	if err != nil {
 		return AITraderDecisionEvent{}, err
@@ -137,25 +139,33 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 	return mergeAITraderLLMOutput(s, f, base, out), nil
 }
 
-func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, base AITraderDecisionEvent) []chatMessage {
+func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) []chatMessage {
 	var b strings.Builder
-	b.WriteString("Ты — AI Trader 24alert. Это отдельная prompt-driven сессия, НЕ стандартная SMA/Level/ORB стратегия.\n")
-	b.WriteString("Режим: " + s.Mode + ". Real broker orders ЗАПРЕЩЕНЫ. Только анализ и рекомендации observe/paper.\n")
+	b.WriteString("Ты — AI Trader 24alert. Отдельная prompt-driven сессия, НЕ SMA/Level/ORB.\n")
+	b.WriteString("Режим: " + s.Mode + ". Real broker orders ЗАПРЕЩЕНЫ.\n")
 	b.WriteString("Инструкция оператора: " + strings.TrimSpace(s.Instruction) + "\n")
 	b.WriteString(fmt.Sprintf("Инструмент: %s (%s), счёт %s\n\n", s.Ticker, s.InstrumentID, s.AccountID))
 
-	b.WriteString("== Снимок стакана (JSON) ==\n")
+	b.WriteString("== Текущий стакан ==\n")
 	if raw, err := json.MarshalIndent(f, "", "  "); err == nil {
 		b.Write(raw)
 		b.WriteByte('\n')
 	}
 
-	b.WriteString("\n== Подсказка rule-engine (не копируй слепо) ==\n")
+	if mctx != nil {
+		b.WriteString("\n== Накопленный контекст (график, лента, уровни, эволюция стакана) ==\n")
+		if raw, err := json.MarshalIndent(mctx, "", "  "); err == nil {
+			b.Write(raw)
+			b.WriteByte('\n')
+		}
+	}
+
+	b.WriteString("\n== Подсказка rule-engine (safety, не копируй слепо) ==\n")
 	b.WriteString(fmt.Sprintf("action=%s intent=%s bias=%s reason=%s\n", base.Action, base.Intent, base.MarketBias, base.Reason))
 
 	if len(s.Events) > 0 {
-		b.WriteString("\n== Предыдущие выводы ==\n")
-		max := 3
+		b.WriteString("\n== Хронология твоих прошлых выводов (смотри развитие ситуации) ==\n")
+		max := 5
 		if len(s.Events) < max {
 			max = len(s.Events)
 		}
@@ -165,31 +175,33 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, base AITr
 			if line == "" {
 				line = ev.Reason
 			}
-			b.WriteString(fmt.Sprintf("- [%s] %s\n", ev.Time, line))
+			b.WriteString(fmt.Sprintf("- [%s] bias=%s action=%s | %s\n", ev.Time, ev.MarketBias, ev.Action, line))
 		}
 	}
 
 	b.WriteString(`
 Ответь ТОЛЬКО валидным JSON без markdown:
 {
-  "summary": "краткий вывод на русском для трейдера, 2-4 предложения",
+  "summary": "вывод на русском: что происходит СЕЙЧАС и как изменилось за последние минуты (стакан + лента + график + уровни)",
   "market_bias": "bullish|bearish|neutral|blocked",
   "action": "hold|observe_plan|paper_plan|observe_wall|block",
   "intent": "короткий код намерения",
-  "reason": "почему так, со ссылкой на стакан",
-  "next_watch": "что смотреть в ближайшие минуты",
+  "reason": "почему так — сошлись принты, стенки, уровни, свечи",
+  "next_watch": "что наблюдать дальше",
   "confidence": 0.0
 }
 
 Правила:
-- Не предлагай market/limit/stop ордера и не пиши buy/sell/enter/exit/flatten.
-- В режиме observe action paper_plan замени на observe_plan.
-- Если данных мало или риск высокий — action=block или hold.
-- confidence от 0 до 1.
+- Опирайся на book_timeline, recent_prints, tape_stats, chart_bars, levels и scene_notes.
+- Если лента агрессивно бьёт в одну сторону — отрази это; если стенку сняли — отрази.
+- Сравни цену с ближайшими support/resistance из levels.
+- Не предлагай market/limit/stop, buy/sell/enter/exit/flatten.
+- В observe режиме paper_plan -> observe_plan.
+- confidence 0..1.
 `)
 
 	sys := b.String()
-	user := "Сделай новый вывод по текущему стакану с учётом инструкции оператора."
+	user := "Обнови вывод: как развивается ситуация по стакану, ленте и графику?"
 	return []chatMessage{
 		{Role: "system", Content: sys},
 		{Role: "user", Content: user},

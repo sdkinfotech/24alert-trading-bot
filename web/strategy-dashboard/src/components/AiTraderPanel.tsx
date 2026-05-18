@@ -96,6 +96,7 @@ export function AiTraderPanel({ instances }: Props) {
   }
 
   const f = session?.features;
+  const mc = session?.market_context;
   const d = session?.last_decision;
   const analysisLabel = d?.analysis_source === 'llm'
     ? t('analysisLLM')
@@ -195,6 +196,40 @@ export function AiTraderPanel({ instances }: Props) {
                 </div>
                 <p>{d.reason}</p>
                 <p className="text-xs text-[var(--muted)]">confidence {formatNumber(d.confidence * 100, lang, 1)}%</p>
+              </div>
+            ) : <EmptyState>{t('noEvents')}</EmptyState>}
+          </Card>
+
+          <Card title={t('marketContext')}>
+            {mc ? (
+              <div className="grid gap-4 xl:grid-cols-2 text-sm">
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-[var(--muted)]">{t('tape')} ({mc.tape_stats.window_sec}s)</div>
+                  <div>trades {mc.tape_stats.trade_count} · buy {mc.tape_stats.buy_volume} · sell {mc.tape_stats.sell_volume}</div>
+                  <div>last {formatNumber(mc.tape_stats.last_price, lang, 4)} · vwap {formatNumber(mc.tape_stats.vwap, lang, 4)} · delta {formatNumber(mc.tape_stats.delta_pct * 100, lang, 1)}%</div>
+                  {mc.tape_stats.aggressor && <Badge tone="neutral">{mc.tape_stats.aggressor}</Badge>}
+                  <div className="mt-2 max-h-32 overflow-y-auto space-y-1 font-mono text-xs">
+                    {(mc.recent_prints ?? []).slice(-8).reverse().map((p) => (
+                      <div key={`${p.time}-${p.price}`}>{formatDateTime(p.time, lang)} {p.direction} {formatNumber(p.price, lang, 4)} x {p.quantity}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-[var(--muted)]">{t('keyLevels')}</div>
+                  {(mc.levels ?? []).map((lv) => (
+                    <div key={`${lv.kind}-${lv.rank}`} className="font-mono">{lv.kind} #{lv.rank}: {formatNumber(lv.price, lang, 4)} ({lv.source})</div>
+                  ))}
+                  <div className="text-xs font-semibold text-[var(--muted)] mt-2">{t('bookEvolution')}</div>
+                  {(mc.book_timeline ?? []).slice(-5).reverse().map((b) => (
+                    <div key={b.time} className="text-xs text-[var(--muted)]">{formatDateTime(b.time, lang)} mid {formatNumber(b.mid, lang, 4)} imb {formatNumber(b.imbalance, lang, 2)} · {b.bid_wall} / {b.ask_wall}</div>
+                  ))}
+                  {(mc.scene_notes ?? []).length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold text-[var(--muted)] mt-2">{t('sceneNotes')}</div>
+                      {(mc.scene_notes ?? []).slice(-4).map((n) => <div key={n} className="text-xs">{n}</div>)}
+                    </>
+                  )}
+                </div>
               </div>
             ) : <EmptyState>{t('noEvents')}</EmptyState>}
           </Card>

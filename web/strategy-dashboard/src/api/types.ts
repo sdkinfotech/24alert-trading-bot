@@ -267,6 +267,59 @@ export interface AiTraderDecisionEvent {
   features?: AiTraderFeatures;
 }
 
+export interface AiTraderCandleBar {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface AiTraderLevel {
+  price: number;
+  kind: string;
+  source: string;
+  rank: number;
+}
+
+export interface AiTraderPrint {
+  time: string;
+  direction: string;
+  price: number;
+  quantity: number;
+}
+
+export interface AiTraderTapeStats {
+  window_sec: number;
+  trade_count: number;
+  buy_volume: number;
+  sell_volume: number;
+  last_price: number;
+  vwap: number;
+  delta_pct: number;
+  aggressor?: string;
+}
+
+export interface AiTraderBookDigest {
+  time: string;
+  mid: number;
+  spread_bps: number;
+  imbalance: number;
+  bid_wall: string;
+  ask_wall: string;
+}
+
+export interface AiTraderMarketContext {
+  chart_bars?: AiTraderCandleBar[];
+  levels?: AiTraderLevel[];
+  recent_prints?: AiTraderPrint[];
+  tape_stats: AiTraderTapeStats;
+  book_timeline?: AiTraderBookDigest[];
+  scene_notes?: string[];
+  updated_at?: string;
+}
+
 export interface AiTraderSession {
   id: string;
   instance_id: string;
@@ -282,6 +335,7 @@ export interface AiTraderSession {
   stopped_at?: string;
   last_error?: string;
   features?: AiTraderFeatures;
+  market_context?: AiTraderMarketContext;
   last_decision?: AiTraderDecisionEvent;
   events?: AiTraderDecisionEvent[];
 }

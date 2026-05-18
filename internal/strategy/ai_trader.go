@@ -51,25 +51,27 @@ type AITraderLimits struct {
 }
 
 type AITraderSession struct {
-	ID           string                  `json:"id"`
-	InstanceID   string                  `json:"instance_id,omitempty"`
-	AccountID    string                  `json:"account_id"`
-	InstrumentID string                  `json:"instrument_uid"`
-	Ticker       string                  `json:"ticker,omitempty"`
-	Mode         string                  `json:"mode"`
-	Instruction  string                  `json:"instruction"`
-	Limits       AITraderLimits          `json:"limits"`
-	Status       string                  `json:"status"`
-	StartedAt    string                  `json:"started_at"`
-	UpdatedAt    string                  `json:"updated_at"`
-	StoppedAt    string                  `json:"stopped_at,omitempty"`
-	LastError    string                  `json:"last_error,omitempty"`
-	Features     *AITraderFeatures       `json:"features,omitempty"`
-	LastDecision *AITraderDecisionEvent  `json:"last_decision,omitempty"`
-	Events       []AITraderDecisionEvent `json:"events,omitempty"`
+	ID            string                  `json:"id"`
+	InstanceID    string                  `json:"instance_id,omitempty"`
+	AccountID     string                  `json:"account_id"`
+	InstrumentID  string                  `json:"instrument_uid"`
+	Ticker        string                  `json:"ticker,omitempty"`
+	Mode          string                  `json:"mode"`
+	Instruction   string                  `json:"instruction"`
+	Limits        AITraderLimits          `json:"limits"`
+	Status        string                  `json:"status"`
+	StartedAt     string                  `json:"started_at"`
+	UpdatedAt     string                  `json:"updated_at"`
+	StoppedAt     string                  `json:"stopped_at,omitempty"`
+	LastError     string                  `json:"last_error,omitempty"`
+	Features      *AITraderFeatures       `json:"features,omitempty"`
+	MarketContext *AITraderMarketContext  `json:"market_context,omitempty"`
+	LastDecision  *AITraderDecisionEvent  `json:"last_decision,omitempty"`
+	Events        []AITraderDecisionEvent `json:"events,omitempty"`
 
-	cancel    context.CancelFunc `json:"-"`
-	lastLLMAt time.Time          `json:"-"`
+	cancel    context.CancelFunc    `json:"-"`
+	ctxState  *aiTraderContextState `json:"-"`
+	lastLLMAt time.Time             `json:"-"`
 }
 
 type AITraderFeatures struct {
@@ -285,6 +287,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		Confidence: 1,
 		RiskResult: "live_orders_disabled",
 	})
+	s.ctxState = newAITraderContextState()
 	go r.runAITraderSession(ctx, s, depth)
 	return cloneAITraderSession(s), nil
 }
@@ -350,6 +353,7 @@ func (r *Runner) runAITraderSession(ctx context.Context, s *AITraderSession, dep
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	r.initAITraderContext(ctx, s)
 	r.observeAITraderOnce(ctx, s, depth)
 	for {
 		select {
@@ -375,6 +379,7 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 		return
 	}
 	features := computeAITraderFeatures(book, s.Ticker, s.Limits.StaleDataMS)
+	r.recordAITraderBookDigest(s, features)
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
 		r.updateAITraderState(s, features, decision)
@@ -602,6 +607,7 @@ func (r *Runner) updateAITraderState(s *AITraderSession, f *AITraderFeatures, ev
 	}
 	cur.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	cur.LastError = ""
+	r.attachAITraderMarketContext(cur)
 }
 
 func (r *Runner) updateAITraderError(s *AITraderSession, msg string) {
@@ -675,6 +681,10 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 	if s.LastDecision != nil {
 		ev := *s.LastDecision
 		cp.LastDecision = &ev
+	}
+	if s.MarketContext != nil {
+		mc := *s.MarketContext
+		cp.MarketContext = &mc
 	}
 	return &cp
 }
