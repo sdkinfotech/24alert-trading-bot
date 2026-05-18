@@ -3,6 +3,8 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/24alert/trading-bot/internal/order"
 	"github.com/24alert/trading-bot/internal/strategy/pnl"
 	"github.com/24alert/trading-bot/pkg/metrics"
+	"github.com/russianinvestments/invest-api-go-sdk/investgo"
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
@@ -86,6 +89,12 @@ func (r *Runner) dispatchExecution(evt order.OrderStateEvent) {
 		if bps := r.slippageBPS(evt.OrderID, avgPrice); bps != 0 {
 			metrics.StrategySlippageBps.WithLabelValues(iid).Observe(bps)
 		}
+		qty, avg, _ := instL.Snapshot()
+		if q := qty[instrument]; q != 0 {
+			r.ensureProtectiveStop(context.Background(), iid, rt.account, instrument, q, avg[instrument], avgPrice)
+		} else {
+			r.cancelTrackedProtectiveStop(context.Background(), iid, rt.account, instrument, "position closed")
+		}
 	}
 
 	_ = r.journal.RecordExecution(context.Background(), journal.ExecutionRecord{
@@ -159,6 +168,165 @@ func isTerminalOrderStatus(status order.OrderStatus) bool {
 		status == order.OrderStatusCancelled ||
 		status == order.OrderStatusRejected ||
 		status == order.OrderStatusReplaced
+}
+
+func stopKey(instanceID, instrumentUID string) string {
+	return instanceID + "|" + instrumentUID
+}
+
+func (r *Runner) protectiveStopPct(instanceID string) float64 {
+	inst, ok := r.byID[instanceID]
+	if !ok {
+		return 0
+	}
+	for _, key := range []string{"hard_stop_pct", "broker_stop_pct", "trailing_stop_pct"} {
+		raw := strings.TrimSpace(inst.Params[key])
+		if raw == "" {
+			continue
+		}
+		v, err := strconv.ParseFloat(raw, 64)
+		if err == nil && v > 0 && v < 0.5 {
+			return v
+		}
+	}
+	return 0
+}
+
+func (r *Runner) ensureProtectiveStop(ctx context.Context, instanceID, accountID, instrumentUID string, quantity, avgPrice, fallbackPrice float64) {
+	if r.orderSvc == nil || accountID == "" || instrumentUID == "" || quantity == 0 {
+		return
+	}
+	pct := r.protectiveStopPct(instanceID)
+	if pct <= 0 {
+		r.logger.Warn("protective stop skipped: no stop pct configured", "instance", instanceID, "instrument", instrumentUID)
+		return
+	}
+	base := avgPrice
+	if base <= 0 {
+		base = fallbackPrice
+	}
+	if base <= 0 {
+		if px, ok := r.priceCache.GetLastPrice(instrumentUID); ok {
+			base = px.Price
+		}
+	}
+	if base <= 0 {
+		r.logger.Warn("protective stop skipped: no base price", "instance", instanceID, "instrument", instrumentUID)
+		return
+	}
+
+	dir := pb.StopOrderDirection_STOP_ORDER_DIRECTION_SELL
+	stopPrice := base * (1 - pct)
+	if quantity < 0 {
+		dir = pb.StopOrderDirection_STOP_ORDER_DIRECTION_BUY
+		stopPrice = base * (1 + pct)
+	}
+	lots := int64(math.Ceil(math.Abs(quantity)))
+	if lots <= 0 {
+		return
+	}
+
+	if r.hasBrokerProtectiveStop(ctx, accountID, instrumentUID, dir) {
+		return
+	}
+
+	req := &investgo.PostStopOrderRequest{
+		InstrumentId:      instrumentUID,
+		Quantity:          lots,
+		Direction:         dir,
+		AccountId:         accountID,
+		StopOrderType:     pb.StopOrderType_STOP_ORDER_TYPE_STOP_LOSS,
+		ExpirationType:    pb.StopOrderExpirationType_STOP_ORDER_EXPIRATION_TYPE_GOOD_TILL_CANCEL,
+		ExchangeOrderType: pb.ExchangeOrderType_EXCHANGE_ORDER_TYPE_MARKET,
+		StopPrice:         floatToQuotation(stopPrice),
+	}
+	resp, err := r.orderSvc.PostStopOrder(ctx, req)
+	if err != nil {
+		r.logger.Error("protective broker stop failed", "instance", instanceID, "instrument", instrumentUID, "error", err)
+		_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+			Type:          "protective_stop",
+			InstanceID:    instanceID,
+			InstrumentUID: instrumentUID,
+			Direction:     stopDirectionLabel(dir),
+			Quantity:      lots,
+			OrderType:     "stop_loss",
+			RefPrice:      stopPrice,
+			Status:        "post_error",
+			Message:       err.Error(),
+			CreatedAt:     time.Now().UTC(),
+		})
+		return
+	}
+	stopID := resp.GetStopOrderId()
+	r.mu.Lock()
+	r.stopOrders[stopKey(instanceID, instrumentUID)] = stopID
+	r.mu.Unlock()
+	r.logger.Warn("protective broker stop submitted", "instance", instanceID, "instrument", instrumentUID, "stop_order_id", stopID, "stop_price", stopPrice)
+	_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+		Type:          "protective_stop",
+		InstanceID:    instanceID,
+		InstrumentUID: instrumentUID,
+		Direction:     stopDirectionLabel(dir),
+		Quantity:      lots,
+		OrderType:     "stop_loss",
+		RefPrice:      stopPrice,
+		Status:        "submitted",
+		Message:       "broker-side protective stop submitted",
+		CreatedAt:     time.Now().UTC(),
+	})
+}
+
+func (r *Runner) hasBrokerProtectiveStop(ctx context.Context, accountID, instrumentUID string, dir pb.StopOrderDirection) bool {
+	resp, err := r.orderSvc.GetStopOrders(ctx, accountID)
+	if err != nil {
+		r.logger.Warn("protective stop coverage check failed", "account", accountID, "instrument", instrumentUID, "error", err)
+		return false
+	}
+	for _, so := range resp.GetStopOrders() {
+		if so.GetInstrumentUid() == instrumentUID &&
+			so.GetDirection() == dir &&
+			so.GetOrderType() == pb.StopOrderType_STOP_ORDER_TYPE_STOP_LOSS {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runner) cancelTrackedProtectiveStop(ctx context.Context, instanceID, accountID, instrumentUID, reason string) {
+	if r.orderSvc == nil || accountID == "" || instrumentUID == "" {
+		return
+	}
+	key := stopKey(instanceID, instrumentUID)
+	r.mu.Lock()
+	stopID := r.stopOrders[key]
+	delete(r.stopOrders, key)
+	r.mu.Unlock()
+	if stopID == "" {
+		return
+	}
+	if _, err := r.orderSvc.CancelStopOrder(ctx, accountID, stopID); err != nil {
+		r.logger.Warn("cancel protective stop failed", "instance", instanceID, "instrument", instrumentUID, "stop_order_id", stopID, "error", err)
+		return
+	}
+	_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+		Type:          "protective_stop",
+		InstanceID:    instanceID,
+		InstrumentUID: instrumentUID,
+		OrderType:     "stop_loss",
+		Status:        "cancelled",
+		Message:       reason,
+		CreatedAt:     time.Now().UTC(),
+	})
+}
+
+func stopDirectionLabel(dir pb.StopOrderDirection) string {
+	if dir == pb.StopOrderDirection_STOP_ORDER_DIRECTION_BUY {
+		return "buy"
+	}
+	if dir == pb.StopOrderDirection_STOP_ORDER_DIRECTION_SELL {
+		return "sell"
+	}
+	return "unknown"
 }
 
 func (r *Runner) updateBizMetrics(instanceID string) {
@@ -276,12 +444,16 @@ func (r *Runner) maybePauseOnLoss(ctx context.Context, instanceID string) {
 		return
 	}
 	total := r.equityTotal(instanceID)
+	if _, _, brokerTotal, _, ok := r.InstancePNLBrokerAware(ctx, instanceID); ok {
+		total = brokerTotal
+	}
 	if wd.MaxDailyLossRub > 0 && total < -wd.MaxDailyLossRub {
-		r.logger.Warn("watchdog: max loss exceeded, stopping instance", "instance", instanceID, "total_pnl", total)
+		r.logger.Warn("watchdog: max loss exceeded, flattening instance", "instance", instanceID, "total_pnl", total)
 		if r.tg != nil {
-			_ = r.tg.SendMessage(ctx, fmt.Sprintf("strategy-runner: instance %s stopped (total PnL %.2f < -%.2f RUB)",
+			_ = r.tg.SendMessage(ctx, fmt.Sprintf("strategy-runner: instance %s flattening (total PnL %.2f < -%.2f RUB)",
 				instanceID, total, wd.MaxDailyLossRub))
 		}
+		r.flattenInstance(ctx, instanceID, "watchdog max daily loss")
 		r.StopInstance(instanceID)
 		return
 	}
@@ -292,14 +464,130 @@ func (r *Runner) maybePauseOnLoss(ctx context.Context, instanceID string) {
 		if peak > 0 {
 			dd := 100 * (peak - total) / peak
 			if dd > wd.MaxDrawdownPercent {
-				r.logger.Warn("watchdog: drawdown exceeded, stopping instance", "instance", instanceID, "dd_pct", dd)
+				r.logger.Warn("watchdog: drawdown exceeded, flattening instance", "instance", instanceID, "dd_pct", dd)
 				if r.tg != nil {
-					_ = r.tg.SendMessage(ctx, fmt.Sprintf("strategy-runner: instance %s stopped (drawdown %.1f%% > %.1f%%)",
+					_ = r.tg.SendMessage(ctx, fmt.Sprintf("strategy-runner: instance %s flattening (drawdown %.1f%% > %.1f%%)",
 						instanceID, dd, wd.MaxDrawdownPercent))
 				}
+				r.flattenInstance(ctx, instanceID, "watchdog drawdown")
 				r.StopInstance(instanceID)
 			}
 		}
+	}
+}
+
+func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string) {
+	if r.portfolioSvc == nil || r.orderSvc == nil {
+		r.logger.Error("watchdog flatten unavailable: missing services", "instance", instanceID)
+		return
+	}
+	inst, ok := r.byID[instanceID]
+	if !ok {
+		r.logger.Error("watchdog flatten unknown instance", "instance", instanceID)
+		return
+	}
+	r.mu.Lock()
+	rt := r.instances[instanceID]
+	r.mu.Unlock()
+	if rt == nil {
+		return
+	}
+	positions, err := r.portfolioSvc.GetPositions(ctx, inst.AccountID)
+	if err != nil {
+		r.logger.Error("watchdog flatten: get broker positions failed", "instance", instanceID, "error", err)
+		return
+	}
+	allowed := make(map[string]struct{}, len(inst.Instruments))
+	for _, uid := range inst.Instruments {
+		allowed[strings.TrimSpace(uid)] = struct{}{}
+	}
+	for _, o := range r.orderRepo.GetActiveOrders(inst.AccountID) {
+		if _, ok := allowed[o.InstrumentUID]; !ok {
+			continue
+		}
+		if _, err := r.orderSvc.CancelOrder(ctx, inst.AccountID, o.OrderID); err != nil {
+			r.logger.Warn("watchdog flatten: cancel active order failed", "instance", instanceID, "order_id", o.OrderID, "error", err)
+		}
+	}
+	for _, p := range positions {
+		if _, ok := allowed[p.InstrumentUID]; !ok || p.Quantity == 0 {
+			continue
+		}
+		r.cancelTrackedProtectiveStop(ctx, instanceID, inst.AccountID, p.InstrumentUID, "watchdog flatten")
+		dir := "sell"
+		if p.Quantity < 0 {
+			dir = "buy"
+		}
+		qty := int64(math.Ceil(math.Abs(p.Quantity)))
+		if qty <= 0 {
+			continue
+		}
+		ref := p.CurrentPrice
+		if ref <= 0 {
+			ref = p.AveragePrice
+		}
+		sig := Signal{
+			InstrumentUID: p.InstrumentUID,
+			Direction:     dir,
+			Quantity:      qty,
+			OrderType:     "market",
+			Reason:        reason,
+			CandleTime:    time.Now().UTC(),
+		}
+		resp, err := r.orderSvc.PostOrder(ctx, buildPostOrderRequest(inst.AccountID, sig))
+		if err != nil {
+			r.logger.Error("watchdog flatten: close order failed", "instance", instanceID, "instrument", p.InstrumentUID, "error", err)
+			_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+				Type:          "watchdog_flatten",
+				InstanceID:    instanceID,
+				InstrumentUID: p.InstrumentUID,
+				Direction:     dir,
+				Quantity:      qty,
+				OrderType:     "market",
+				RefPrice:      ref,
+				Status:        "post_error",
+				Message:       err.Error(),
+				CreatedAt:     time.Now().UTC(),
+			})
+			continue
+		}
+		oid := resp.GetOrderId()
+		r.mu.Lock()
+		r.orderOwners[oid] = instanceID
+		r.signalRefPx[oid] = ref
+		r.mu.Unlock()
+		_ = r.journal.RecordOrder(ctx, journal.OrderRecord{
+			InstanceID:    instanceID,
+			OrderID:       oid,
+			InstrumentUID: p.InstrumentUID,
+			Direction:     dir,
+			Quantity:      qty,
+			OrderType:     "market",
+			RefPrice:      ref,
+		})
+		_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+			Type:          "watchdog_flatten",
+			InstanceID:    instanceID,
+			InstrumentUID: p.InstrumentUID,
+			Direction:     dir,
+			Quantity:      qty,
+			OrderType:     "market",
+			RefPrice:      ref,
+			Status:        "submitted",
+			Message:       reason,
+			CreatedAt:     time.Now().UTC(),
+		})
+		status := order.MapExecutionStatus(resp.GetExecutionReportStatus())
+		if resp.GetLotsExecuted() > 0 || isTerminalOrderStatus(status) {
+			r.dispatchExecution(order.OrderStateEvent{
+				OrderID:   oid,
+				AccountID: inst.AccountID,
+				Status:    status,
+				FilledQty: resp.GetLotsExecuted(),
+				UpdatedAt: time.Now().UTC(),
+			})
+		}
+		r.pollOrderStateAfterSubmit(ctx, rt, oid)
 	}
 }
 

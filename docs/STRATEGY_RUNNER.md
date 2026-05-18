@@ -17,7 +17,7 @@
 - [Типы стратегий](#типы-стратегий)
 - [Ограничения](#ограничения)
 
-> **Safety hold 2026-05-18:** после real-money incident live strategy trading переведён в fail-closed режим. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
+> **Protected live 2026-05-18:** после real-money incident live strategy trading разрешён только с обязательным `trailing_stop_pct`, broker-side `STOP_LOSS` после входа и watchdog flatten по broker truth. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
 
 ## Назначение
 
@@ -76,13 +76,13 @@ UID инструмента возьмите из API T-Invest (`InstrumentByUid`
 
 Раздел **`strategies:`** в [`config/config.yaml`](../config/config.yaml).
 
-Текущие futures instances после research-переоценки FORTS Strategy Lab. После safety hold 2026-05-18 они сохранены в конфиге, но не должны автостартовать до hard safety layer:
+Текущие futures instances после research-переоценки FORTS Strategy Lab:
 
 | Instance ID | Ticker | Type | Interval | Params | Why |
 |---|---|---|---|---|---|
-| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Weighted research preferred hourly trend-following; disabled until broker-side stops / flatten watchdog. |
-| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Same SMA family as before; disabled until broker-side stops / flatten watchdog. |
-| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Weighted research preferred hourly trend-following; disabled until broker-side stops / flatten watchdog. |
+| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=true` | Weighted research preferred hourly trend-following; broker-side stop is placed after entry fill. |
+| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=true` | Same SMA family as before; broker-side stop is placed after entry fill. |
+| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=true` | Weighted research preferred hourly trend-following; broker-side stop is placed after entry fill. |
 
 The `*-lb` IDs on Brent/Mechel are legacy names only. Do not infer the strategy type from the ID; use the `type` field.
 
@@ -114,7 +114,7 @@ Safety guardrails:
 - `POST /instances/{id}/start` откажет, если `enabled=false` в конфиге.
 - `sma_crossover` не стартует без `trailing_stop_pct > 0`.
 - `orb_breakout` заблокирован для live runner, пока у него нет protective stop.
-- Эти guardrails не заменяют broker-side stop orders; они только предотвращают повторное включение заведомо незащищённого live instance.
+- После broker fill runner выставляет broker-side `STOP_LOSS` в противоположную сторону от позиции.
 
 Пример фрагмента:
 

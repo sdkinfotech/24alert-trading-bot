@@ -5,11 +5,12 @@
 
 ## Статус live trading
 
-После incident 2026-05-18 live strategy trading работает по принципу **fail closed**:
+После incident 2026-05-18 live strategy trading работает по принципу **fail closed unless protected**:
 
-- текущие ручные strategy instances в `config/config.yaml` должны оставаться `enabled: false`;
-- disabled instance нельзя поднимать через management API;
-- возврат live trading разрешён только после отдельного safety review и production smoke.
+- live `sma_crossover` разрешён только с `trailing_stop_pct > 0`;
+- после входа runner обязан поставить broker-side `STOP_LOSS`;
+- watchdog при превышении loss/drawdown должен попытаться отменить активные ордера и закрыть broker position;
+- `orb_breakout` запрещён для live runner до реализации защитного стопа.
 
 ## Что считается недостаточной защитой
 
@@ -57,17 +58,16 @@ curl -fsS http://127.0.0.1:9020/instances/<id>/events?limit=20
 docker compose -f deployments/docker-compose.yaml -p 24alert logs --tail=100 strategy-runner
 ```
 
-Успех для safety hold:
+Успех для protected live:
 
-- `enabled_in_config=false` для ручных боевых instances;
-- `running=false`;
-- `instance_position_count=0`;
-- нет новых live order events после disable rollout.
+- configured live instances имеют `enabled_in_config=true`, `running=true`;
+- при flat-состоянии `instance_position_count=0`;
+- после входа в broker position в events появляется `protective_stop submitted`;
+- ручной/аварийный watchdog flatten пишет `watchdog_flatten`.
 
 ## Следующие обязательные работы
 
-1. Broker-native protective stops after fill.
-2. Flatten watchdog по broker truth.
-3. Futures-aware PnL/margin/GO risk accounting.
-4. Active stuck order cancel/requery.
-5. Risk validation inside the mandatory order path, including gateway/manual orders.
+1. Persist broker stop IDs across restart and reconcile stale manual/bot stops.
+2. Futures-aware PnL/margin/GO risk accounting.
+3. Active stuck order cancel/requery.
+4. Risk validation inside the mandatory order path, including gateway/manual orders.

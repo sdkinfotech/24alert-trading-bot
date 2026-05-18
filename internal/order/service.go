@@ -196,8 +196,9 @@ func (s *Service) PostStopOrder(ctx context.Context, req *investgo.PostStopOrder
 	l := s.logger.WithContext(ctx)
 
 	orderType := "stop_" + req.StopOrderType.String()
+	direction := req.Direction.String()
 	defer func() {
-		metrics.OrderLatency.WithLabelValues(orderType).Observe(time.Since(start).Seconds())
+		metrics.OrderLatency.WithLabelValues(direction, orderType).Observe(time.Since(start).Seconds())
 	}()
 
 	if req.OrderID == "" {
@@ -211,17 +212,17 @@ func (s *Service) PostStopOrder(ctx context.Context, req *investgo.PostStopOrder
 	)
 
 	if err := s.rateLimiter.Wait(ctx, "post_stop_order"); err != nil {
-		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
+		metrics.OrdersTotal.WithLabelValues(direction, orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostStopOrder: rate limit: %w", err)
 	}
 
 	resp, err := s.tinvestClient.StopOrdersServiceClient().PostStopOrder(req)
 	if err != nil {
-		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
+		metrics.OrdersTotal.WithLabelValues(direction, orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostStopOrder: %w", err)
 	}
 
-	metrics.OrdersTotal.WithLabelValues(orderType, "success").Inc()
+	metrics.OrdersTotal.WithLabelValues(direction, orderType, "success").Inc()
 
 	l.Info("PostStopOrder completed", "stop_order_id", resp.GetStopOrderId())
 	return resp, nil

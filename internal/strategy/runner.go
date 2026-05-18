@@ -64,6 +64,7 @@ type Runner struct {
 	orderOwners map[string]string // orderID → instance id
 	signalRefPx map[string]float64
 	lastFilled  map[string]int64 // orderID → last reported cumulative filled qty (lots)
+	stopOrders  map[string]string
 
 	equityPeak        map[string]float64 // instance → peak RUB (realized+unrealized)
 	dailyReportDayUTC string             // YYYY-MM-DD
@@ -138,6 +139,7 @@ func NewRunner(
 		orderOwners:   make(map[string]string),
 		signalRefPx:   make(map[string]float64),
 		lastFilled:    make(map[string]int64),
+		stopOrders:    make(map[string]string),
 		equityPeak:    make(map[string]float64),
 		fillWins:      make(map[string]int64),
 		fillLosses:    make(map[string]int64),
@@ -470,6 +472,11 @@ func (r *Runner) syncBrokerState(ctx context.Context, inst config.StrategyInstan
 			syncer.SyncBrokerPosition(uid, p.Quantity, p.AveragePrice, p.CurrentPrice)
 		} else if p.Quantity != 0 {
 			return fmt.Errorf("%s %q: strategy type %q cannot restore non-flat broker position for %s", phase, inst.ID, inst.Type, uid)
+		}
+		if p.Quantity != 0 {
+			r.ensureProtectiveStop(ctx, inst.ID, inst.AccountID, uid, p.Quantity, p.AveragePrice, p.CurrentPrice)
+		} else {
+			r.cancelTrackedProtectiveStop(ctx, inst.ID, inst.AccountID, uid, "broker flat")
 		}
 		if recordAll || changed {
 			_ = r.journal.RecordEvent(ctx, journal.EventRecord{

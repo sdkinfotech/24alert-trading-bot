@@ -4,15 +4,15 @@
 
 Текущий production-режим с 2026-05-16: **только фьючерсы MOEX FORTS**. Старые акционные инстансы больше не являются актуальным prod.
 
-> **Safety hold 2026-05-18:** после incident с real-money позицией новые live-входы отключены. Текущие ручные futures instances сохранены в конфиге как baseline, но `enabled=false` до внедрения broker-side stops / flatten watchdog. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
+> **Protected live 2026-05-18:** после incident с real-money позицией live-входы разрешены только с обязательным `trailing_stop_pct`, broker-side `STOP_LOSS` после fill и watchdog flatten по broker truth. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
 
 ## Production instances
 
 | ID | Стратегия | Фьючерс | Интервал | Назначение |
 |----|-----------|---------|----------|------------|
-| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | disabled safety hold; SMA `4/9` + trailing `0.5%` baseline |
-| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | disabled safety hold; SMA `5/17` + trailing `0.5%` baseline |
-| `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | disabled safety hold; SMA `4/9` + trailing `0.5%` baseline |
+| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | SMA `4/9` + trailing `0.5%` + broker-side stop after fill |
+| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | SMA `5/17` + trailing `0.5%` + broker-side stop after fill |
+| `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | SMA `4/9` + trailing `0.5%` + broker-side stop after fill |
 
 Все текущие инстансы используют счёт `2001673385` и `quantity=1`.
 
