@@ -17,6 +17,8 @@
 - [Типы стратегий](#типы-стратегий)
 - [Ограничения](#ограничения)
 
+> **Safety hold 2026-05-18:** после real-money incident live strategy trading переведён в fail-closed режим. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
+
 ## Назначение
 
 - Один бинарник держит общий T-Invest клиент, **market data** (свечи), **order** stream (состояния + трейды для средней цены исполнения), **portfolio** (реконсиляция с брокером).
@@ -74,13 +76,13 @@ UID инструмента возьмите из API T-Invest (`InstrumentByUid`
 
 Раздел **`strategies:`** в [`config/config.yaml`](../config/config.yaml).
 
-Текущие боевые futures instances после research-переоценки FORTS Strategy Lab:
+Текущие futures instances после research-переоценки FORTS Strategy Lab. После safety hold 2026-05-18 они сохранены в конфиге, но не должны автостартовать до hard safety layer:
 
 | Instance ID | Ticker | Type | Interval | Params | Why |
 |---|---|---|---|---|---|
-| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1` | Weighted research preferred hourly trend-following; trailing 0.5% adds protective exit for live futures risk. ID is retained for continuity. |
-| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `quantity=1` | Same SMA family as before, faster parameters had better balanced score. |
-| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `quantity=1` | Weighted research preferred hourly trend-following over level bounce for Mechel futures. ID is retained for continuity. |
+| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Weighted research preferred hourly trend-following; disabled until broker-side stops / flatten watchdog. |
+| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Same SMA family as before; disabled until broker-side stops / flatten watchdog. |
+| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1`, `enabled=false` | Weighted research preferred hourly trend-following; disabled until broker-side stops / flatten watchdog. |
 
 The `*-lb` IDs on Brent/Mechel are legacy names only. Do not infer the strategy type from the ID; use the `type` field.
 
@@ -106,6 +108,13 @@ The `*-lb` IDs on Brent/Mechel are legacy names only. Do not infer the strategy 
 | `enabled` | Если `false`, инстанс не стартует при запуске процесса. |
 | `params` | Строковые параметры стратегии (периоды SMA, `interval` свечей и т.д.). |
 | `endpoint` | Для `type: grpc` — адрес gRPC-сервера стратегии. |
+
+Safety guardrails:
+
+- `POST /instances/{id}/start` откажет, если `enabled=false` в конфиге.
+- `sma_crossover` не стартует без `trailing_stop_pct > 0`.
+- `orb_breakout` заблокирован для live runner, пока у него нет protective stop.
+- Эти guardrails не заменяют broker-side stop orders; они только предотвращают повторное включение заведомо незащищённого live instance.
 
 Пример фрагмента:
 
@@ -193,6 +202,8 @@ strategies:
 ## Watchdog
 
 Включается `strategies.watchdog.enabled: true`.
+
+> **Важно:** текущий watchdog не является полноценной защитой позиции: при превышении лимита он останавливает instance, но сам по себе не гарантирует broker flatten и не ставит broker-native stop. До реализации flatten watchdog это ограничение считается blocker для возврата live trading.
 
 | Поле | Назначение |
 |------|------------|

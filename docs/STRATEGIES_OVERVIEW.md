@@ -4,13 +4,15 @@
 
 Текущий production-режим с 2026-05-16: **только фьючерсы MOEX FORTS**. Старые акционные инстансы больше не являются актуальным prod.
 
+> **Safety hold 2026-05-18:** после incident с real-money позицией новые live-входы отключены. Текущие ручные futures instances сохранены в конфиге как baseline, но `enabled=false` до внедрения broker-side stops / flatten watchdog. Политика: [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
+
 ## Production instances
 
 | ID | Стратегия | Фьючерс | Интервал | Назначение |
 |----|-----------|---------|----------|------------|
-| `fut-brent-mini-lb` | `level_bounce` | `BMM6` Brent mini | `15min` | mean reversion от S/R уровней |
-| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | тренд по пересечению SMA |
-| `fut-mechel-lb` | `level_bounce` | `MCM6` Mechel futures | `15min` | mean reversion от S/R уровней |
+| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | disabled safety hold; SMA `4/9` + trailing `0.5%` baseline |
+| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | disabled safety hold; SMA `5/17` + trailing `0.5%` baseline |
+| `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | disabled safety hold; SMA `4/9` + trailing `0.5%` baseline |
 
 Все текущие инстансы используют счёт `2001673385` и `quantity=1`.
 
@@ -39,7 +41,21 @@ Warmup-сигналы не считаются боевыми и очищаютс
 - отдельного SL/TP нет, выход по обратному сигналу;
 - `pendingEntry` блокирует повторные сигналы до результата risk/order/execution.
 
-Текущий prod config: `fut-gas-mini-sma`, `NGM6`, `interval=1h`, `fast_period=9`, `slow_period=26`.
+Текущий prod config:
+
+| Instance | Ticker | Params |
+|---|---|---|
+| `fut-brent-mini-lb` | `BMM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005` |
+| `fut-gas-mini-sma` | `NGM6` | `interval=1h`, `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005` |
+| `fut-mechel-lb` | `MCM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005` |
+
+`fut-brent-mini-lb` and `fut-mechel-lb` are legacy IDs; their current type is `sma_crossover`.
+
+`trailing_stop_pct` is an optional protective exit for SMA positions. For `BMM6`,
+`0.005` means a 0.5% trailing stop from the best broker-synced/following price.
+If it triggers, SMA sends a market exit and flattens the position instead of reversing.
+
+После safety hold `trailing_stop_pct` является обязательным для `sma_crossover`, но сам по себе не считается достаточным real-money guard: runner должен быть жив, а broker-side stop / flatten watchdog ещё должны быть реализованы.
 
 ## `level_bounce`
 
@@ -50,18 +66,13 @@ Warmup-сигналы не считаются боевыми и очищаютс
 - дневной warmup строит top-3 support/resistance;
 - источники уровней теперь отдаются в dashboard: для каждого `S1-S3`/`R1-R3` видны цена, дата дневной свечи и тип (`low`/`high`);
 - при восстановлении state дневные бары дедуплицируются по дате, старые snapshots без дат пересобираются из fresh warmup, чтобы не накапливать дубли уровней после restart;
-- ATR по дневным свечам задаёт ширину зоны около уровня;
-- bounce от support -> `buy`;
-- reject от resistance -> `sell`;
+- ATR по дневным свечам задаёт stop/take-profit, но больше не расширяет entry-зону;
+- bounce от support -> `buy` только при фактическом касании `low <= support` и закрытии выше уровня;
+- reject от resistance -> `sell` только при фактическом касании `high >= resistance` и закрытии ниже уровня;
 - стоп/тейк: `sl_mult` и `tp_mult` от ATR;
 - EOD flatten перед cutoff.
 
-Текущий prod config:
-
-| Instance | Params |
-|---|---|
-| `fut-brent-mini-lb` | `atr_mult=0.3`, `sl_mult=0.3`, `tp_mult=2.0`, `cutoff=23:30`, `level_days=10` |
-| `fut-mechel-lb` | `atr_mult=0.5`, `sl_mult=0.7`, `tp_mult=1.0`, `cutoff=23:30`, `level_days=10` |
+Текущий prod config не использует `level_bounce`; стратегия оставлена в коде и backtest-инструментах для новых кандидатов и research.
 
 Dashboard history:
 
@@ -83,6 +94,15 @@ Dashboard history:
 
 - ручные инстансы `fut-*` не менять автоматически;
 - авто-инстансы должны иметь префикс `auto-fut-*`.
+
+## Research и альтернативные стратегии
+
+Материалы по другим стратегиям не удаляются и не считаются устаревшими только из-за отсутствия в production:
+
+- `level_bounce` остаётся benchmark для mean-reversion от дневных S/R уровней.
+- `orb_breakout` остаётся экспериментальной Go-стратегией opening range breakout.
+- `research/forts-strategy-lab` хранит результаты по `sma_1h`, `ema_1h`, `donchian_15m`, `level_bounce_15m`, `orb_15m` и weighted optimizer.
+- `docs/STRATEGY_RUNNER.md` содержит технические детали встроенных Go-стратегий и guardrails.
 
 ## Где смотреть
 
