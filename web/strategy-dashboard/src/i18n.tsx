@@ -20,6 +20,8 @@ const ru: Dict = {
   startPaper: 'Старт paper',
   stopSession: 'Остановить сессию',
   instruction: 'Инструкция',
+  aiTraderDefaultInstruction:
+    'Наблюдай стакан, ищи плотности и перекосы. Сигналы — только observe/paper, real orders запрещены.',
   noAiTraderSession: 'AI Trader session ещё не запущена',
   lastDecision: 'Последнее решение',
   aiTraderConclusion: 'Вывод агента',
@@ -117,6 +119,8 @@ const en: Dict = {
   startPaper: 'Start paper',
   stopSession: 'Stop session',
   instruction: 'Instruction',
+  aiTraderDefaultInstruction:
+    'Watch the order book for walls and imbalance. Observe/paper only — real orders forbidden.',
   noAiTraderSession: 'No AI Trader session started yet',
   lastDecision: 'Last decision',
   aiTraderConclusion: 'Agent conclusion',

@@ -12,6 +12,8 @@ import (
 const (
 	defaultAITraderLLMInterval = 15 * time.Second
 	aiTraderLLMTimeout         = 45 * time.Second
+	// Cheap high-frequency model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
+	defaultAITraderModel = "deepseek/deepseek-v4-flash"
 )
 
 type aiTraderLLMOutput struct {
@@ -46,10 +48,7 @@ func aiTraderModel() string {
 	if m := strings.TrimSpace(os.Getenv("AI_TRADER_MODEL")); m != "" {
 		return m
 	}
-	if m := strings.TrimSpace(os.Getenv("AI_CHAT_MODEL")); m != "" {
-		return m
-	}
-	return defaultAIModel
+	return defaultAITraderModel
 }
 
 func aiTraderLLMEnabled() bool {

@@ -1,8 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
-import { formatDateTime, formatMoney, formatNumber } from '../format';
+import { EM_DASH, formatDateTime, formatMoney, formatNumber } from '../format';
 import { Badge, Button, Card, EmptyState, Stat, Table } from './ui';
 import { ScalperDOM } from './ScalperDOM';
 
@@ -10,13 +10,11 @@ interface Props {
   instances: Instance[];
 }
 
-const defaultInstruction = 'РЅР°Р±Р»СЋРґР°Р№ СЃС‚Р°РєР°РЅ, РёС‰Рё РїР»РѕС‚РЅРѕСЃС‚Рё/РїРµСЂРµРєРѕСЃС‹, real orders Р·Р°РїСЂРµС‰РµРЅС‹';
-
 export function AiTraderPanel({ instances }: Props) {
   const { t, lang } = useI18n();
   const [selectedKey, setSelectedKey] = useState('');
   const [session, setSession] = useState<AiTraderSession | null>(null);
-  const [instruction, setInstruction] = useState(defaultInstruction);
+  const [instruction, setInstruction] = useState(() => t('aiTraderDefaultInstruction'));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const instruments = useMemo(() => instances.flatMap((inst) =>
@@ -158,9 +156,9 @@ export function AiTraderPanel({ instances }: Props) {
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Stat label="Mode" value={session.mode} tone={session.mode === 'paper' ? 'warning' : 'info'} sub={session.id} />
-            <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : 'вЂ”'} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
-            <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : 'вЂ”'} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
-            <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : 'вЂ”'} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
+            <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : EM_DASH} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
+            <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : EM_DASH} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
+            <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : EM_DASH} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
           </div>
 
 
@@ -264,10 +262,10 @@ export function AiTraderPanel({ instances }: Props) {
                       const ask = f.orderbook_top.asks[i];
                       return (
                         <tr key={i}>
-                          <td className="font-mono text-[var(--success)]">{bid ? formatNumber(bid.price, lang, 4) : 'вЂ”'}</td>
-                          <td>{bid?.quantity ?? 'вЂ”'}</td>
-                          <td className="font-mono text-[var(--danger)]">{ask ? formatNumber(ask.price, lang, 4) : 'вЂ”'}</td>
-                          <td>{ask?.quantity ?? 'вЂ”'}</td>
+                          <td className="font-mono text-[var(--success)]">{bid ? formatNumber(bid.price, lang, 4) : EM_DASH}</td>
+                          <td>{bid?.quantity ?? EM_DASH}</td>
+                          <td className="font-mono text-[var(--danger)]">{ask ? formatNumber(ask.price, lang, 4) : EM_DASH}</td>
+                          <td>{ask?.quantity ?? EM_DASH}</td>
                         </tr>
                       );
                     })}

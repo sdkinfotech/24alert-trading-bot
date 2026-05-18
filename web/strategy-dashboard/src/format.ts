@@ -2,6 +2,9 @@ import type { Lang } from './i18n';
 
 const MSK_TZ = 'Europe/Moscow';
 
+/** Missing value placeholder (UTF-8 em dash). */
+export const EM_DASH = '—';
+
 export function localeFor(lang: Lang): string {
   return lang === 'ru' ? 'ru-RU' : 'en-US';
 }

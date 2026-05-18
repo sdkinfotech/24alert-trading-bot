@@ -190,6 +190,8 @@ services:
       - REDIS_ADDR=redis:6379
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - AI_CHAT_MODEL=${AI_CHAT_MODEL:-anthropic/claude-sonnet-4}
+      - AI_TRADER_MODEL=${AI_TRADER_MODEL:-deepseek/deepseek-v4-flash}
+      - AI_TRADER_LLM_INTERVAL_SEC=${AI_TRADER_LLM_INTERVAL_SEC:-15}
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
       - strategy-data:/app/data
