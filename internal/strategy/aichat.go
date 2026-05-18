@@ -20,6 +20,17 @@ const (
 	aiRequestTimeout = 120 * time.Second
 )
 
+func shortUID(uid string) string {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return "unknown"
+	}
+	if len(uid) > 8 {
+		return uid[:8]
+	}
+	return uid
+}
+
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
@@ -223,7 +234,7 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 				if q == 0 {
 					continue
 				}
-				ticker := uid[:8]
+				ticker := shortUID(uid)
 				if inf, ok := r.instrCache.GetInstrument(uid); ok && inf.Ticker != "" {
 					ticker = inf.Ticker
 				}
@@ -241,7 +252,7 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 				continue
 			}
 			if px, ok := r.priceCache.GetLastPrice(uid); ok {
-				ticker := uid[:8]
+				ticker := shortUID(uid)
 				if inf, ok := r.instrCache.GetInstrument(uid); ok && inf.Ticker != "" {
 					ticker = inf.Ticker
 				}
@@ -259,7 +270,7 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 		if sigs, err := r.InstanceRecentSignals(ctx, inst.ID, 5); err == nil && len(sigs) > 0 {
 			b.WriteString("  Последние сигналы:\n")
 			for _, s := range sigs {
-				ticker := s.InstrumentUID[:8]
+				ticker := shortUID(s.InstrumentUID)
 				if inf, ok := r.instrCache.GetInstrument(s.InstrumentUID); ok && inf.Ticker != "" {
 					ticker = inf.Ticker
 				}
@@ -272,7 +283,7 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 		if execs, err := r.InstanceRecentExecutions(ctx, inst.ID, 5); err == nil && len(execs) > 0 {
 			b.WriteString("  Последние сделки:\n")
 			for _, e := range execs {
-				ticker := e.InstrumentUID[:8]
+				ticker := shortUID(e.InstrumentUID)
 				if inf, ok := r.instrCache.GetInstrument(e.InstrumentUID); ok && inf.Ticker != "" {
 					ticker = inf.Ticker
 				}
@@ -286,10 +297,7 @@ func (r *Runner) buildFullContext(ctx context.Context) string {
 		if events, err := r.InstanceEvents(ctx, inst.ID, 10); err == nil && len(events) > 0 {
 			b.WriteString("  Журнал/Trade Events (последние 10):\n")
 			for _, ev := range events {
-				ticker := ev.InstrumentUID
-				if len(ticker) > 8 {
-					ticker = ticker[:8]
-				}
+				ticker := shortUID(ev.InstrumentUID)
 				if inf, ok := r.instrCache.GetInstrument(ev.InstrumentUID); ok && inf.Ticker != "" {
 					ticker = inf.Ticker
 				}
