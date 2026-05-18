@@ -184,11 +184,50 @@ body {
 }
 
 /* Scalper DOM (CScalp / Tiger style) */
+.ai-trader-workbench {
+  align-items: start;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(760px, 1fr) minmax(320px, 0.34fr);
+}
+
+.ai-trader-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.ai-trader-stat-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-trader-compact-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+@media (max-width: 1280px) {
+  .ai-trader-workbench {
+    grid-template-columns: 1fr;
+  }
+}
+
+.scalper-card {
+  padding: 0;
+}
+
+.scalper-card > div:first-child {
+  margin: 0;
+  padding: 1rem 1rem 0.75rem;
+}
+
 .scalper-dom {
   --scalper-row-h: 22px;
   background: #0b0f17;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-top: 1px solid var(--border);
   color: #e8eef7;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
@@ -201,6 +240,8 @@ body {
 }
 
 .scalper-dom-empty {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
   padding: 2rem;
   text-align: center;
   color: var(--muted);
@@ -216,6 +257,7 @@ body {
 
 .scalper-dom-legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   font-size: 10px;
 }
@@ -227,36 +269,113 @@ body {
 
 .scalper-dom-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 72px minmax(0, 1fr);
-  max-height: 520px;
-  overflow: auto;
+  grid-template-columns: minmax(420px, 1.3fr) minmax(220px, 0.68fr) minmax(300px, 0.9fr);
+  grid-template-rows: auto minmax(640px, calc(100vh - 18rem)) auto;
+  min-width: 980px;
+}
+
+.scalper-col-header,
+.scalper-footprint-footer,
+.scalper-tape-footer,
+.scalper-book-footer {
+  background: #111827;
+  color: #94a3b8;
+  font-size: 10px;
 }
 
 .scalper-col-header {
-  background: #111827;
   border-bottom: 1px solid #263247;
-  color: #94a3b8;
-  display: flex;
-  font-size: 10px;
-  gap: 2px;
+  min-height: 24px;
   padding: 4px 6px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
 }
 
-.scalper-footprint-header,
-.scalper-footprint .scalper-row {
+.scalper-footprint-header {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(52px, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.scalper-tape-header {
+  align-items: center;
+  border-left: 1px solid #263247;
+  border-right: 1px solid #263247;
+  display: flex;
+  justify-content: center;
+}
+
+.scalper-book-header {
+  display: grid;
+  grid-template-columns: 1fr 74px 1fr;
+  text-align: center;
+}
+
+.scalper-scroll {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(420px, 1.3fr) minmax(220px, 0.68fr) minmax(300px, 0.9fr);
+  min-height: 640px;
+  overflow-y: auto;
+}
+
+.scalper-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.scalper-row {
+  align-items: stretch;
+  border-bottom: 1px solid rgb(38 50 71 / 35%);
+  display: grid;
+  min-height: var(--scalper-row-h);
+}
+
+.scalper-row-mid,
+.scalper-best-bid,
+.scalper-best-ask {
+  background: rgb(250 204 21 / 8%);
+}
+
+.scalper-row-last {
+  box-shadow: inset 0 0 0 1px rgb(34 211 238 / 30%);
+}
+
+.scalper-cluster-cell {
+  align-items: stretch;
+  border-right: 1px solid rgb(38 50 71 / 25%);
+  display: flex;
+  min-width: 64px;
+}
+
+.scalper-cluster-split {
+  background: rgb(15 23 42 / 70%);
+}
+
+.scalper-cluster-half {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  font-size: 10px;
+  font-weight: 700;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 2px;
+  text-shadow: 0 1px 2px #000;
+}
+
+.scalper-cluster-buy {
+  background: linear-gradient(90deg, rgb(34 197 94 / 12%), rgb(34 197 94 / 52%));
+  color: #bbf7d0;
+}
+
+.scalper-cluster-sell {
+  background: linear-gradient(270deg, rgb(239 68 68 / 12%), rgb(239 68 68 / 52%));
+  color: #fecaca;
 }
 
 .scalper-footprint-footer {
   border-top: 1px solid #263247;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(52px, 1fr);
+  gap: 2px;
   padding: 4px 0;
 }
 
@@ -271,77 +390,60 @@ body {
 .scalper-delta-pos { color: #4ade80; }
 .scalper-delta-neg { color: #f87171; }
 
-.scalper-body {
-  display: flex;
-  flex-direction: column;
-}
-
-.scalper-row {
-  align-items: center;
-  border-bottom: 1px solid rgb(38 50 71 / 35%);
-  display: flex;
-  min-height: var(--scalper-row-h);
-}
-
-.scalper-row-mid,
-.scalper-best-bid,
-.scalper-best-ask {
-  background: rgb(250 204 21 / 8%);
-}
-
-.scalper-cluster-cell {
-  align-items: center;
-  border-right: 1px solid rgb(38 50 71 / 25%);
-  display: flex;
-  flex: 1;
-  justify-content: center;
-  min-width: 52px;
-  padding: 0 2px;
-}
-
-.scalper-cluster-buy {
-  background: rgb(34 197 94 / 25%);
-  color: #bbf7d0;
-}
-
-.scalper-cluster-sell {
-  background: rgb(239 68 68 / 25%);
-  color: #fecaca;
-}
-
 .scalper-tape {
+  background:
+    linear-gradient(90deg, rgb(15 23 42 / 40%), rgb(15 23 42 / 0%) 18%, rgb(15 23 42 / 0%) 82%, rgb(15 23 42 / 40%)),
+    #0d1520;
   border-left: 1px solid #263247;
   border-right: 1px solid #263247;
+  overflow: hidden;
 }
 
-.scalper-tape-header {
-  justify-content: center;
+.scalper-tape-svg {
+  display: block;
+  min-height: 100%;
+  width: 100%;
 }
 
-.scalper-tape-row {
-  gap: 3px;
-  justify-content: center;
+.scalper-tape-grid-line {
+  stroke: rgb(38 50 71 / 45%);
+  stroke-width: 1;
 }
 
-.scalper-tape-dot {
-  border-radius: 50%;
-  flex-shrink: 0;
-  height: 7px;
-  width: 7px;
+.scalper-tape-last-line {
+  stroke: rgb(34 211 238 / 45%);
+  stroke-dasharray: 4 4;
+  stroke-width: 1.4;
 }
 
-.scalper-tape-buy { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
-.scalper-tape-sell { background: #f87171; box-shadow: 0 0 6px #f87171; }
+.scalper-tape-bubble-buy,
+.scalper-tape-bubble-sell {
+  stroke: rgb(255 255 255 / 45%);
+  stroke-width: 1;
+}
 
-.scalper-book-header {
-  display: grid;
-  grid-template-columns: 1fr 64px 1fr;
-  text-align: center;
+.scalper-tape-bubble-buy {
+  fill: rgb(16 185 129 / 78%);
+}
+
+.scalper-tape-bubble-sell {
+  fill: rgb(239 68 68 / 78%);
+}
+
+.scalper-tape-bubble-text {
+  fill: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: rgb(0 0 0 / 75%);
+  stroke-width: 2px;
 }
 
 .scalper-book-row {
   display: grid;
-  grid-template-columns: 1fr 64px 1fr;
+  grid-template-columns: 1fr 74px 1fr;
 }
 
 .scalper-book-side {
@@ -358,17 +460,17 @@ body {
 
 .scalper-book-bar {
   border-radius: 2px;
-  height: 14px;
+  height: 16px;
   max-width: 100%;
   min-width: 2px;
 }
 
 .scalper-book-bar-ask {
-  background: linear-gradient(90deg, transparent, #ef4444);
+  background: linear-gradient(90deg, rgb(239 68 68 / 12%), rgb(239 68 68 / 70%));
 }
 
 .scalper-book-bar-bid {
-  background: linear-gradient(270deg, transparent, #22c55e);
+  background: linear-gradient(270deg, rgb(34 197 94 / 12%), rgb(34 197 94 / 70%));
 }
 
 .scalper-book-qty {
@@ -377,7 +479,17 @@ body {
 }
 
 .scalper-book-price {
+  align-items: center;
   color: #fbbf24;
-  font-weight: 600;
+  display: flex;
+  font-weight: 700;
+  justify-content: center;
+  text-align: center;
+}
+
+.scalper-tape-footer,
+.scalper-book-footer {
+  border-top: 1px solid #263247;
+  padding: 6px 8px;
   text-align: center;
 }

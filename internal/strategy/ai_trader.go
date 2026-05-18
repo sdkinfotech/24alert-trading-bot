@@ -234,7 +234,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 	depth := req.Depth
 	switch {
 	case depth <= 0:
-		depth = 20
+		depth = 50
 	case depth <= 10:
 		depth = 10
 	case depth <= 20:

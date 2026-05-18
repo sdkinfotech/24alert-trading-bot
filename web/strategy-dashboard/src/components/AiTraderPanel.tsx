@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
-import { EM_DASH, formatDateTime, formatMoney, formatNumber } from '../format';
-import { Badge, Button, Card, EmptyState, Stat, Table } from './ui';
+import { EM_DASH, formatDateTime, formatNumber } from '../format';
+import { Badge, Button, Card, EmptyState, Stat } from './ui';
 import { ScalperDOM } from './ScalperDOM';
 
 interface Props {
@@ -60,7 +60,7 @@ export function AiTraderPanel({ instances }: Props) {
         ticker: selected.ticker,
         mode,
         instruction,
-        depth: 20,
+        depth: 50,
         limits: {
           max_position_lots: 1,
           max_order_size: 1,
@@ -123,7 +123,7 @@ export function AiTraderPanel({ instances }: Props) {
             >
               {instruments.map((item) => (
                 <option key={item.key} value={item.key}>
-                  {item.ticker} В· account {item.accountID}
+                  {item.ticker} · account {item.accountID}
                 </option>
               ))}
             </select>
@@ -138,7 +138,7 @@ export function AiTraderPanel({ instances }: Props) {
               {t('aiTraderSeparate')}
             </p>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              {selected ? `${selected.ticker} В· ${selected.uid} В· source list: ${selected.sourceInstanceID} (${selected.sourceType}) В· live orders disabled` : 'no instrument'}
+              {selected ? `${selected.ticker} · ${selected.uid} · source list: ${selected.sourceInstanceID} (${selected.sourceType}) · live orders disabled` : 'no instrument'}
             </p>
             {error && <p className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
@@ -154,130 +154,76 @@ export function AiTraderPanel({ instances }: Props) {
 
       {session && (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Stat label="Mode" value={session.mode} tone={session.mode === 'paper' ? 'warning' : 'info'} sub={session.id} />
-            <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : EM_DASH} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
-            <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : EM_DASH} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
-            <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : EM_DASH} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
+          <div className="ai-trader-workbench">
+            <Card className="scalper-card" title={t('scalperDom')} subtitle={t('scalperDomHelp')}>
+              <ScalperDOM mc={mc} features={f} ticker={session.ticker} lang={lang} />
+            </Card>
+
+            <aside className="ai-trader-side">
+              <div className="ai-trader-stat-grid">
+                <Stat label="Mode" value={session.mode} tone={session.mode === 'paper' ? 'warning' : 'info'} sub={session.id} />
+                <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : EM_DASH} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
+                <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : EM_DASH} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
+                <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : EM_DASH} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
+              </div>
+
+              <Card title={t('aiTraderConclusion')}>
+                {d ? (
+                  <div className="space-y-3 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge tone={d.analysis_source === 'llm' ? 'info' : d.analysis_source === 'rules_fallback' ? 'warning' : 'neutral'}>
+                        {t('analysisSource')}: {analysisLabel}
+                      </Badge>
+                      <Badge tone={d.market_bias === 'blocked' ? 'danger' : d.market_bias === 'bullish' ? 'success' : d.market_bias === 'bearish' ? 'warning' : 'neutral'}>
+                        {t('marketBias')}: {d.market_bias ?? 'neutral'}
+                      </Badge>
+                      <Badge tone={d.action === 'block' ? 'danger' : d.action.includes('plan') ? 'warning' : 'info'}>{d.action}</Badge>
+                    </div>
+                    <p className="text-base font-medium text-[var(--text)]">{d.summary ?? d.reason}</p>
+                    {d.next_watch && (
+                      <p><span className="font-semibold">{t('nextWatch')}:</span> {d.next_watch}</p>
+                    )}
+                    <p className="text-xs text-[var(--muted)]">confidence {formatNumber(d.confidence * 100, lang, 1)}% · {formatDateTime(d.time, lang)}</p>
+                  </div>
+                ) : <EmptyState>{t('noEvents')}</EmptyState>}
+              </Card>
+
+              <Card title={t('marketContext')}>
+                {mc ? (
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <div className="text-xs font-semibold text-[var(--muted)]">{t('tape')} ({mc.tape_stats.window_sec}s)</div>
+                      <div>trades {mc.tape_stats.trade_count} · buy {mc.tape_stats.buy_volume} · sell {mc.tape_stats.sell_volume}</div>
+                      <div>last {formatNumber(mc.tape_stats.last_price, lang, 4)} · vwap {formatNumber(mc.tape_stats.vwap, lang, 4)} · delta {formatNumber(mc.tape_stats.delta_pct * 100, lang, 1)}%</div>
+                      {mc.tape_stats.aggressor && <Badge tone="neutral">{mc.tape_stats.aggressor}</Badge>}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-[var(--muted)]">{t('keyLevels')}</div>
+                      <div className="ai-trader-compact-list space-y-1 font-mono text-xs">
+                        {(mc.levels ?? []).map((lv) => (
+                          <div key={`${lv.kind}-${lv.rank}`}>{lv.kind} #{lv.rank}: {formatNumber(lv.price, lang, 4)} ({lv.source})</div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold text-[var(--muted)]">{t('bookEvolution')}</div>
+                      <div className="ai-trader-compact-list space-y-1">
+                        {(mc.book_timeline ?? []).slice(-5).reverse().map((b) => (
+                          <div key={b.time} className="text-xs text-[var(--muted)]">{formatDateTime(b.time, lang)} mid {formatNumber(b.mid, lang, 4)} imb {formatNumber(b.imbalance, lang, 2)} · {b.bid_wall} / {b.ask_wall}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : <EmptyState>{t('noEvents')}</EmptyState>}
+              </Card>
+            </aside>
           </div>
-
-
-          <Card title={t('scalperDom')} subtitle={t('scalperDomHelp')}>
-            <ScalperDOM mc={mc} features={f} ticker={session.ticker} lang={lang} />
-          </Card>
-
-          <Card title={t('aiTraderConclusion')}>
-            {d ? (
-              <div className="space-y-3 text-sm">
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone={d.analysis_source === 'llm' ? 'info' : d.analysis_source === 'rules_fallback' ? 'warning' : 'neutral'}>
-                    {t('analysisSource')}: {analysisLabel}
-                  </Badge>
-                  <Badge tone={d.market_bias === 'blocked' ? 'danger' : d.market_bias === 'bullish' ? 'success' : d.market_bias === 'bearish' ? 'warning' : 'neutral'}>
-                    {t('marketBias')}: {d.market_bias ?? 'neutral'}
-                  </Badge>
-                  <Badge tone={d.action === 'block' ? 'danger' : d.action.includes('plan') ? 'warning' : 'info'}>{d.action}</Badge>
-                </div>
-                <p className="text-base font-medium text-[var(--text)]">{d.summary ?? d.reason}</p>
-                {d.next_watch && (
-                  <p><span className="font-semibold">{t('nextWatch')}:</span> {d.next_watch}</p>
-                )}
-                {d.operator_note && (
-                  <p className="text-xs text-[var(--muted)]">{t('operatorNote')}: {d.operator_note}</p>
-                )}
-              </div>
-            ) : <EmptyState>{t('noEvents')}</EmptyState>}
-          </Card>
-
-          <Card title={t('lastDecision')}>
-            {d ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone={d.action === 'block' ? 'danger' : d.action.includes('plan') ? 'warning' : 'info'}>{d.action}</Badge>
-                  <Badge tone="neutral">{d.intent}</Badge>
-                  <Badge tone="neutral">{d.risk_result}</Badge>
-                  <span className="text-[var(--muted)]">{formatDateTime(d.time, lang)}</span>
-                </div>
-                <p>{d.reason}</p>
-                <p className="text-xs text-[var(--muted)]">confidence {formatNumber(d.confidence * 100, lang, 1)}%</p>
-              </div>
-            ) : <EmptyState>{t('noEvents')}</EmptyState>}
-          </Card>
-
-          <Card title={t('marketContext')}>
-            {mc ? (
-              <div className="grid gap-4 xl:grid-cols-2 text-sm">
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-[var(--muted)]">{t('tape')} ({mc.tape_stats.window_sec}s)</div>
-                  <div>trades {mc.tape_stats.trade_count} В· buy {mc.tape_stats.buy_volume} В· sell {mc.tape_stats.sell_volume}</div>
-                  <div>last {formatNumber(mc.tape_stats.last_price, lang, 4)} В· vwap {formatNumber(mc.tape_stats.vwap, lang, 4)} В· delta {formatNumber(mc.tape_stats.delta_pct * 100, lang, 1)}%</div>
-                  {mc.tape_stats.aggressor && <Badge tone="neutral">{mc.tape_stats.aggressor}</Badge>}
-                  <div className="mt-2 max-h-32 overflow-y-auto space-y-1 font-mono text-xs">
-                    {(mc.recent_prints ?? []).slice(-8).reverse().map((p) => (
-                      <div key={`${p.time}-${p.price}`}>{formatDateTime(p.time, lang)} {p.direction} {formatNumber(p.price, lang, 4)} x {p.quantity}</div>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-[var(--muted)]">{t('keyLevels')}</div>
-                  {(mc.levels ?? []).map((lv) => (
-                    <div key={`${lv.kind}-${lv.rank}`} className="font-mono">{lv.kind} #{lv.rank}: {formatNumber(lv.price, lang, 4)} ({lv.source})</div>
-                  ))}
-                  <div className="text-xs font-semibold text-[var(--muted)] mt-2">{t('bookEvolution')}</div>
-                  {(mc.book_timeline ?? []).slice(-5).reverse().map((b) => (
-                    <div key={b.time} className="text-xs text-[var(--muted)]">{formatDateTime(b.time, lang)} mid {formatNumber(b.mid, lang, 4)} imb {formatNumber(b.imbalance, lang, 2)} В· {b.bid_wall} / {b.ask_wall}</div>
-                  ))}
-                  {(mc.scene_notes ?? []).length > 0 && (
-                    <>
-                      <div className="text-xs font-semibold text-[var(--muted)] mt-2">{t('sceneNotes')}</div>
-                      {(mc.scene_notes ?? []).slice(-4).map((n) => <div key={n} className="text-xs">{n}</div>)}
-                    </>
-                  )}
-                </div>
-              </div>
-            ) : <EmptyState>{t('noEvents')}</EmptyState>}
-          </Card>
-
-          <Card title={t('orderbookFeatures')}>
-            {f ? (
-              <div className="grid gap-4 xl:grid-cols-2">
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
-                    <div className="text-xs text-[var(--muted)]">{t('bidWall')}</div>
-                    <div className="font-mono">{formatNumber(f.largest_bid_wall.price, lang, 4)} x {f.largest_bid_wall.quantity}</div>
-                  </div>
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3">
-                    <div className="text-xs text-[var(--muted)]">{t('askWall')}</div>
-                    <div className="font-mono">{formatNumber(f.largest_ask_wall.price, lang, 4)} x {f.largest_ask_wall.quantity}</div>
-                  </div>
-                  <div className="text-xs text-[var(--muted)]">mid {formatNumber(f.mid, lang, 4)} В· spread {formatMoney(f.spread_abs, lang)}</div>
-                </div>
-                <Table>
-                  <thead>
-                    <tr><th>Bid price</th><th>Bid qty</th><th>Ask price</th><th>Ask qty</th></tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: Math.max(f.orderbook_top.bids.length, f.orderbook_top.asks.length) }).map((_, i) => {
-                      const bid = f.orderbook_top.bids[i];
-                      const ask = f.orderbook_top.asks[i];
-                      return (
-                        <tr key={i}>
-                          <td className="font-mono text-[var(--success)]">{bid ? formatNumber(bid.price, lang, 4) : EM_DASH}</td>
-                          <td>{bid?.quantity ?? EM_DASH}</td>
-                          <td className="font-mono text-[var(--danger)]">{ask ? formatNumber(ask.price, lang, 4) : EM_DASH}</td>
-                          <td>{ask?.quantity ?? EM_DASH}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </Table>
-              </div>
-            ) : <EmptyState>{t('noEvents')}</EmptyState>}
-          </Card>
 
           <Card title="Decision journal">
             {session.events?.length ? (
-              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
                 {session.events.map((ev) => (
                   <div key={`${ev.time}-${ev.action}`} className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-sm">
                     <div className="flex flex-wrap gap-2">

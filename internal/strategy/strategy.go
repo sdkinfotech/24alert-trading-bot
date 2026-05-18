@@ -22,3 +22,16 @@ type SignalDispatchFailureHandler interface {
 type PostWarmupCleanup interface {
 	ResetTradingStateAfterWarmup()
 }
+
+// BrokerPositionSyncer is optional: implemented by strategies that can align
+// their confirmed trading state with broker portfolio before live candles start.
+type BrokerPositionSyncer interface {
+	SyncBrokerPosition(instrumentUID string, quantity float64, averagePrice float64, currentPrice float64)
+}
+
+// LiveCandleHandler is optional: it receives in-progress stream candles.
+// Strategies should use it only for protective logic that is safe before bar close
+// (for example trailing stops), not for bar-close indicators like SMA crosses.
+type LiveCandleHandler interface {
+	OnLiveCandle(candle Candle) []Signal
+}
