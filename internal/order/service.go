@@ -72,8 +72,12 @@ func (s *Service) PostOrder(ctx context.Context, req *investgo.PostOrderRequest)
 
 	metrics.OrdersTotal.WithLabelValues(direction, orderType, "success").Inc()
 
+	orderID := resp.GetOrderId()
+	if orderID == "" {
+		orderID = req.OrderId
+	}
 	s.repo.SaveOrder(&OrderRecord{
-		OrderID:       req.OrderId,
+		OrderID:       orderID,
 		AccountID:     req.AccountId,
 		InstrumentUID: req.InstrumentId,
 		Direction:     req.Direction.String(),
