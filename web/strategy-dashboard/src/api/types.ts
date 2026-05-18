@@ -310,8 +310,34 @@ export interface AiTraderBookDigest {
   ask_wall: string;
 }
 
+export interface AiTraderFootprintCell {
+  price: number;
+  buy_vol: number;
+  sell_vol: number;
+  total: number;
+}
+
+export interface AiTraderFootprintColumn {
+  time: string;
+  label: string;
+  cells: AiTraderFootprintCell[];
+  total_vol: number;
+  delta: number;
+}
+
+export interface AiTraderDOMBook {
+  observed_at: string;
+  tick_size: number;
+  best_bid: number;
+  best_ask: number;
+  bids: AiTraderBookLevel[];
+  asks: AiTraderBookLevel[];
+}
+
 export interface AiTraderMarketContext {
   chart_bars?: AiTraderCandleBar[];
+  footprint?: AiTraderFootprintColumn[];
+  dom_book?: AiTraderDOMBook;
   levels?: AiTraderLevel[];
   recent_prints?: AiTraderPrint[];
   tape_stats: AiTraderTapeStats;

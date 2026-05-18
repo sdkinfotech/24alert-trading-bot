@@ -379,7 +379,7 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 		return
 	}
 	features := computeAITraderFeatures(book, s.Ticker, s.Limits.StaleDataMS)
-	r.recordAITraderBookDigest(s, features)
+	r.recordAITraderBookDigest(s, book, features)
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
 		r.updateAITraderState(s, features, decision)
@@ -413,8 +413,12 @@ func computeAITraderFeatures(book *marketdata.Orderbook, ticker string, staleMS 
 			f.SpreadBPS = f.SpreadAbs / f.Mid * 10000
 		}
 	}
-	bids := firstBookRows(book.Bids, 5)
-	asks := firstBookRows(book.Asks, 5)
+	depthRows := 10
+	if int(book.Depth) > 0 && int(book.Depth) < depthRows {
+		depthRows = int(book.Depth)
+	}
+	bids := firstBookRows(book.Bids, depthRows)
+	asks := firstBookRows(book.Asks, depthRows)
 	f.OrderBookSnapshot = AITraderBookTop{Bids: toAITraderBookLevels(bids), Asks: toAITraderBookLevels(asks)}
 	f.TopBidVolume = sumBookQty(bids)
 	f.TopAskVolume = sumBookQty(asks)

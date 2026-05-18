@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
 import { formatDateTime, formatMoney, formatNumber } from '../format';
 import { Badge, Button, Card, EmptyState, Stat, Table } from './ui';
+import { ScalperDOM } from './ScalperDOM';
 
 interface Props {
   instances: Instance[];
 }
 
-const defaultInstruction = 'наблюдай стакан, ищи плотности/перекосы, real orders запрещены';
+const defaultInstruction = 'РЅР°Р±Р»СЋРґР°Р№ СЃС‚Р°РєР°РЅ, РёС‰Рё РїР»РѕС‚РЅРѕСЃС‚Рё/РїРµСЂРµРєРѕСЃС‹, real orders Р·Р°РїСЂРµС‰РµРЅС‹';
 
 export function AiTraderPanel({ instances }: Props) {
   const { t, lang } = useI18n();
@@ -44,7 +45,7 @@ export function AiTraderPanel({ instances }: Props) {
 
   useEffect(() => {
     const initial = window.setTimeout(() => void load(), 0);
-    const timer = window.setInterval(() => void load(), 3000);
+    const timer = window.setInterval(() => void load(), 1500);
     return () => {
       window.clearTimeout(initial);
       window.clearInterval(timer);
@@ -124,7 +125,7 @@ export function AiTraderPanel({ instances }: Props) {
             >
               {instruments.map((item) => (
                 <option key={item.key} value={item.key}>
-                  {item.ticker} · account {item.accountID}
+                  {item.ticker} В· account {item.accountID}
                 </option>
               ))}
             </select>
@@ -139,7 +140,7 @@ export function AiTraderPanel({ instances }: Props) {
               {t('aiTraderSeparate')}
             </p>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              {selected ? `${selected.ticker} · ${selected.uid} · source list: ${selected.sourceInstanceID} (${selected.sourceType}) · live orders disabled` : 'no instrument'}
+              {selected ? `${selected.ticker} В· ${selected.uid} В· source list: ${selected.sourceInstanceID} (${selected.sourceType}) В· live orders disabled` : 'no instrument'}
             </p>
             {error && <p className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
@@ -157,10 +158,15 @@ export function AiTraderPanel({ instances }: Props) {
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Stat label="Mode" value={session.mode} tone={session.mode === 'paper' ? 'warning' : 'info'} sub={session.id} />
-            <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : '—'} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
-            <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : '—'} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
-            <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : '—'} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
+            <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : 'вЂ”'} tone={f && f.spread_bps > 15 ? 'danger' : 'success'} sub={f ? `${formatNumber(f.best_bid, lang, 4)} / ${formatNumber(f.best_ask, lang, 4)}` : undefined} />
+            <Stat label={t('imbalance')} value={f ? formatNumber(f.imbalance, lang, 3) : 'вЂ”'} tone={f && Math.abs(f.imbalance) > 0.35 ? 'warning' : 'neutral'} />
+            <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : 'вЂ”'} tone={f?.stale ? 'danger' : 'success'} sub={f?.observed_at ? formatDateTime(f.observed_at, lang) : undefined} />
           </div>
+
+
+          <Card title={t('scalperDom')} subtitle={t('scalperDomHelp')}>
+            <ScalperDOM mc={mc} features={f} ticker={session.ticker} lang={lang} />
+          </Card>
 
           <Card title={t('aiTraderConclusion')}>
             {d ? (
@@ -205,8 +211,8 @@ export function AiTraderPanel({ instances }: Props) {
               <div className="grid gap-4 xl:grid-cols-2 text-sm">
                 <div className="space-y-2">
                   <div className="text-xs font-semibold text-[var(--muted)]">{t('tape')} ({mc.tape_stats.window_sec}s)</div>
-                  <div>trades {mc.tape_stats.trade_count} · buy {mc.tape_stats.buy_volume} · sell {mc.tape_stats.sell_volume}</div>
-                  <div>last {formatNumber(mc.tape_stats.last_price, lang, 4)} · vwap {formatNumber(mc.tape_stats.vwap, lang, 4)} · delta {formatNumber(mc.tape_stats.delta_pct * 100, lang, 1)}%</div>
+                  <div>trades {mc.tape_stats.trade_count} В· buy {mc.tape_stats.buy_volume} В· sell {mc.tape_stats.sell_volume}</div>
+                  <div>last {formatNumber(mc.tape_stats.last_price, lang, 4)} В· vwap {formatNumber(mc.tape_stats.vwap, lang, 4)} В· delta {formatNumber(mc.tape_stats.delta_pct * 100, lang, 1)}%</div>
                   {mc.tape_stats.aggressor && <Badge tone="neutral">{mc.tape_stats.aggressor}</Badge>}
                   <div className="mt-2 max-h-32 overflow-y-auto space-y-1 font-mono text-xs">
                     {(mc.recent_prints ?? []).slice(-8).reverse().map((p) => (
@@ -221,7 +227,7 @@ export function AiTraderPanel({ instances }: Props) {
                   ))}
                   <div className="text-xs font-semibold text-[var(--muted)] mt-2">{t('bookEvolution')}</div>
                   {(mc.book_timeline ?? []).slice(-5).reverse().map((b) => (
-                    <div key={b.time} className="text-xs text-[var(--muted)]">{formatDateTime(b.time, lang)} mid {formatNumber(b.mid, lang, 4)} imb {formatNumber(b.imbalance, lang, 2)} · {b.bid_wall} / {b.ask_wall}</div>
+                    <div key={b.time} className="text-xs text-[var(--muted)]">{formatDateTime(b.time, lang)} mid {formatNumber(b.mid, lang, 4)} imb {formatNumber(b.imbalance, lang, 2)} В· {b.bid_wall} / {b.ask_wall}</div>
                   ))}
                   {(mc.scene_notes ?? []).length > 0 && (
                     <>
@@ -246,7 +252,7 @@ export function AiTraderPanel({ instances }: Props) {
                     <div className="text-xs text-[var(--muted)]">{t('askWall')}</div>
                     <div className="font-mono">{formatNumber(f.largest_ask_wall.price, lang, 4)} x {f.largest_ask_wall.quantity}</div>
                   </div>
-                  <div className="text-xs text-[var(--muted)]">mid {formatNumber(f.mid, lang, 4)} · spread {formatMoney(f.spread_abs, lang)}</div>
+                  <div className="text-xs text-[var(--muted)]">mid {formatNumber(f.mid, lang, 4)} В· spread {formatMoney(f.spread_abs, lang)}</div>
                 </div>
                 <Table>
                   <thead>
@@ -258,10 +264,10 @@ export function AiTraderPanel({ instances }: Props) {
                       const ask = f.orderbook_top.asks[i];
                       return (
                         <tr key={i}>
-                          <td className="font-mono text-[var(--success)]">{bid ? formatNumber(bid.price, lang, 4) : '—'}</td>
-                          <td>{bid?.quantity ?? '—'}</td>
-                          <td className="font-mono text-[var(--danger)]">{ask ? formatNumber(ask.price, lang, 4) : '—'}</td>
-                          <td>{ask?.quantity ?? '—'}</td>
+                          <td className="font-mono text-[var(--success)]">{bid ? formatNumber(bid.price, lang, 4) : 'вЂ”'}</td>
+                          <td>{bid?.quantity ?? 'вЂ”'}</td>
+                          <td className="font-mono text-[var(--danger)]">{ask ? formatNumber(ask.price, lang, 4) : 'вЂ”'}</td>
+                          <td>{ask?.quantity ?? 'вЂ”'}</td>
                         </tr>
                       );
                     })}

@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -14,22 +15,52 @@ import (
 )
 
 const (
-	aiTraderMaxPrints      = 40
-	aiTraderMaxBookDigests = 15
-	aiTraderMaxChartBars   = 40
-	aiTraderTapeWindowSec  = 60
-	aiTraderDailyLevelDays = 10
+	aiTraderMaxPrints        = 200
+	aiTraderMaxBookDigests   = 15
+	aiTraderMaxChartBars     = 40
+	aiTraderTapeWindowSec    = 60
+	aiTraderDailyLevelDays   = 10
+	aiTraderFootprintMinutes = 8
+	aiTraderDefaultTickSize  = 0.01
 )
 
 // AITraderMarketContext is a rolling multi-source snapshot for LLM and dashboard.
 type AITraderMarketContext struct {
-	ChartBars    []AITraderCandleBar  `json:"chart_bars,omitempty"`
-	Levels       []AITraderLevel      `json:"levels,omitempty"`
-	RecentPrints []AITraderPrint      `json:"recent_prints,omitempty"`
-	TapeStats    AITraderTapeStats    `json:"tape_stats"`
-	BookTimeline []AITraderBookDigest `json:"book_timeline,omitempty"`
-	SceneNotes   []string             `json:"scene_notes,omitempty"`
-	UpdatedAt    string               `json:"updated_at"`
+	ChartBars    []AITraderCandleBar       `json:"chart_bars,omitempty"`
+	Footprint    []AITraderFootprintColumn `json:"footprint,omitempty"`
+	DOMBook      *AITraderDOMBook          `json:"dom_book,omitempty"`
+	Levels       []AITraderLevel           `json:"levels,omitempty"`
+	RecentPrints []AITraderPrint           `json:"recent_prints,omitempty"`
+	TapeStats    AITraderTapeStats         `json:"tape_stats"`
+	BookTimeline []AITraderBookDigest      `json:"book_timeline,omitempty"`
+	SceneNotes   []string                  `json:"scene_notes,omitempty"`
+	UpdatedAt    string                    `json:"updated_at"`
+}
+
+// AITraderFootprintColumn is one minute of volume-at-price (cluster) data.
+type AITraderFootprintColumn struct {
+	Time     string                  `json:"time"`
+	Label    string                  `json:"label"`
+	Cells    []AITraderFootprintCell `json:"cells"`
+	TotalVol int64                   `json:"total_vol"`
+	Delta    int64                   `json:"delta"`
+}
+
+type AITraderFootprintCell struct {
+	Price   float64 `json:"price"`
+	BuyVol  int64   `json:"buy_vol"`
+	SellVol int64   `json:"sell_vol"`
+	Total   int64   `json:"total"`
+}
+
+// AITraderDOMBook is the full limit-order ladder for scalper DOM view.
+type AITraderDOMBook struct {
+	ObservedAt string              `json:"observed_at"`
+	TickSize   float64             `json:"tick_size"`
+	BestBid    float64             `json:"best_bid"`
+	BestAsk    float64             `json:"best_ask"`
+	Bids       []AITraderBookLevel `json:"bids"`
+	Asks       []AITraderBookLevel `json:"asks"`
 }
 
 type AITraderCandleBar struct {
@@ -75,11 +106,24 @@ type AITraderBookDigest struct {
 	AskWall   string  `json:"ask_wall"`
 }
 
+type footprintCell struct {
+	buyVol  int64
+	sellVol int64
+}
+
+type footprintMinute struct {
+	start time.Time
+	cells map[float64]*footprintCell
+}
+
 type aiTraderContextState struct {
 	mu           sync.Mutex
 	chartBars    []AITraderCandleBar
 	levels       []AITraderLevel
 	prints       []AITraderPrint
+	footprint    []*footprintMinute
+	domBook      *AITraderDOMBook
+	tickSize     float64
 	bookTimeline []AITraderBookDigest
 	sceneNotes   []string
 	lastBidWall  string
@@ -253,6 +297,147 @@ func (st *aiTraderContextState) appendPrint(p AITraderPrint) {
 	if len(st.prints) > aiTraderMaxPrints {
 		st.prints = st.prints[len(st.prints)-aiTraderMaxPrints:]
 	}
+	st.appendFootprintLocked(p)
+}
+
+func (st *aiTraderContextState) tickSizeLocked() float64 {
+	if st.tickSize > 0 {
+		return st.tickSize
+	}
+	return aiTraderDefaultTickSize
+}
+
+func roundPriceTick(price, tick float64) float64 {
+	if tick <= 0 {
+		tick = aiTraderDefaultTickSize
+	}
+	return math.Round(price/tick) * tick
+}
+
+func (st *aiTraderContextState) appendFootprintLocked(p AITraderPrint) {
+	ts, err := time.Parse(time.RFC3339, p.Time)
+	if err != nil {
+		ts = time.Now().UTC()
+	}
+	ts = ts.UTC().Truncate(time.Minute)
+	tick := st.tickSizeLocked()
+	price := roundPriceTick(p.Price, tick)
+
+	var col *footprintMinute
+	if len(st.footprint) > 0 && st.footprint[len(st.footprint)-1].start.Equal(ts) {
+		col = st.footprint[len(st.footprint)-1]
+	} else {
+		col = &footprintMinute{start: ts, cells: make(map[float64]*footprintCell)}
+		st.footprint = append(st.footprint, col)
+		if len(st.footprint) > aiTraderFootprintMinutes {
+			st.footprint = st.footprint[len(st.footprint)-aiTraderFootprintMinutes:]
+		}
+	}
+	if col.cells[price] == nil {
+		col.cells[price] = &footprintCell{}
+	}
+	dir := strings.ToLower(p.Direction)
+	qty := p.Quantity
+	if qty <= 0 {
+		qty = 1
+	}
+	if strings.Contains(dir, "buy") {
+		col.cells[price].buyVol += qty
+	} else if strings.Contains(dir, "sell") {
+		col.cells[price].sellVol += qty
+	} else {
+		col.cells[price].buyVol += qty / 2
+		col.cells[price].sellVol += qty - qty/2
+	}
+}
+
+func (st *aiTraderContextState) setDOMBook(book *marketdata.Orderbook, ticker string) {
+	if book == nil {
+		return
+	}
+	tick := inferTickSize(book, ticker)
+	bids := make([]AITraderBookLevel, len(book.Bids))
+	for i, row := range book.Bids {
+		bids[i] = AITraderBookLevel{Price: row.Price, Quantity: row.Quantity}
+	}
+	asks := make([]AITraderBookLevel, len(book.Asks))
+	for i, row := range book.Asks {
+		asks[i] = AITraderBookLevel{Price: row.Price, Quantity: row.Quantity}
+	}
+	var bestBid, bestAsk float64
+	if len(bids) > 0 {
+		bestBid = bids[0].Price
+	}
+	if len(asks) > 0 {
+		bestAsk = asks[0].Price
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.tickSize = tick
+	st.domBook = &AITraderDOMBook{
+		ObservedAt: book.Time.UTC().Format(time.RFC3339),
+		TickSize:   tick,
+		BestBid:    bestBid,
+		BestAsk:    bestAsk,
+		Bids:       bids,
+		Asks:       asks,
+	}
+}
+
+func inferTickSize(book *marketdata.Orderbook, ticker string) float64 {
+	_ = ticker
+	var sample float64
+	if len(book.Bids) > 0 {
+		sample = book.Bids[0].Price
+	} else if len(book.Asks) > 0 {
+		sample = book.Asks[0].Price
+	}
+	switch {
+	case sample >= 1000:
+		return 1
+	case sample >= 100:
+		return 0.1
+	default:
+		return 0.01
+	}
+}
+
+func buildFootprintColumns(minutes []*footprintMinute) []AITraderFootprintColumn {
+	out := make([]AITraderFootprintColumn, 0, len(minutes))
+	for _, m := range minutes {
+		if m == nil {
+			continue
+		}
+		col := AITraderFootprintColumn{
+			Time:  m.start.UTC().Format(time.RFC3339),
+			Label: m.start.UTC().Format("15:04"),
+		}
+		prices := make([]float64, 0, len(m.cells))
+		for px := range m.cells {
+			prices = append(prices, px)
+		}
+		sort.Float64s(prices)
+		for _, px := range prices {
+			c := m.cells[px]
+			if c == nil {
+				continue
+			}
+			total := c.buyVol + c.sellVol
+			if total <= 0 {
+				continue
+			}
+			col.Cells = append(col.Cells, AITraderFootprintCell{
+				Price:   px,
+				BuyVol:  c.buyVol,
+				SellVol: c.sellVol,
+				Total:   total,
+			})
+			col.TotalVol += total
+			col.Delta += c.buyVol - c.sellVol
+		}
+		out = append(out, col)
+	}
+	return out
 }
 
 func (st *aiTraderContextState) appendChartBar(bar AITraderCandleBar) {
@@ -344,6 +529,15 @@ func (st *aiTraderContextState) snapshot() AITraderMarketContext {
 	if len(st.sceneNotes) > 0 {
 		out.SceneNotes = append([]string(nil), st.sceneNotes...)
 	}
+	if len(st.footprint) > 0 {
+		out.Footprint = buildFootprintColumns(st.footprint)
+	}
+	if st.domBook != nil {
+		cp := *st.domBook
+		cp.Bids = append([]AITraderBookLevel(nil), st.domBook.Bids...)
+		cp.Asks = append([]AITraderBookLevel(nil), st.domBook.Asks...)
+		out.DOMBook = &cp
+	}
 	return out
 }
 
@@ -404,11 +598,16 @@ func (r *Runner) snapshotAITraderContext(s *AITraderSession) *AITraderMarketCont
 	return &snap
 }
 
-func (r *Runner) recordAITraderBookDigest(s *AITraderSession, f *AITraderFeatures) {
-	if s == nil || s.ctxState == nil || f == nil {
+func (r *Runner) recordAITraderBookDigest(s *AITraderSession, book *marketdata.Orderbook, f *AITraderFeatures) {
+	if s == nil || s.ctxState == nil {
 		return
 	}
-	s.ctxState.appendBookDigest(f)
+	if book != nil {
+		s.ctxState.setDOMBook(book, s.Ticker)
+	}
+	if f != nil {
+		s.ctxState.appendBookDigest(f)
+	}
 }
 
 func (r *Runner) attachAITraderMarketContext(s *AITraderSession) {
