@@ -74,6 +74,16 @@ UID инструмента возьмите из API T-Invest (`InstrumentByUid`
 
 Раздел **`strategies:`** в [`config/config.yaml`](../config/config.yaml).
 
+Текущие боевые futures instances после research-переоценки FORTS Strategy Lab:
+
+| Instance ID | Ticker | Type | Interval | Params | Why |
+|---|---|---|---|---|---|
+| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1` | Weighted research preferred hourly trend-following; trailing 0.5% adds protective exit for live futures risk. ID is retained for continuity. |
+| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `quantity=1` | Same SMA family as before, faster parameters had better balanced score. |
+| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `quantity=1` | Weighted research preferred hourly trend-following over level bounce for Mechel futures. ID is retained for continuity. |
+
+The `*-lb` IDs on Brent/Mechel are legacy names only. Do not infer the strategy type from the ID; use the `type` field.
+
 | Поле | Описание |
 |------|-----------|
 | `runner_port` | Порт HTTP управления (по умолчанию 9020). |
@@ -240,7 +250,7 @@ Infrastructure dashboard использует `24alert-ops-exporter`: `alert24_o
 
 | Тип | Пакет | Описание | Параметры |
 |-----|-------|----------|-----------|
-| `sma_crossover` | `internal/strategy/sma` | Пересечение быстрой/медленной SMA по завершённым свечам | `fast_period`, `slow_period`, `quantity`, `interval` |
+| `sma_crossover` | `internal/strategy/sma` | Пересечение быстрой/медленной SMA по завершённым свечам; опционально protective trailing stop | `fast_period`, `slow_period`, `quantity`, `interval`, `trailing_stop_pct` |
 | `level_bounce` | `internal/strategy/lb` | Mean reversion от support/resistance уровней с ATR stop/take-profit | `atr_mult`, `sl_mult`, `tp_mult`, `level_days`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 | `orb_breakout` | `internal/strategy/orb` | Intraday Opening Range Breakout: вход при пробое диапазона открытия, выход до конца сессии | `range_candles`, `quantity`, `interval`, `cutoff_hour`, `cutoff_min`, `timezone` |
 
@@ -270,13 +280,15 @@ Infrastructure dashboard использует `24alert-ops-exporter`: `alert24_o
 
 ## Текущий боевой запуск (futures-only)
 
-Production на 2026-05-16 работает только с MOEX FORTS futures:
+Production работает только с MOEX FORTS futures:
 
 | Instance | Type | Instrument | Interval |
 |----------|------|------------|----------|
-| `fut-brent-mini-lb` | `level_bounce` | `BMM6` | `15min` |
+| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` | `1h` |
 | `fut-gas-mini-sma` | `sma_crossover` | `NGM6` | `1h` |
-| `fut-mechel-lb` | `level_bounce` | `MCM6` | `15min` |
+| `fut-mechel-lb` | `sma_crossover` | `MCM6` | `1h` |
+
+SMA params: `BMM6 4/9 + trailing_stop_pct=0.005`, `NGM6 5/17`, `MCM6 4/9`. Brent/Mechel keep legacy `-lb` IDs only for continuity.
 
 Проверка:
 
@@ -298,6 +310,8 @@ docker logs 24alert-strategy-runner --since 10m
 Подробнее: [`docs/STRATEGY_MONITORING.md` → Web Dashboard](STRATEGY_MONITORING.md#web-dashboard).
 
 ## AI Assistant
+
+Подробная карта AI-интеграции, промптов, env, прав и ограничений: [`docs/AI_INTEGRATION.md`](AI_INTEGRATION.md).
 
 ### Архитектура
 
@@ -383,6 +397,7 @@ AI_CHAT_MODEL=anthropic/claude-sonnet-4  # Модель для чата
 | Web Dashboard (SPA) | `web/strategy-dashboard/` |
 | Dashboard embed | `internal/strategy/dashboard.go` |
 | AI Scanner | `deployments/ai-scanner/` |
+| AI Integration docs | [`docs/AI_INTEGRATION.md`](AI_INTEGRATION.md) |
 | Журнал | `internal/journal/` |
 | Ledger | `internal/strategy/ledger/` |
 | Конфиг типов | `pkg/config/config.go` |

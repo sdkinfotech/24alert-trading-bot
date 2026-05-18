@@ -49,6 +49,26 @@ type StreamOrderBookMsg struct {
 	Error string        `json:"error,omitempty"`
 }
 
+type StreamTradeMsg struct {
+	Type      string  `json:"type"`
+	UID       string  `json:"uid,omitempty"`
+	Direction string  `json:"direction,omitempty"`
+	Price     float64 `json:"price,omitempty"`
+	Quantity  int64   `json:"quantity,omitempty"`
+	Time      string  `json:"time,omitempty"`
+	TS        int64   `json:"ts,omitempty"`
+	Error     string  `json:"error,omitempty"`
+}
+
+type StreamLastPriceMsg struct {
+	Type  string  `json:"type"`
+	UID   string  `json:"uid,omitempty"`
+	Price float64 `json:"price,omitempty"`
+	Time  string  `json:"time,omitempty"`
+	TS    int64   `json:"ts,omitempty"`
+	Error string  `json:"error,omitempty"`
+}
+
 type StreamHandlers struct {
 	sm     *marketdata.StreamManager
 	logger *logging.Logger
@@ -61,6 +81,8 @@ func NewStreamHandlers(sm *marketdata.StreamManager, logger *logging.Logger) *St
 func (h *StreamHandlers) Routes(r chi.Router) {
 	r.Get("/api/v1/stream/candles", h.StreamCandles)
 	r.Get("/api/v1/stream/orderbook", h.StreamOrderBook)
+	r.Get("/api/v1/stream/trades", h.StreamTrades)
+	r.Get("/api/v1/stream/last-price", h.StreamLastPrice)
 }
 
 func pbQuotationToFloat(q *pb.Quotation) float64 {
@@ -68,6 +90,27 @@ func pbQuotationToFloat(q *pb.Quotation) float64 {
 		return 0
 	}
 	return float64(q.GetUnits()) + float64(q.GetNano())/1e9
+}
+
+func cleanStreamUIDs(raw string) ([]string, bool) {
+	if raw == "" {
+		return nil, false
+	}
+	parts := strings.Split(raw, ",")
+	cleaned := parts[:0]
+	for _, u := range parts {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			cleaned = append(cleaned, u)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil, false
+	}
+	if len(cleaned) > 50 {
+		cleaned = cleaned[:50]
+	}
+	return cleaned, true
 }
 
 func (h *StreamHandlers) StreamCandles(w http.ResponseWriter, r *http.Request) {
@@ -177,26 +220,14 @@ func (h *StreamHandlers) StreamCandles(w http.ResponseWriter, r *http.Request) {
 //	{"type":"error","error":"<msg>"}  — non-fatal notice
 func (h *StreamHandlers) StreamOrderBook(w http.ResponseWriter, r *http.Request) {
 	uidsParam := r.URL.Query().Get("uids")
+	uids, ok := cleanStreamUIDs(uidsParam)
 	if uidsParam == "" {
 		respondError(w, http.StatusBadRequest, "uids query param is required")
 		return
 	}
-
-	uids := strings.Split(uidsParam, ",")
-	cleaned := uids[:0]
-	for _, u := range uids {
-		u = strings.TrimSpace(u)
-		if u != "" {
-			cleaned = append(cleaned, u)
-		}
-	}
-	uids = cleaned
-	if len(uids) == 0 {
+	if !ok {
 		respondError(w, http.StatusBadRequest, "uids query param is empty after trim")
 		return
-	}
-	if len(uids) > 50 {
-		uids = uids[:50]
 	}
 
 	depth := int32(20)
@@ -333,6 +364,244 @@ func (h *StreamHandlers) StreamOrderBook(w http.ResponseWriter, r *http.Request)
 			}
 		case <-heartbeat.C:
 			if err := writeJSON(StreamOrderBookMsg{Type: "ping"}); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// StreamTrades streams public trades/prints via WebSocket for the requested
+// comma-separated list of instrument UIDs.
+func (h *StreamHandlers) StreamTrades(w http.ResponseWriter, r *http.Request) {
+	uidsParam := r.URL.Query().Get("uids")
+	uids, ok := cleanStreamUIDs(uidsParam)
+	if uidsParam == "" {
+		respondError(w, http.StatusBadRequest, "uids query param is required")
+		return
+	}
+	if !ok {
+		respondError(w, http.StatusBadRequest, "uids query param is empty after trim")
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		h.logger.Error("websocket upgrade failed", "error", err)
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	merged := make(chan StreamTradeMsg, 1024)
+	var writeMu sync.Mutex
+	writeJSON := func(msg StreamTradeMsg) error {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(websocket.TextMessage, data)
+	}
+
+	subscribed := make([]string, 0, len(uids))
+	for _, uid := range uids {
+		uid := uid
+		ch, err := h.sm.SubscribeTrades(ctx, uid)
+		if err != nil {
+			h.logger.Warn("subscribe trades failed", "uid", uid, "error", err)
+			_ = writeJSON(StreamTradeMsg{
+				Type:  "error",
+				UID:   uid,
+				Error: err.Error(),
+			})
+			continue
+		}
+		subscribed = append(subscribed, uid)
+
+		go func() {
+			defer func() {
+				_ = h.sm.Unsubscribe(uid, marketdata.SubTrades)
+			}()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case t, ok := <-ch:
+					if !ok {
+						return
+					}
+					msg := StreamTradeMsg{
+						Type:      "trade",
+						UID:       t.GetInstrumentUid(),
+						Direction: t.GetDirection().String(),
+						Price:     pbQuotationToFloat(t.GetPrice()),
+						Quantity:  t.GetQuantity(),
+						TS:        time.Now().UnixMilli(),
+					}
+					if msg.UID == "" {
+						msg.UID = uid
+					}
+					if ts := t.GetTime(); ts != nil {
+						msg.Time = ts.AsTime().Format(time.RFC3339Nano)
+					}
+					select {
+					case merged <- msg:
+					case <-ctx.Done():
+						return
+					default:
+						// drop if consumer is slow; future AI Trader feed will expose drop counters.
+					}
+				}
+			}
+		}()
+	}
+
+	h.logger.Info("stream trades started", "subscribed", len(subscribed), "requested", len(uids))
+
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-merged:
+			if err := writeJSON(msg); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			if err := writeJSON(StreamTradeMsg{Type: "ping"}); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// StreamLastPrice streams last-price updates via WebSocket for the requested
+// comma-separated list of instrument UIDs.
+func (h *StreamHandlers) StreamLastPrice(w http.ResponseWriter, r *http.Request) {
+	uidsParam := r.URL.Query().Get("uids")
+	uids, ok := cleanStreamUIDs(uidsParam)
+	if uidsParam == "" {
+		respondError(w, http.StatusBadRequest, "uids query param is required")
+		return
+	}
+	if !ok {
+		respondError(w, http.StatusBadRequest, "uids query param is empty after trim")
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		h.logger.Error("websocket upgrade failed", "error", err)
+		return
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	go func() {
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				cancel()
+				return
+			}
+		}
+	}()
+
+	merged := make(chan StreamLastPriceMsg, 1024)
+	var writeMu sync.Mutex
+	writeJSON := func(msg StreamLastPriceMsg) error {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		return conn.WriteMessage(websocket.TextMessage, data)
+	}
+
+	subscribed := make([]string, 0, len(uids))
+	for _, uid := range uids {
+		uid := uid
+		ch, err := h.sm.SubscribeLastPrice(ctx, uid)
+		if err != nil {
+			h.logger.Warn("subscribe last price failed", "uid", uid, "error", err)
+			_ = writeJSON(StreamLastPriceMsg{
+				Type:  "error",
+				UID:   uid,
+				Error: err.Error(),
+			})
+			continue
+		}
+		subscribed = append(subscribed, uid)
+
+		go func() {
+			defer func() {
+				_ = h.sm.Unsubscribe(uid, marketdata.SubLastPrice)
+			}()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case lp, ok := <-ch:
+					if !ok {
+						return
+					}
+					msg := StreamLastPriceMsg{
+						Type:  "last_price",
+						UID:   lp.GetInstrumentUid(),
+						Price: pbQuotationToFloat(lp.GetPrice()),
+						TS:    time.Now().UnixMilli(),
+					}
+					if msg.UID == "" {
+						msg.UID = uid
+					}
+					if ts := lp.GetTime(); ts != nil {
+						msg.Time = ts.AsTime().Format(time.RFC3339Nano)
+					}
+					select {
+					case merged <- msg:
+					case <-ctx.Done():
+						return
+					default:
+						// drop if consumer is slow; future AI Trader feed will expose drop counters.
+					}
+				}
+			}
+		}()
+	}
+
+	h.logger.Info("stream last price started", "subscribed", len(subscribed), "requested", len(uids))
+
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-merged:
+			if err := writeJSON(msg); err != nil {
+				return
+			}
+		case <-heartbeat.C:
+			if err := writeJSON(StreamLastPriceMsg{Type: "ping"}); err != nil {
 				return
 			}
 		}

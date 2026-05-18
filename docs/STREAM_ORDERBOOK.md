@@ -45,11 +45,18 @@ Gateway-контейнер публикуется только на `127.0.0.1:1
   - `127.0.0.1` — локальные smoke-тесты на сервере
 - **Health:** `https://gateway.24alert.ru:8080/health` (TLS, тот же nginx, без ACL).
 
+Смежные microstructure endpoints для AI Trader:
+
+| Endpoint | Назначение |
+|----------|------------|
+| `/api/v1/stream/trades?uids=...` | public trades / prints: `type=trade`, `uid`, `direction`, `price`, `quantity`, `time`, `ts` |
+| `/api/v1/stream/last-price?uids=...` | last price heartbeat: `type=last_price`, `uid`, `price`, `time`, `ts` |
+
 ### Query parameters
 
 | Параметр | Тип | По умолчанию | Описание |
 |----------|-----|--------------|----------|
-| `uids`   | CSV string (required) | — | UID инструментов T-Invest, до 300 в одной подписке. Пустой или только-пробельный → HTTP 400. |
+| `uids`   | CSV string (required) | — | UID инструментов T-Invest. Текущая реализация gateway обрезает список до **50 UID** на WS; 300 — лимит T-Invest, но не текущий контракт gateway. Пустой или только-пробельный → HTTP 400. |
 | `depth`  | int | `20` | Глубина стакана (10/20/30/40/50 — по контракту T-Invest). |
 
 Пример:
@@ -94,6 +101,8 @@ wss://gateway.24alert.ru:8080/api/v1/stream/orderbook?uids=e6123145-...,962e2a95
 | `asks` | array | Продажи, возрастающе по цене. Такой же формат |
 | `ts`   | int64 | Event time от T-Invest, unix-ms (UTC) |
 
+> **Важно для AI Trader / scalping:** текущий stream отдаёт полные snapshots, а не delta-book. В контракте пока нет sequence number, receive timestamp, spread/imbalance, counters dropped frames и признака устаревшего состояния. При медленном потребителе gateway может drop-нуть snapshot в буфере. Для live AI-скальпера это нужно расширить до microstructure event schema, см. [`docs/AI_TRADER_SCALPER.md`](AI_TRADER_SCALPER.md).
+
 ### 3.2 `ping`
 
 Пинг от сервера ~каждые 15 секунд. Используется как heartbeat и для keep-alive через nginx.
@@ -122,12 +131,12 @@ wss://gateway.24alert.ru:8080/api/v1/stream/orderbook?uids=e6123145-...,962e2a95
 
 | Параметр | Значение |
 |----------|---------|
-| Макс. подписок на один WS | ограничение T-Invest: **300 UID на одно WS-соединение**, совокупно с `OrderBookStream` + `MarketDataStream` |
+| Макс. подписок на один WS | **50 UID в текущем gateway code path**; T-Invest допускает до 300 UID на одно WS-соединение совокупно с `OrderBookStream` + `MarketDataStream` |
 | Частота `snapshot` | зависит от активности; SBER в пике 50 Гц, средне 5–20 Гц. В RPS-метриках gateway ≤ 5 000/s для 200 UID |
 | Ширина кадра | ~400 байт для depth=20 |
 | Сетевой объём | ≈ 200 KB/s исходящего для 200 UID при 1–5 Hz |
 
-При необходимости более 300 UID — разнесение по нескольким WS-соединениям (gateway поддерживает, см. `stream_manager.go`).
+При необходимости более 50 UID — разнесение по нескольким WS-соединениям либо доработка gateway limit/hub. Для AI Trader предпочтительнее shared `OrderBookHub` с ref-count, reconnect и drop counters.
 
 ## 6. Метрики
 

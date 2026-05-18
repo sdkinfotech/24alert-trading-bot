@@ -62,6 +62,52 @@ func TestStreamOrderBook_EmptyUIDs(t *testing.T) {
 	}
 }
 
+func TestStreamTrades_MissingUIDs(t *testing.T) {
+	logger, err := logging.NewLogger("error", "text", "stdout", "")
+	if err != nil {
+		t.Fatalf("logger: %v", err)
+	}
+	h := NewStreamHandlers(nil, logger)
+
+	r := chi.NewRouter()
+	h.Routes(r)
+
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/stream/trades")
+	if err != nil {
+		t.Fatalf("http get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestStreamLastPrice_MissingUIDs(t *testing.T) {
+	logger, err := logging.NewLogger("error", "text", "stdout", "")
+	if err != nil {
+		t.Fatalf("logger: %v", err)
+	}
+	h := NewStreamHandlers(nil, logger)
+
+	r := chi.NewRouter()
+	h.Routes(r)
+
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/stream/last-price")
+	if err != nil {
+		t.Fatalf("http get: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
 // TestStreamOrderBookMsg_SnapshotJSON verifies that the wire JSON shape
 // matches the contract expected by traderbook/services/market-data.
 func TestStreamOrderBookMsg_SnapshotJSON(t *testing.T) {
@@ -92,6 +138,66 @@ func TestStreamOrderBookMsg_SnapshotJSON(t *testing.T) {
 		`"quantity":12540`,
 		`"price":28029`,
 		`"quantity":5430`,
+	}
+	for _, frag := range requiredFragments {
+		if !strings.Contains(got, frag) {
+			t.Fatalf("missing %q in %s", frag, got)
+		}
+	}
+}
+
+func TestStreamTradeMsg_JSON(t *testing.T) {
+	msg := StreamTradeMsg{
+		Type:      "trade",
+		UID:       "abcd-1234",
+		Direction: "TRADE_DIRECTION_BUY",
+		Price:     110.42,
+		Quantity:  3,
+		Time:      "2026-05-18T10:00:00Z",
+		TS:        1713252200000,
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(b)
+
+	requiredFragments := []string{
+		`"type":"trade"`,
+		`"uid":"abcd-1234"`,
+		`"direction":"TRADE_DIRECTION_BUY"`,
+		`"price":110.42`,
+		`"quantity":3`,
+		`"time":"2026-05-18T10:00:00Z"`,
+		`"ts":1713252200000`,
+	}
+	for _, frag := range requiredFragments {
+		if !strings.Contains(got, frag) {
+			t.Fatalf("missing %q in %s", frag, got)
+		}
+	}
+}
+
+func TestStreamLastPriceMsg_JSON(t *testing.T) {
+	msg := StreamLastPriceMsg{
+		Type:  "last_price",
+		UID:   "abcd-1234",
+		Price: 110.42,
+		Time:  "2026-05-18T10:00:00Z",
+		TS:    1713252200000,
+	}
+	b, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(b)
+
+	requiredFragments := []string{
+		`"type":"last_price"`,
+		`"uid":"abcd-1234"`,
+		`"price":110.42`,
+		`"time":"2026-05-18T10:00:00Z"`,
+		`"ts":1713252200000`,
 	}
 	for _, frag := range requiredFragments {
 		if !strings.Contains(got, frag) {
