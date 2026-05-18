@@ -43,8 +43,9 @@ func (s *Service) PostOrder(ctx context.Context, req *investgo.PostOrderRequest)
 	l := s.logger.WithContext(ctx)
 
 	orderType := req.OrderType.String()
+	direction := req.Direction.String()
 	defer func() {
-		metrics.OrderLatency.WithLabelValues(orderType).Observe(time.Since(start).Seconds())
+		metrics.OrderLatency.WithLabelValues(direction, orderType).Observe(time.Since(start).Seconds())
 	}()
 
 	if req.OrderId == "" {
@@ -59,17 +60,17 @@ func (s *Service) PostOrder(ctx context.Context, req *investgo.PostOrderRequest)
 	)
 
 	if err := s.rateLimiter.Wait(ctx, "post_order"); err != nil {
-		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
+		metrics.OrdersTotal.WithLabelValues(direction, orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostOrder: rate limit: %w", err)
 	}
 
 	resp, err := s.tinvestClient.OrdersServiceClient().PostOrder(req)
 	if err != nil {
-		metrics.OrdersTotal.WithLabelValues(orderType, "failure").Inc()
+		metrics.OrdersTotal.WithLabelValues(direction, orderType, "failure").Inc()
 		return nil, fmt.Errorf("PostOrder: %w", err)
 	}
 
-	metrics.OrdersTotal.WithLabelValues(orderType, "success").Inc()
+	metrics.OrdersTotal.WithLabelValues(direction, orderType, "success").Inc()
 
 	s.repo.SaveOrder(&OrderRecord{
 		OrderID:       req.OrderId,
@@ -178,7 +179,7 @@ func (s *Service) GetOrderState(ctx context.Context, accountID, orderID string, 
 	}
 
 	if resp.OrderState != nil {
-		_ = s.repo.UpdateOrderState(orderID, mapExecutionStatus(resp.GetExecutionReportStatus()), resp.GetLotsExecuted())
+		_ = s.repo.UpdateOrderState(orderID, MapExecutionStatus(resp.GetExecutionReportStatus()), resp.GetLotsExecuted())
 	}
 
 	l.Info("GetOrderState completed", "order_id", orderID, "status", resp.GetExecutionReportStatus().String())
@@ -258,7 +259,7 @@ func (s *Service) GetStopOrders(ctx context.Context, accountID string) (*investg
 	return resp, nil
 }
 
-func mapExecutionStatus(s pb.OrderExecutionReportStatus) OrderStatus {
+func MapExecutionStatus(s pb.OrderExecutionReportStatus) OrderStatus {
 	switch s {
 	case pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_NEW:
 		return OrderStatusNew

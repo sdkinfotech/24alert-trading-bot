@@ -21,7 +21,7 @@ func TestMapExecutionStatus_AllBranches(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		got := mapExecutionStatus(tc.input)
+		got := MapExecutionStatus(tc.input)
 		if got != tc.want {
 			t.Errorf("mapExecutionStatus(%v) = %q, want %q", tc.input, got, tc.want)
 		}

@@ -188,6 +188,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 	}
 
+	go r.runBrokerReconciler(ctx)
 	go r.runWatchdog(ctx)
 
 	<-ctx.Done()
@@ -336,6 +337,15 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 		}
 		lastWarmupTimes = r.warmupStrategy(ctx, inst, st, needed, interval)
 	}
+	if err := r.syncBrokerStateBeforeTrading(ctx, inst, st); err != nil {
+		st.Stop()
+		return err
+	}
+	if ss, ok := st.(StatefulStrategy); ok {
+		if blob, err := ss.Snapshot(); err == nil {
+			_ = r.journal.SaveStrategyState(ctx, inst.ID, blob)
+		}
+	}
 
 	ictx, cancel := context.WithCancel(ctx)
 	rt := &instanceRuntime{id: inst.ID, account: inst.AccountID, strat: st, cancel: cancel} //nolint:misspell // short for "strategy"
@@ -343,6 +353,8 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	r.mu.Lock()
 	r.instances[inst.ID] = rt
 	r.mu.Unlock()
+
+	r.primeLiveCandleHandlers(ictx, inst, rt, interval)
 
 	for _, uid := range inst.Instruments {
 		uid := uid
@@ -369,9 +381,21 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 					if !ok {
 						return
 					}
-					// Deduplicate: skip candles already fed during warmup.
-					if !warmupCutoff.IsZero() && !c.Time.After(warmupCutoff) {
+					// Deduplicate completed bars already fed during warmup.
+					// In-progress stream candles can share the last warmup bar timestamp
+					// after a restart, but protective live handlers still need them.
+					if c.IsComplete && !warmupCutoff.IsZero() && !c.Time.After(warmupCutoff) {
 						continue
+					}
+					if lh, ok := st.(LiveCandleHandler); ok && !c.IsComplete {
+						start := time.Now()
+						sigs := lh.OnLiveCandle(c)
+						metrics.StrategyEvaluationDuration.WithLabelValues(inst.ID).Observe(time.Since(start).Seconds())
+						ref := c.Close
+						if entry, ok := r.priceCache.GetLastPrice(c.InstrumentUID); ok {
+							ref = entry.Price
+						}
+						r.handleSignals(ictx, rt, ref, sigs)
 					}
 					prev, has := pending[c.InstrumentUID]
 					if has && prev.Time.Equal(c.Time) {
@@ -399,6 +423,147 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	r.logger.Info("strategy instance started", "id", inst.ID, "type", inst.Type, "account", inst.AccountID)
 	r.updateInstanceMetrics()
 	return nil
+}
+
+func (r *Runner) syncBrokerStateBeforeTrading(ctx context.Context, inst config.StrategyInstanceConfig, st Strategy) error {
+	return r.syncBrokerState(ctx, inst, st, "startup broker sync", true)
+}
+
+func (r *Runner) syncBrokerState(ctx context.Context, inst config.StrategyInstanceConfig, st Strategy, phase string, recordAll bool) error {
+	if r.portfolioSvc == nil {
+		r.logger.Warn("broker position sync skipped: portfolio service is not configured", "instance", inst.ID, "phase", phase)
+		return nil
+	}
+	if inst.AccountID == "" {
+		return fmt.Errorf("%s %q: empty account_id", phase, inst.ID)
+	}
+	positions, err := r.portfolioSvc.GetPositions(ctx, inst.AccountID)
+	if err != nil {
+		return fmt.Errorf("%s %q: %w", phase, inst.ID, err)
+	}
+	byUID := make(map[string]portfolio.Position, len(positions))
+	for _, p := range positions {
+		if p.InstrumentUID == "" {
+			continue
+		}
+		byUID[p.InstrumentUID] = p
+	}
+	led := r.ledger.Ledger(inst.ID)
+	syncer, canSyncStrategy := st.(BrokerPositionSyncer)
+	for _, uid := range inst.Instruments {
+		uid = strings.TrimSpace(uid)
+		if uid == "" {
+			continue
+		}
+		p := byUID[uid]
+		const tol = 1e-3
+		changed := led.ReconcileFromBroker(uid, p.Quantity, p.AveragePrice, tol)
+		if changed {
+			metrics.StrategyReconcileMismatch.WithLabelValues(inst.ID).Inc()
+			r.logger.Warn("ledger reconciled from broker", "instance", inst.ID, "instrument", uid, "phase", phase, "broker_qty", p.Quantity, "broker_avg", p.AveragePrice)
+		}
+		if canSyncStrategy {
+			syncer.SyncBrokerPosition(uid, p.Quantity, p.AveragePrice, p.CurrentPrice)
+		} else if p.Quantity != 0 {
+			return fmt.Errorf("%s %q: strategy type %q cannot restore non-flat broker position for %s", phase, inst.ID, inst.Type, uid)
+		}
+		if recordAll || changed {
+			_ = r.journal.RecordEvent(ctx, journal.EventRecord{
+				Type:          "broker_position_sync",
+				InstanceID:    inst.ID,
+				InstrumentUID: uid,
+				Status:        "synced",
+				Message:       fmt.Sprintf("%s: qty=%.4f avg=%.4f strategy_synced=%t", phase, p.Quantity, p.AveragePrice, canSyncStrategy),
+				CreatedAt:     time.Now().UTC(),
+			})
+		}
+	}
+	r.updateBizMetrics(inst.ID)
+	return nil
+}
+
+func (r *Runner) runBrokerReconciler(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.mu.Lock()
+			runtimes := make([]*instanceRuntime, 0, len(r.instances))
+			for _, rt := range r.instances {
+				runtimes = append(runtimes, rt)
+			}
+			r.mu.Unlock()
+			for _, rt := range runtimes {
+				inst, ok := r.byID[rt.id]
+				if !ok {
+					continue
+				}
+				if err := r.syncBrokerState(ctx, inst, rt.strat, "periodic broker sync", false); err != nil {
+					r.logger.Warn("periodic broker position sync failed", "instance", rt.id, "error", err)
+				}
+				if ss, ok := rt.strat.(StatefulStrategy); ok {
+					if blob, err := ss.Snapshot(); err == nil && len(blob) > 0 {
+						_ = r.journal.SaveStrategyState(ctx, rt.id, blob)
+					}
+				}
+			}
+		}
+	}
+}
+
+func (r *Runner) primeLiveCandleHandlers(ctx context.Context, inst config.StrategyInstanceConfig, rt *instanceRuntime, subInterval pb.SubscriptionInterval) {
+	lh, ok := rt.strat.(LiveCandleHandler)
+	if !ok {
+		return
+	}
+	candleInterval, err := SubscriptionToCandleInterval(subInterval)
+	if err != nil {
+		r.logger.Warn("live candle prime: cannot map interval", "instance", inst.ID, "error", err)
+		return
+	}
+	dur := IntervalDuration(subInterval)
+	if dur <= 0 {
+		dur = time.Hour
+	}
+	now := time.Now()
+	from := now.Add(-2 * dur)
+	for _, uid := range inst.Instruments {
+		uid = strings.TrimSpace(uid)
+		if uid == "" {
+			continue
+		}
+		candles, err := r.mdSvc.GetCandles(ctx, uid, from, now, candleInterval)
+		if err != nil {
+			r.logger.Warn("live candle prime: GetCandles failed", "instance", inst.ID, "uid", uid, "error", err)
+			continue
+		}
+		if len(candles) == 0 {
+			continue
+		}
+		mc := candles[len(candles)-1]
+		sc := Candle{
+			InstrumentUID: uid,
+			Open:          mc.Open,
+			High:          mc.High,
+			Low:           mc.Low,
+			Close:         mc.Close,
+			Volume:        mc.Volume,
+			Time:          mc.Time,
+			IsComplete:    false,
+		}
+		start := time.Now()
+		sigs := lh.OnLiveCandle(sc)
+		metrics.StrategyEvaluationDuration.WithLabelValues(inst.ID).Observe(time.Since(start).Seconds())
+		ref := sc.Close
+		if entry, ok := r.priceCache.GetLastPrice(sc.InstrumentUID); ok {
+			ref = entry.Price
+		}
+		r.logger.Info("live candle prime complete", "instance", inst.ID, "uid", uid, "time", sc.Time.Format(time.RFC3339), "low", sc.Low, "high", sc.High, "close", sc.Close, "signals", len(sigs))
+		r.handleSignals(ctx, rt, ref, sigs)
+	}
 }
 
 // warmupStrategy fetches historical candles and feeds them to the strategy,
@@ -692,6 +857,17 @@ func (r *Runner) handleSignals(ctx context.Context, rt *instanceRuntime, markPri
 		})
 		metrics.StrategyOrdersTotal.WithLabelValues(rt.id, "submitted").Inc()
 		r.logger.Info("order submitted from strategy", "instance", rt.id, "order_id", oid)
+		status := order.MapExecutionStatus(postResp.GetExecutionReportStatus())
+		if postResp.GetLotsExecuted() > 0 || isTerminalOrderStatus(status) {
+			r.dispatchExecution(order.OrderStateEvent{
+				OrderID:   oid,
+				AccountID: rt.account,
+				Status:    status,
+				FilledQty: postResp.GetLotsExecuted(),
+				UpdatedAt: time.Now().UTC(),
+			})
+		}
+		go r.pollOrderStateAfterSubmit(ctx, rt, oid)
 	}
 	if len(sigs) > 0 {
 		if ss, ok := rt.strat.(StatefulStrategy); ok { //nolint:misspell // strat is short for strategy

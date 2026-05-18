@@ -86,7 +86,7 @@ func (sm *StreamManager) StreamOrderStates(ctx context.Context, accounts []strin
 			continue
 		}
 
-		status := mapExecutionStatus(state.GetExecutionReportStatus())
+		status := MapExecutionStatus(state.GetExecutionReportStatus())
 		orderID := state.GetOrderId()
 		filledQty := state.GetLotsExecuted()
 

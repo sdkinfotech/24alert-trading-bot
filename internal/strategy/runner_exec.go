@@ -10,6 +10,7 @@ import (
 	"github.com/24alert/trading-bot/internal/order"
 	"github.com/24alert/trading-bot/internal/strategy/pnl"
 	"github.com/24alert/trading-bot/pkg/metrics"
+	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
 func (r *Runner) dispatchExecution(evt order.OrderStateEvent) {
@@ -118,6 +119,46 @@ func (r *Runner) slippageBPS(orderID string, avgPrice float64) float64 {
 		return 0
 	}
 	return (avgPrice - ref) / ref * 10000
+}
+
+func (r *Runner) pollOrderStateAfterSubmit(ctx context.Context, rt *instanceRuntime, orderID string) {
+	if r.orderSvc == nil || rt == nil || orderID == "" {
+		return
+	}
+	delays := []time.Duration{500 * time.Millisecond, 2 * time.Second, 5 * time.Second}
+	for _, delay := range delays {
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+
+		resp, err := r.orderSvc.GetOrderState(ctx, rt.account, orderID, pb.PriceType_PRICE_TYPE_UNSPECIFIED)
+		if err != nil {
+			r.logger.Warn("poll order state after submit failed", "instance", rt.id, "order_id", orderID, "error", err)
+			continue
+		}
+		status := order.MapExecutionStatus(resp.GetExecutionReportStatus())
+		r.dispatchExecution(order.OrderStateEvent{
+			OrderID:   orderID,
+			AccountID: rt.account,
+			Status:    status,
+			FilledQty: resp.GetLotsExecuted(),
+			UpdatedAt: time.Now().UTC(),
+		})
+		if isTerminalOrderStatus(status) {
+			return
+		}
+	}
+}
+
+func isTerminalOrderStatus(status order.OrderStatus) bool {
+	return status == order.OrderStatusFilled ||
+		status == order.OrderStatusCancelled ||
+		status == order.OrderStatusRejected ||
+		status == order.OrderStatusReplaced
 }
 
 func (r *Runner) updateBizMetrics(instanceID string) {
