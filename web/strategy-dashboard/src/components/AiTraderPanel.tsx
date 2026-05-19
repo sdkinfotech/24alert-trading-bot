@@ -40,7 +40,7 @@ function ThoughtEntry({ ev, lang, t }: { ev: AiTraderDecisionEvent; lang: 'ru' |
           </Badge>
           <Badge tone={analysisTone(ev.analysis_source)}>{analysisLabel}</Badge>
           {ev.llm_model && (
-            <Badge tone="neutral" title={ev.llm_model}>
+            <Badge tone="neutral">
               {ev.llm_model.length > 28 ? `${ev.llm_model.slice(0, 26)}…` : ev.llm_model}
             </Badge>
           )}
