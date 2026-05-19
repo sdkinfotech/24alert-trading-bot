@@ -275,18 +275,22 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		old.UpdatedAt = now.Format(time.RFC3339)
 	}
 	r.aiTrader.sessions[sessionKey] = s
+	startEv := AITraderDecisionEvent{
+		Time:           now.Format(time.RFC3339),
+		SessionID:      id,
+		Mode:           mode,
+		Action:         "start",
+		Intent:         "observe_market",
+		Summary:        "Сессия AI Trader запущена. Поток выводов LLM обновляется каждые ~15 с.",
+		Reason:         "operator started safe AI Trader session without live order permissions",
+		Confidence:     1,
+		RiskResult:     "live_orders_disabled",
+		AnalysisSource: "session",
+	}
+	s.Events = []AITraderDecisionEvent{startEv}
 	r.aiTrader.mu.Unlock()
 
-	r.appendAITraderEvent(AITraderDecisionEvent{
-		Time:       now.Format(time.RFC3339),
-		SessionID:  id,
-		Mode:       mode,
-		Action:     "start",
-		Intent:     "observe_market",
-		Reason:     "operator started safe AI Trader session without live order permissions",
-		Confidence: 1,
-		RiskResult: "live_orders_disabled",
-	})
+	r.appendAITraderEvent(startEv)
 	s.ctxState = newAITraderContextState()
 	go r.runAITraderSession(ctx, s, depth)
 	return cloneAITraderSession(s), nil

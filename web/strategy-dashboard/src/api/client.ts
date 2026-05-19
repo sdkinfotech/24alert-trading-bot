@@ -12,6 +12,7 @@ import type {
   StopOrder,
   AiTraderLimits,
   AiTraderSession,
+  CatalogInstrument,
   AiChatResponse,
   AiChatStatus,
 } from './types';
@@ -76,6 +77,13 @@ export const api = {
     post<AiChatResponse>('/ai-chat', { message }),
   aiChatReset: () => post<{ status: string }>('/ai-chat/reset', {}),
   aiChatStatus: () => get<AiChatStatus>('/ai-chat/status'),
+  instrumentCatalog: (q = '', kind: 'all' | 'share' | 'future' = 'all', limit = 50) => {
+    const params = new URLSearchParams();
+    if (q.trim()) params.set('q', q.trim());
+    if (kind !== 'all') params.set('kind', kind);
+    params.set('limit', String(limit));
+    return get<CatalogInstrument[]>(`/instruments/catalog?${params.toString()}`);
+  },
   aiTraderSessions: () => get<AiTraderSession[]>('/ai-trader/sessions'),
   aiTraderSession: (instanceID: string) =>
     get<AiTraderSession>(`/ai-trader/sessions/${instanceID}`),

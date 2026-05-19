@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -21,6 +22,26 @@ func TestSanitizeAITraderLLMActionObserveMode(t *testing.T) {
 	}
 	if got := sanitizeAITraderLLMAction("buy_now", AITraderModePaper); got != "hold" {
 		t.Fatalf("expected hold, got %s", got)
+	}
+}
+
+func TestApplyAITraderRiskGateWideSpread(t *testing.T) {
+	base := AITraderDecisionEvent{
+		RiskResult: "blocked_spread",
+		Action:     "hold",
+		Intent:     "avoid_wide_spread",
+		Reason:     "spread 34.80bps exceeds limit 15.00bps",
+	}
+	ev := AITraderDecisionEvent{
+		Action:  "observe_plan",
+		Summary: "Продавцы у стены",
+	}
+	out := applyAITraderRiskGate(ev, base, &AITraderFeatures{SpreadBPS: 34.8})
+	if out.Action != "hold" || out.RiskResult != "blocked_spread" {
+		t.Fatalf("unexpected gated event: %+v", out)
+	}
+	if !strings.Contains(out.Summary, "spread") || !strings.Contains(out.Summary, "Продавцы") {
+		t.Fatalf("expected spread prefix and llm summary, got %q", out.Summary)
 	}
 }
 

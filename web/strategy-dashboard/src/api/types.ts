@@ -263,7 +263,7 @@ export interface AiTraderDecisionEvent {
   operator_note?: string;
   confidence: number;
   risk_result: string;
-  analysis_source?: 'llm' | 'rules' | 'rules_fallback';
+  analysis_source?: 'llm' | 'rules' | 'rules_fallback' | 'session';
   features?: AiTraderFeatures;
 }
 
@@ -344,6 +344,16 @@ export interface AiTraderMarketContext {
   book_timeline?: AiTraderBookDigest[];
   scene_notes?: string[];
   updated_at?: string;
+}
+
+export interface CatalogInstrument {
+  uid: string;
+  ticker: string;
+  name: string;
+  class_code: string;
+  instrument_type: string;
+  exchange: string;
+  kind: 'share' | 'future' | string;
 }
 
 export interface AiTraderSession {

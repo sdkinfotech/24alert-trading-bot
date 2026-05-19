@@ -239,6 +239,23 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
 	})
+	mux.HandleFunc("GET /instruments/catalog", func(w http.ResponseWriter, req *http.Request) {
+		q := req.URL.Query().Get("q")
+		kind := req.URL.Query().Get("kind")
+		limit := 40
+		if v := req.URL.Query().Get("limit"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		rows, err := SearchInstruments(req.Context(), q, kind, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	})
 	mux.HandleFunc("GET /ai-trader/sessions", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(r.AITraderSessions())

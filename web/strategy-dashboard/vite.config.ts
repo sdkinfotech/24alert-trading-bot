@@ -10,6 +10,8 @@ export default defineConfig({
       '/health': 'http://127.0.0.1:9020',
       '/instances': 'http://127.0.0.1:9020',
       '/report': 'http://127.0.0.1:9020',
+      '/instruments': 'http://127.0.0.1:9020',
+      '/ai-trader': 'http://127.0.0.1:9020',
     },
   },
   build: {

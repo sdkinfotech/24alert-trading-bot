@@ -92,8 +92,15 @@ func (r *Runner) refreshAITraderFeaturesOnly(s *AITraderSession, f *AITraderFeat
 
 func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession, f *AITraderFeatures) (AITraderDecisionEvent, bool) {
 	base := decideAITraderRules(s, f)
-	if base.RiskResult == "blocked_stale_feed" || base.RiskResult == "blocked_spread" {
+	// Stale feed: no LLM; journal at most once per LLM interval (not every 2s observe tick).
+	if base.RiskResult == "blocked_stale_feed" {
 		base.AnalysisSource = "rules"
+		if !r.shouldRunAITraderLLM(s) {
+			r.refreshAITraderFeaturesOnly(s, f)
+			r.attachAITraderMarketContext(s)
+			return base, false
+		}
+		r.markAITraderLLMTick(s)
 		return base, true
 	}
 	if !r.shouldRunAITraderLLM(s) {
@@ -101,6 +108,8 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 		r.attachAITraderMarketContext(s)
 		return base, false
 	}
+	// Reserve interval before the HTTP call so parallel observe ticks do not fan out LLM requests.
+	r.markAITraderLLMTick(s)
 
 	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	if apiKey == "" {
@@ -122,8 +131,45 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 		return base, true
 	}
 	ev.AnalysisSource = "llm"
-	s.lastLLMAt = time.Now().UTC()
+	ev = applyAITraderRiskGate(ev, base, f)
+	r.logger.Info("ai trader llm", "session", s.ID, "action", ev.Action, "bias", ev.MarketBias, "risk", ev.RiskResult)
 	return ev, true
+}
+
+func (r *Runner) markAITraderLLMTick(s *AITraderSession) {
+	if s != nil {
+		s.lastLLMAt = time.Now().UTC()
+	}
+}
+
+// applyAITraderRiskGate keeps rule-engine safety flags (wide spread, etc.) on top of LLM narrative.
+func applyAITraderRiskGate(ev, base AITraderDecisionEvent, f *AITraderFeatures) AITraderDecisionEvent {
+	switch base.RiskResult {
+	case "", "allowed_observe_only":
+		return ev
+	}
+	ev.RiskResult = base.RiskResult
+	switch base.RiskResult {
+	case "blocked_spread":
+		ev.Action = "hold"
+		if strings.TrimSpace(ev.Intent) == "" {
+			ev.Intent = base.Intent
+		}
+		prefix := strings.TrimSpace(base.Reason)
+		if f != nil && f.SpreadBPS > 0 && prefix == "" {
+			prefix = fmt.Sprintf("spread %.1f bps exceeds limit", f.SpreadBPS)
+		}
+		if prefix != "" {
+			ev.Summary = prefix + ". " + ev.Summary
+		}
+		if base.Reason != "" {
+			ev.OperatorNote = strings.TrimSpace(ev.OperatorNote + " | " + base.Reason)
+		}
+	case "blocked_stale_feed":
+		ev.Action = "block"
+		ev.MarketBias = "blocked"
+	}
+	return ev
 }
 
 func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) (AITraderDecisionEvent, error) {
@@ -149,7 +195,11 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 	writeAITraderContextSummary(&b, f, mctx)
 
 	b.WriteString("\n== Подсказка rule-engine (safety, не копируй слепо) ==\n")
-	b.WriteString(fmt.Sprintf("action=%s intent=%s bias=%s reason=%s\n", base.Action, base.Intent, base.MarketBias, base.Reason))
+	b.WriteString(fmt.Sprintf("action=%s intent=%s bias=%s risk=%s reason=%s\n",
+		base.Action, base.Intent, base.MarketBias, base.RiskResult, base.Reason))
+	if base.RiskResult == "blocked_spread" {
+		b.WriteString("Спред шире лимита: дай аналитический вывод по стакану/ленте, но action только hold/observe, без торговых планов.\n")
+	}
 
 	if len(s.Events) > 0 {
 		b.WriteString("\n== Хронология твоих прошлых выводов (смотри развитие ситуации) ==\n")
