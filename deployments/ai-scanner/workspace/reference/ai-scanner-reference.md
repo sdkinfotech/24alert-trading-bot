@@ -30,9 +30,11 @@ For `level_bounce`, evening EOD cutoff may be `23:30`. Never set cutoff at or af
 
 | Instance | Ticker | Type | Interval | Current Parameters |
 |---|---|---|---|---|
-| `fut-brent-mini-lb` | `BMM6` | `level_bounce` | `15min` | `atr_mult=0.3`, `sl_mult=0.3`, `tp_mult=2.0`, `level_days=10`, `cutoff=23:30`, `quantity=1` |
-| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=9`, `slow_period=26`, `quantity=1` |
-| `fut-mechel-lb` | `MCM6` | `level_bounce` | `15min` | `atr_mult=0.5`, `sl_mult=0.7`, `tp_mult=1.0`, `level_days=10`, `cutoff=23:30`, `quantity=1` |
+| `fut-brent-mini-lb` | `BMM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005`, `quantity=1` |
+| `fut-gas-mini-sma` | `NGM6` | `sma_crossover` | `1h` | `fast_period=5`, `slow_period=17`, `quantity=1` |
+| `fut-mechel-lb` | `MCM6` | `sma_crossover` | `1h` | `fast_period=4`, `slow_period=9`, `quantity=1` |
+
+The `*-lb` suffix on Brent/Mechel is a legacy ID only. Always read the `type` field from config or `/instances`.
 
 ## Decision Thresholds
 
@@ -51,6 +53,8 @@ If two variants are close, prefer lower drawdown and more trades over a tiny Sha
 - Scan futures: `python3 /opt/ai-scanner/scan_market.py --gateway-url $GATEWAY_URL --top-n 10 --max-contract-price ${AI_SCANNER_MAX_CONTRACT_PRICE:-10000} --json`
 - Optimize SMA: `python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy sma --optimize --json`
 - Optimize Level Bounce: `python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy level_bounce --optimize --json`
+- Full research runner (repository context): `research/forts-strategy-lab/scripts/run_forts_research.py`
+- Weighted optimizer (repository context): `research/forts-strategy-lab/scripts/optimize_strategy_weights.py`
 - Health: `curl -s $GATEWAY_URL/health` and `curl -s $STRATEGY_RUNNER_URL/health`
 - Instances: `curl -s $STRATEGY_RUNNER_URL/instances`
 - Reload config after edits: `curl -s -X POST $STRATEGY_RUNNER_URL/config/reload`

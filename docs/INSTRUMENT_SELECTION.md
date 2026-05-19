@@ -18,9 +18,11 @@
 
 | Фьючерс | Тикер | UID | Стратегия |
 |---------|-------|-----|-----------|
-| Brent mini | `BMM6` | `dc1ffa30-70a4-4a7b-807a-4f31c2951f7e` | `level_bounce` |
-| Natural Gas mini | `NGM6` | `117a1408-431f-4ba0-a041-5bba3123d4a8` | `sma_crossover` |
-| Mechel futures | `MCM6` | `6f4563c0-e853-46f2-98c7-3abce3cc7517` | `level_bounce` |
+| Brent mini | `BMM6` | `dc1ffa30-70a4-4a7b-807a-4f31c2951f7e` | `sma_crossover 1h fast=4 slow=9 trailing_stop_pct=0.005` |
+| Natural Gas mini | `NGM6` | `117a1408-431f-4ba0-a041-5bba3123d4a8` | `sma_crossover 1h fast=5 slow=17` |
+| Mechel futures | `MCM6` | `6f4563c0-e853-46f2-98c7-3abce3cc7517` | `sma_crossover 1h fast=4 slow=9` |
+
+`fut-brent-mini-lb` and `fut-mechel-lb` keep legacy IDs for continuity; do not infer strategy type from the ID suffix.
 
 UID фьючерсов меняются при ролловере. Проверка актуальных контрактов:
 

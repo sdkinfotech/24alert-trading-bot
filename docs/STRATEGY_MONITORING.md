@@ -26,7 +26,8 @@ ssh adm-srv03-cloud@176.123.160.234
 | Healthcheck | `curl -s http://127.0.0.1:9020/health` | `{"status":"ok"}` |
 | Инстанс работает | `curl -s http://127.0.0.1:9020/instances` | `"running": true` |
 | PnL | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/pnl` | JSON с realized/unrealized/total |
-| Позиции | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/ledger` | Карты quantities/avg_prices |
+| Broker truth по позициям | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/portfolio` | Позиции счёта T-Invest, filtered by strategy instrument |
+| Runner ledger | `curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/ledger` | Локальная книга quantities/avg_prices |
 | Последние сделки | `curl -s 'http://127.0.0.1:9020/instances/fut-gas-mini-sma/executions?limit=5'` | Массив записей (или null если сделок ещё не было) |
 | Дневной отчёт | `curl -s 'http://127.0.0.1:9020/report/daily?date=2026-05-15'` | Счётчики signals/orders/executions |
 | Ошибки в логах | `docker logs --tail 50 24alert-strategy-runner \| grep -i error` | Пусто — всё хорошо |
@@ -39,9 +40,11 @@ ssh adm-srv03-cloud@176.123.160.234
 
 ### Что показывает
 
-- **Indicator Chart** — свечной график цены инструмента (OHLC). Для SMA-стратегий отображает линии Fast/Slow SMA; для ORB — горизонтальные пунктирные линии Range High (зелёная) / Range Low (красная). Маркеры сигналов: зелёная стрелка вверх = buy, красная стрелка вниз = sell. Счётчик сигналов с момента запуска.
+- **Indicator Chart** — свечной график цены инструмента (OHLC). Для SMA-стратегий отображает линии Fast/Slow SMA; для ORB — горизонтальные пунктирные линии Range High (зелёная) / Range Low (красная). Маркеры сигналов: зелёная стрелка вверх = buy, красная стрелка вниз = sell. Фиолетовые точки `FILL` строятся из journal executions, поэтому остаются видимыми после restart, если исполнение было записано runner.
+- **Protective trailing** — для SMA-стратегий с `trailing_stop_pct` dashboard показывает оранжевую пунктирную линию trailing stop. Срабатывание trailing отправляет market exit и закрывает позицию в `FLAT`, не переворачивая её.
+- **Позиции и сверка источников** — отдельная панель broker truth / runner ledger / strategy state. Broker truth берётся напрямую из портфеля T-Invest и должен считаться главным источником активной позиции после restart.
 - **Trade Event Log** — хронологическая лента событий (signals → signal cancelled → orders → executions) с цветовой кодировкой и фильтрами по типу. `Signal cancelled` означает, что стратегия сформировала торговую идею, но runner остановил её до заявки: например, weekend/session guard, risk rejection или ошибка отправки.
-- **Stats Panel** — Total/Realized/Unrealized PnL, текущая позиция, дневная статистика.
+- **Stats Panel** — Total/Realized/Unrealized PnL, runner ledger, broker truth, дневная статистика.
 - **Instance Selector** — выбор инстанса, статус (running/stopped).
 
 Автообновление каждые 30 секунд.
@@ -68,8 +71,11 @@ npm run dev
 | Эндпоинт | Описание |
 |----------|----------|
 | `GET /instances/{id}/indicator` | Данные индикатора: свечи с OHLC + Fast/Slow SMA, история сигналов |
+| `GET /instances/{id}/portfolio` | Broker-side portfolio snapshot: активные позиции по счёту, отметка `in_instance`, expected yield, sync time |
 | `GET /instances/{id}/signals?limit=N` | История сигналов из журнала |
 | `GET /instances/{id}/events?limit=N` | Объединённый таймлайн (signals + signal_cancelled + orders + executions) |
+
+Важно: при startup runner до подписки на новые свечи синхронизирует broker positions в runner ledger и strategy state. `/portfolio` остаётся главным внешним источником истины, а расхождение `/portfolio`, `/ledger` и `strategy state` после startup sync считается опасным состоянием, а не нормой.
 
 ### Сборка
 

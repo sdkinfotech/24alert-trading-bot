@@ -1,0 +1,290 @@
+[
+  {
+    "ticker": "BMM6",
+    "uid": "dc1ffa30-70a4-4a7b-807a-4f31c2951f7e",
+    "name": "BRM-6.26 Нефть Brent (мини)",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1060,
+    "candles_1h": 1156,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "MCM6",
+    "uid": "6f4563c0-e853-46f2-98c7-3abce3cc7517",
+    "name": "MTLR-6.26 Мечел",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 862,
+    "candles_1h": 934,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "NGM6",
+    "uid": "117a1408-431f-4ba0-a041-5bba3123d4a8",
+    "name": "NG-6.26 Природный газ",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1038,
+    "candles_1h": 1118,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "BMN6",
+    "uid": "3e7e5811-1d1e-467a-bc3d-719b6095bd31",
+    "name": "BRM-7.26 Нефть Brent (мини)",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1051,
+    "candles_1h": 1106,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "BRM6",
+    "uid": "133d73d0-d86c-4976-8333-0437f1e26f16",
+    "name": "BR-6.26 Нефть Brent",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1060,
+    "candles_1h": 1203,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "BRN6",
+    "uid": "2ae01b47-c07a-4378-92d2-192eac373447",
+    "name": "BR-7.26 Нефть Brent",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1053,
+    "candles_1h": 1163,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "GZM6",
+    "uid": "61ef86a5-336a-4add-80d9-0f374766336b",
+    "name": "GAZR-6.26 Газпром",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1057,
+    "candles_1h": 1183,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "GZU6",
+    "uid": "36ee1cd6-0026-432a-a806-d045003b70d0",
+    "name": "GAZR-9.26 Газпром",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 899,
+    "candles_1h": 1042,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "MCU6",
+    "uid": "74087cea-f6b4-4144-99f8-b4a6646a9cb9",
+    "name": "MTLR-9.26 Мечел",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 397,
+    "candles_1h": 432,
+    "candles_daily": 55,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "MXM6",
+    "uid": "d64d4d08-03f5-4b25-938a-be39005d1b9a",
+    "name": "MIX-6.26 Индекс МосБиржи",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1057,
+    "candles_1h": 1189,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "MXU6",
+    "uid": "8e2d5267-4f64-48a1-9f40-3c233b366f22",
+    "name": "MIX-9.26 Индекс МосБиржи",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 776,
+    "candles_1h": 932,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "NGK6",
+    "uid": "8ef94c1a-4daf-4385-a1e9-a2f5e392c22a",
+    "name": "NG-5.26 Природный газ",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1058,
+    "candles_1h": 1176,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "RIM6",
+    "uid": "75ae795b-e89f-4ce8-8b67-e1cc76b07a42",
+    "name": "RTS-6.26 Индекс РТС",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1027,
+    "candles_1h": 1150,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "RIU6",
+    "uid": "4c7312c3-6f66-46a1-a65b-ed399b90276e",
+    "name": "RTS-9.26 Индекс РТС",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 593,
+    "candles_1h": 797,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "SRM6",
+    "uid": "755574b5-703f-4a2f-9e1d-137c8cb90850",
+    "name": "SBRF-6.26 Сбер Банк (обыкновенные)",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 1053,
+    "candles_1h": 1177,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  },
+  {
+    "ticker": "SRU6",
+    "uid": "f532beef-65bb-4a42-894c-e9bc728f93c4",
+    "name": "SBRF-9.26 Сбер Банк (обыкновенные)",
+    "class_code": "SPBFUT",
+    "lot": 1,
+    "candles_15m": 832,
+    "candles_1h": 1063,
+    "candles_daily": 57,
+    "used_days_15m": 21,
+    "used_days_1h": 90,
+    "used_days_daily": 60,
+    "errors": {
+      "15m": null,
+      "1h": null,
+      "1d": null
+    }
+  }
+]

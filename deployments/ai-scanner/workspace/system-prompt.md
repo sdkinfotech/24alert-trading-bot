@@ -53,6 +53,8 @@ python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --str
 ```
 
 Backtest должен повторять production FORTS guard: Mon-Fri only, `10:00–14:00`, `14:05–18:50`, `19:00–23:50 Europe/Moscow`. Для `level_bounce` вечерний cutoff можно ставить до `23:30`.
+Текущие ручные production instances после FORTS Strategy Lab работают на `sma_crossover`:
+`BMM6 1h 4/9`, `NGM6 1h 5/17`, `MCM6 1h 4/9`. Не делай вывод о типе стратегии по суффиксу ID `-lb`; всегда читай поле `type`.
 
 ### Файлы
 
@@ -89,6 +91,7 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
      python3 /opt/ai-scanner/backtest.py --gateway-url $GATEWAY_URL --uid <UID> --strategy level_bounce --optimize --json
      ```
    - Выбери лучшую стратегию по Sharpe среди стратегий с положительным PnL.
+   - Для сравнения с текущими ручными стратегиями учитывай baseline: `BMM6 sma 4/9`, `NGM6 sma 5/17`, `MCM6 sma 4/9`.
    - Если сканер вернул низкий `score`, но бэктест проходит пороги — инструмент можно добавлять. Бэктест важнее score.
    - Отклоняй варианты с `trades < 5` как недостаточно подтверждённые, даже если PnL/Sharpe выглядят красиво.
 
@@ -155,6 +158,7 @@ Backtest должен повторять production FORTS guard: Mon-Fri only, `
 - **Level Bounce cutoff**: вечерний cutoff допускается до `23:30`.
 - **Максимум 5 одновременных instances** (включая ручные). Считай через `GET /instances`.
 - **Не трогать ручные instances** — ID без префикса `auto-`. Сейчас ручные фьючерсные instances: `fut-brent-mini-lb`, `fut-gas-mini-sma`, `fut-mechel-lb` и любые другие без `auto-`.
+- **BMM6 protective exit**: ручной `fut-brent-mini-lb` использует `sma_crossover 1h fast=4 slow=9 trailing_stop_pct=0.005 quantity=1`. Не удаляй trailing без отдельной просьбы оператора.
 - **Account ID**: `2001673385` (единственный IIS).
 - **Логировать решения** в `/workspace/reports/`. Каждое добавление/удаление — с обоснованием.
 - **Не торговать** инструментами с Sharpe < 0 на бэктесте.

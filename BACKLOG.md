@@ -1,390 +1,48 @@
-# Product Backlog — 24alert Trading Bot
-
-**Last Updated**: 2026-04-03  
-**Version**: 1.0
-
----
-
-## Backlog Status
-
-| ID | Title | Priority | Complexity | Status | Phase |
-|---|-------|----------|-----------|--------|-------|
-| TASK-004 | CI/CD Pipeline (GitHub Actions) | HIGH | M | Done | Phase 2 |
-| TASK-005 | Full API E2E Testing (Sandbox) | HIGH | L | Done | Phase 2 |
-| TASK-018 | Kubernetes Migration & Scaling | HIGH | XL | Planned | Phase 2 |
-| TASK-006 | Monitoring, Logging & Alerting | HIGH | L | Planned | Phase 2 |
-| TASK-007 | Real Trading Strategies (Alpha) | MEDIUM | XL | Backlog | Phase 3 |
-| TASK-008 | Strategy Plugin Marketplace | MEDIUM | XXL | Backlog | Phase 3 |
-| TASK-009 | Backtesting Engine | MEDIUM | L | Backlog | Phase 3 |
-| TASK-010 | User Management & Multi-Account | LOW | L | Backlog | Phase 3 |
-| TASK-011 | Web Dashboard (React) | LOW | L | Backlog | Phase 3 |
-| TASK-012 | Mobile App (React Native) | LOW | XXL | Backlog | Phase 4 |
-| TASK-013 | Advanced Risk Management | MEDIUM | M | Backlog | Phase 3 |
-| TASK-014 | Database Migration (PostgreSQL) | HIGH | M | Backlog | Phase 2 |
-| TASK-015 | Performance Optimization | MEDIUM | M | Backlog | Phase 2 |
-| TASK-016 | Security Audit & Hardening | HIGH | M | Backlog | Phase 2 |
-| TASK-017 | Disaster Recovery & Backup | HIGH | L | Backlog | Phase 2 |
-| TASK-019 | OrderBook WebSocket Stream (gateway + nginx TLS) | HIGH | M | **Done** | Phase 2 |
-
----
-
-## Phase 2 (Current: Stabilization & Scale)
-
-### TASK-005: Full API E2E Testing (Sandbox)
-**Priority**: HIGH | **Complexity**: L | **Effort**: 2-3 дня
-
-**Description**: E2E тестирование всех 22 REST endpoints на T-Invest sandbox.
-
-**Results**: 43 тестов, 38 pass, 4 skip (sandbox limitation — stop orders), 0 fail.
-
-**Scope**:
-- Orders: market, limit, bestprice, replace, cancel
-- Stop orders: stop_loss, take_profit, stop_limit (skipped — sandbox)
-- Market data: candles (1min, 5min, 1h, day), orderbook (depth 5/20), prices, trading status
-- Portfolio: positions, portfolio, limits, operations, margin
-- Risk: circuit breaker status, reset
-- Negative/edge cases: 12 tests
-- Full trade roundtrip: buy → position → operations → sell
-
-**Dependencies**: TASK-004 (CI/CD)
-
-**Roles**: Backend (tests), Tester (coverage review), Tech-lead (sign-off)
-
----
-
-### TASK-004: CI/CD Pipeline (GitHub Actions)
-**Priority**: HIGH | **Complexity**: M | **Effort**: 3-5 дней
-
-**Description**: Полностью автоматизированный CI/CD пайплайн. При `git push origin main`:
-1. Tests + linting (Go)
-2. Docker build & push
-3. SSH deploy на prod-сервер
-4. Health checks + smoke tests
-5. Slack notifications
-
-**Dependencies**: TASK-003 (deployment готов)
-
-**Roles**: Backend (tests), DevOps (workflow), Tester (e2e), Tech-lead (review)
-
----
-
-### TASK-018: Kubernetes Migration & Scaling
-**Priority**: HIGH | **Complexity**: XL | **Effort**: 2 недели
-
-**Description**: Миграция с docker-compose на Kubernetes для масштабирования и надёжности.
-
-**Scope**:
-- K8s manifests (Deployments, Services, ConfigMaps, Secrets)
-- Helm charts для версионирования
-- Auto-scaling (HPA) для микросервисов
-- Persistent volumes для данных
-- Ingress для маршрутизации
-
-**Dependencies**: TASK-004 (CI/CD)
-
-**Roles**: DevOps (K8s), Backend (optimizations), Tech-lead (architecture)
-
----
-
-### TASK-019: OrderBook WebSocket Stream (gateway + nginx TLS)
-
-**Status**: **Done** (2026-04-17) | **Priority**: HIGH | **Complexity**: M | **Effort**: 1–2 дня
-
-**Description**: Публичный WebSocket-endpoint на gateway, транслирующий T-Invest `OrderBookStream` в унифицированный JSON для внешних потребителей (в первую очередь Traderbook TB-036, плотности стакана).
-
-**Scope** (выполнено):
-- `internal/gateway/handlers/stream.go` — новый handler `StreamOrderBook` с протоколом JSON `{type: snapshot|ping|error, uid, depth, bids[], asks[], ts}` (типы `StreamOrderBookMsg`, `StreamLevel`).
-- Регистрация маршрута `GET /api/v1/stream/orderbook` рядом с существующим `/stream/candles`.
-- Unit-тесты: `internal/gateway/handlers/stream_orderbook_test.go` (4 кейса: валидация параметров + сериализация snapshot/ping).
-- Деплой на srv03-cloud (176.123.160.234): gateway → `127.0.0.1:18080`, nginx 8080/tcp (TLS, Let's Encrypt DNS-01, IP-ACL).
-- Публичный URL: `wss://gateway.24alert.ru:8080/api/v1/stream/orderbook` (whitelist IP потребителей).
-- Документация: `docs/STREAM_ORDERBOOK.md` (контракт, операции, траблшутинг).
-
-**Consumers**: Traderbook `services/market-data` (подписка на 5 UID в первой фазе, запланированы 50 → 200 после недельного наблюдения).
-
-**Dependencies**: TASK-003 (gateway production), токены T-Invest.
-
-**Roles**: Backend (handler + tests), DevOps (nginx, TLS, DNS, ACL), Tester (wss smoke), Tech-lead (review).
-
----
-
-### TASK-006: Monitoring, Logging & Alerting
-**Priority**: HIGH | **Complexity**: L | **Effort**: 1 неделя
-
-**Description**: Production-ready мониторинг и алертинг.
-
-**Scope**:
-- Prometheus metrics (для всех 5 сервисов)
-- Grafana dashboards
-- ELK Stack (Elasticsearch + Kibana) для логов
-- AlertManager для уведомлений
-- SLA tracking
-
-**Dependencies**: TASK-003 (production running)
-
-**Roles**: DevOps (infrastructure), Backend (metrics), Tech-lead (alerts)
-
----
-
-### TASK-014: Database Migration (PostgreSQL)
-**Priority**: HIGH | **Complexity**: M | **Effort**: 5-7 дней
-
-**Description**: Добавить PostgreSQL для хранения истории заявок, портфеля, логов вместо in-memory.
-
-**Scope**:
-- Database schema (orders, positions, operations, logs)
-- Migrations (schema versioning)
-- Connection pooling (pgBouncer)
-- Backup & restore strategy
-- Performance tuning
-
-**Dependencies**: TASK-003
-
-**Roles**: Backend (schema), DevOps (infra), Tech-lead (design)
-
----
-
-### TASK-016: Security Audit & Hardening
-**Priority**: HIGH | **Complexity**: M | **Effort**: 1 неделя
-
-**Description**: Security audit и hardening всей системы.
-
-**Scope**:
-- OWASP Top 10 review
-- API authentication (JWT)
-- Rate limiting enhancement
-- Secret rotation
-- Network segmentation
-- Penetration testing
-
-**Dependencies**: TASK-003
-
-**Roles**: Tech-lead (audit), Backend (implementation), DevOps (infra)
-
----
-
-### TASK-017: Disaster Recovery & Backup
-**Priority**: HIGH | **Complexity**: L | **Effort**: 3-5 дней
-
-**Description**: Disaster recovery plan и автоматические бэкапы.
-
-**Scope**:
-- Database backups (daily + continuous)
-- State snapshots
-- Failover mechanism
-- RTO/RPO targets
-- Restore testing
-
-**Dependencies**: TASK-014 (database)
-
-**Roles**: DevOps (backups), Tech-lead (planning)
-
----
-
-### TASK-015: Performance Optimization
-**Priority**: MEDIUM | **Complexity**: M | **Effort**: 1 неделя
-
-**Description**: Оптимизация производительности на основе метрик из TASK-006.
-
-**Scope**:
-- Go code profiling (CPU, memory)
-- Database query optimization
-- Caching strategy (Redis)
-- Connection pooling
-- API response time targets
-
-**Dependencies**: TASK-006 (metrics)
-
-**Roles**: Backend (optimization), DevOps (profiling)
-
----
-
-## Phase 3 (Growth: Features & Expansion)
-
-### TASK-007: Real Trading Strategies (Alpha)
-**Priority**: MEDIUM | **Complexity**: XL | **Effort**: 3-4 недели
-
-**Description**: Разработка первых реальных торговых стратегий.
-
-**Scope**:
-- Technical Analysis indicators (MA, RSI, MACD, etc.)
-- Signal generation logic
-- Risk-adjusted position sizing
-- Strategy backtesting
-- Live paper trading
-
-**Dependencies**: TASK-005 (K8s for scaling)
-
-**Roles**: Backend (algorithm), Analyst (research), Tester (validation)
-
----
-
-### TASK-008: Strategy Plugin Marketplace
-**Priority**: MEDIUM | **Complexity**: XXL | **Effort**: 4-6 недель
-
-**Description**: Marketplace для публикации и использования пользовательских стратегий.
-
-**Scope**:
-- Strategy versioning & management
-- Community rating & reviews
-- Strategy execution sandbox
-- Revenue sharing model
-- Plugin store UI
-
-**Dependencies**: TASK-007 (strategies), TASK-011 (dashboard)
-
-**Roles**: Full-stack (everyone)
-
----
-
-### TASK-009: Backtesting Engine
-**Priority**: MEDIUM | **Complexity**: L | **Effort**: 2-3 недели
-
-**Description**: Встроенный бэктестинг для валидации стратегий на исторических данных.
-
-**Scope**:
-- Historical data ingestion (T-Invest API)
-- Backtesting simulation engine
-- Performance metrics (Sharpe, Sortino, DD, etc.)
-- Optimization framework
-- Report generation
-
-**Dependencies**: TASK-007 (strategies)
-
-**Roles**: Backend (engine), Analyst (metrics)
-
----
-
-### TASK-013: Advanced Risk Management
-**Priority**: MEDIUM | **Complexity**: M | **Effort**: 1-2 недели
-
-**Description**: Продвинутый риск-менеджмент.
-
-**Scope**:
-- Portfolio-level risk controls
-- Correlation matrix
-- VaR (Value at Risk)
-- Stress testing
-- Scenario analysis
-
-**Dependencies**: TASK-006 (metrics)
-
-**Roles**: Backend (logic), Analyst (models)
-
----
-
-### TASK-010: User Management & Multi-Account
-**Priority**: LOW | **Complexity**: L | **Effort**: 1 неделя
-
-**Description**: Поддержка нескольких пользователей и счётов.
-
-**Scope**:
-- User registration & authentication (JWT)
-- Multi-account support per user
-- Permission model (read/write/admin)
-- Audit logging
-- Account switching
-
-**Dependencies**: TASK-016 (security)
-
-**Roles**: Backend (auth), Frontend (UI)
-
----
-
-### TASK-011: Web Dashboard (React)
-**Priority**: LOW | **Complexity**: L | **Effort**: 2-3 недели
-
-**Description**: Web UI для monitoring и control trading bot.
-
-**Scope**:
-- Real-time portfolio view
-- Order history & management
-- Strategy management
-- Performance charts
-- Alerts & notifications
-
-**Dependencies**: TASK-006 (metrics), TASK-010 (auth)
-
-**Roles**: Frontend (React), Backend (API)
-
----
-
-## Phase 4 (Long-term: Enterprise)
-
-### TASK-012: Mobile App (React Native)
-**Priority**: LOW | **Complexity**: XXL | **Effort**: 2-3 месяца
-
-**Description**: Native iOS/Android приложение.
-
-**Dependencies**: TASK-011 (web dashboard), TASK-010 (auth)
-
-**Roles**: Mobile (React Native), Backend (API enhancements)
-
----
-
-## Adding Tasks to Backlog
-
-**Процесс для планировщика**:
-
-1. **Create new task**
-   ```
-   TASK-NNN/task.md (1-2 страницы)
-   - Description
-   - Requirements
-   - DoD
-   - Dependencies
-   - Priority
-   ```
-
-2. **Update backlog** (этот файл)
-   - Добавить строку в таблицу
-   - Обновить фазу
-
-3. **When ready to start**
-   - Изменить Status на "In Progress"
-   - Запустить планировщика (create plan.md, prompts)
-
-4. **After completion**
-   - Изменить Status на "Done"
-   - Link handoff'ы
-
----
-
-## Prioritization Matrix
-
-```
-HIGH:   Critical for MVP, platform stability, security, performance
-MEDIUM: Nice-to-have features, enhancements
-LOW:    Future, nice ideas, community features
-```
-
-**Complexity**:
-- S (Small): 1-2 дней
-- M (Medium): 3-7 дней
-- L (Large): 1-2 недели
-- XL (XL): 2-4 недели
-- XXL (Huge): 1+ месяца
-
----
-
-## Velocity & Timeline
-
-**Current**: TASK-001–003 completed (3 tasks, ~4 недели)
-
-**Next 3 months**:
-- TASK-004 (CI/CD): 1 неделя
-- TASK-005 (K8s): 2 недели
-- TASK-006 (Monitoring): 1 неделя
-- TASK-014 (Database): 1 неделя
-- TASK-016 (Security): 1 неделя
-
-**Estimated: Stabilization phase = 6-8 недель**
-
----
-
-## Notes
-
-- Backlog может меняться в зависимости от приоритетов
-- Новые задачи добавляются по мере появления требований
-- Dependencies должны быть проверены перед стартом задачи
-- Все задачи следуют конвейеру ролей (Planner → Backend/DevOps → Tester → Tech-lead)
+# Product Backlog — 24alert
+
+**Last Updated**: 2026-05-18  
+**Status**: Phase 2 — production stabilization for futures-only trading
+
+## Current Production Baseline
+
+- Server: `srv03-cloud` / `176.123.160.234`.
+- Compose project: `24alert`.
+- Services: `gateway`, `order-svc`, `marketdata-svc`, `portfolio-svc`, `risk-svc`, `redis`, `strategy-runner`, `ai-scanner`.
+- Trading: MOEX FORTS futures only (`BMM6`, `NGM6`, `MCM6`).
+- Canonical docs: Obsidian `24alert/`; repo docs are concise technical references.
+
+## Active / Planned Work
+
+| ID | Title | Priority | Complexity | Status | Notes |
+|----|-------|----------|------------|--------|-------|
+| TASK-027 | Production trading safety remediation | Critical | M | In Progress | Fail-closed live trading, mandatory protective exits, policy/docs after real-money incident. |
+| TASK-020 | Futures margin and exact PnL accounting | Critical | M | Planned | Integrate `GetFuturesMargin`, price-step value, commission-aware reporting. |
+| TASK-021 | Futures contract rollover | High | M | Planned | Resolve/replace expiring futures UID for manual and auto instances. |
+| TASK-022 | Strategy monitoring rollout | High | S | Planned | Decide shared Traderbook Prometheus vs local `monitoring` profile; scrape `strategy-runner:9120`. |
+| TASK-023 | Dashboard access hardening | High | S | Planned | Public nginx routes expose dashboard/API; decide auth/ACL. |
+| TASK-024 | Secret-bearing task archive cleanup | Critical | S | Blocked | `.tasks/TASK-003/devops/DEPLOYMENT.md` may contain prod token; requires rotation/history decision. |
+| TASK-025 | AI Scanner production safeguards | Medium | M | Planned | Paper-mode/confirmation gate before auto strategy changes. |
+| TASK-026 | Durable event storage decision | Medium | L | Backlog | SQLite journal is current; DB may be needed for reporting/history. |
+
+## Recently Completed
+
+| ID | Title | Status | Notes |
+|----|-------|--------|-------|
+| TASK-019 | OrderBook WebSocket Stream | Done | Public WSS stream for Traderbook, nginx TLS/ACL, docs. |
+| STRAT-001 | Strategy runner productionization | Done | Dashboard, journal, ledger, watchdog, futures-only config. |
+| STRAT-002 | AI Scanner futures-only selection | Done | Futures endpoint, contract price filter, backtest-first decision. |
+| OPS-001 | Production documentation refresh | Done | Obsidian runbooks updated to real prod state. |
+| OPS-002 | Repository cleanup pass | In Progress | Archive old tasks/docs, remove cache/temp artifacts. |
+
+## Historical Archive
+
+- `.archive/tasks/` contains old completed task handoffs.
+- `.tasks/TASK-003/` remains active only for a separate secret review.
+- `.tasks/TASK-019/` remains because it is the current valuable handoff history.
+
+## Planner Rules
+
+1. Create new work as `TASK-NNN` only when it has a clear owner and definition of done.
+2. Keep product/ops canon in Obsidian; keep repo docs short and code-adjacent.
+3. Do not store tokens, credentials, or production secrets in `.tasks`, docs, or examples.
+4. Before moving work to Done, update this backlog and the relevant Obsidian note.

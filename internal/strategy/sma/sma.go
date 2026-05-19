@@ -31,26 +31,33 @@ type SignalPoint struct {
 
 // IndicatorSnapshot is the full indicator state returned by IndicatorData().
 type IndicatorSnapshot struct {
-	InstanceID    string        `json:"instance_id,omitempty"`
-	InstrumentUID string        `json:"instrument_uid,omitempty"`
-	FastN         int           `json:"fast_period"`
-	SlowN         int           `json:"slow_period"`
-	Position      int64         `json:"position"`
-	Candles       []CandlePoint `json:"candles"`
-	Signals       []SignalPoint `json:"signals"`
+	InstanceID         string        `json:"instance_id,omitempty"`
+	InstrumentUID      string        `json:"instrument_uid,omitempty"`
+	FastN              int           `json:"fast_period"`
+	SlowN              int           `json:"slow_period"`
+	Position           int64         `json:"position"`
+	TrailingStopPct    float64       `json:"trailing_stop_pct,omitempty"`
+	TrailingBestPrice  float64       `json:"trailing_best_price,omitempty"`
+	TrailingStopPrice  float64       `json:"trailing_stop_price,omitempty"`
+	TrailingStopActive bool          `json:"trailing_stop_active,omitempty"`
+	Candles            []CandlePoint `json:"candles"`
+	Signals            []SignalPoint `json:"signals"`
 }
 
 const maxHistoryLen = 1000
 
 // Crossover implements a minimal SMA crossover on completed candles.
 type Crossover struct {
-	fastN        int
-	slowN        int
-	qty          int64
-	closes       []float64
-	pos          int64 // +1 long, -1 short, 0 flat — confirmed by broker fill
-	pendingEntry int64 // +1 or -1 while order is in flight, 0 when idle
-	stopped      bool
+	fastN           int
+	slowN           int
+	qty             int64
+	trailingStopPct float64
+	closes          []float64
+	pos             int64 // +1 long, -1 short, 0 flat — confirmed by broker fill
+	pendingEntry    int64 // +1 or -1 while entry/reverse order is in flight, 0 when idle
+	pendingExit     bool  // true while protective exit order is in flight
+	trailingBest    float64
+	stopped         bool
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -88,9 +95,15 @@ func (c *Crossover) Configure(params map[string]string) error {
 	if c.qty < 1 {
 		return fmt.Errorf("quantity must be >= 1")
 	}
+	c.trailingStopPct = floatFrom(params, "trailing_stop_pct", 0)
+	if c.trailingStopPct < 0 || c.trailingStopPct >= 0.5 {
+		return fmt.Errorf("trailing_stop_pct must be >= 0 and < 0.5")
+	}
 	c.closes = c.closes[:0]
 	c.pos = 0
 	c.pendingEntry = 0
+	c.pendingExit = false
+	c.trailingBest = 0
 	return nil
 }
 
@@ -98,7 +111,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 	if c.stopped || !k.IsComplete {
 		return nil
 	}
-	if c.pendingEntry != 0 {
+	if c.pendingEntry != 0 || c.pendingExit {
 		return nil
 	}
 	c.closes = append(c.closes, k.Close)
@@ -113,6 +126,10 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 	slow := smaTail(c.closes, c.slowN)
 
 	c.recordCandle(k, fast, slow)
+
+	if sig, ok := c.trailingStopSignal(k); ok {
+		return []strategy.Signal{sig}
+	}
 
 	prev := c.closes[:len(c.closes)-1]
 	if len(prev) < c.slowN {
@@ -133,6 +150,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		out = append(out, sig)
 		c.recordSignal(k.Time, "buy", "sma golden cross", k.Close)
 		c.pendingEntry = 1
+		c.trailingBest = 0
 	} else if prevFast >= prevSlow && fast < slow && c.pos >= 0 {
 		sig := strategy.Signal{
 			InstrumentUID: k.InstrumentUID,
@@ -145,8 +163,103 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		out = append(out, sig)
 		c.recordSignal(k.Time, "sell", "sma death cross", k.Close)
 		c.pendingEntry = -1
+		c.trailingBest = 0
 	}
 	return out
+}
+
+// OnLiveCandle updates and triggers only the protective trailing stop on an
+// in-progress candle. SMA crosses still wait for completed bars in OnCandle.
+func (c *Crossover) OnLiveCandle(k strategy.Candle) []strategy.Signal {
+	if c.stopped || k.IsComplete || c.pendingEntry != 0 || c.pendingExit {
+		return nil
+	}
+	if sig, ok := c.liveTrailingStopSignal(k); ok {
+		return []strategy.Signal{sig}
+	}
+	return nil
+}
+
+func (c *Crossover) trailingStopSignal(k strategy.Candle) (strategy.Signal, bool) {
+	if c.trailingStopPct <= 0 || c.pos == 0 {
+		return strategy.Signal{}, false
+	}
+	if c.trailingBest <= 0 {
+		c.trailingBest = k.Close
+	}
+	if c.pos > 0 {
+		c.trailingBest = max(c.trailingBest, k.High)
+		stop := c.trailingBest * (1 - c.trailingStopPct)
+		if k.Low <= stop {
+			c.pendingExit = true
+			c.recordSignal(k.Time, "sell", "sma trailing stop", stop)
+			return strategy.Signal{
+				InstrumentUID: k.InstrumentUID,
+				Direction:     "sell",
+				Quantity:      c.qty,
+				OrderType:     "market",
+				Reason:        fmt.Sprintf("sma trailing stop %.2f%%", c.trailingStopPct*100),
+				CandleTime:    k.Time,
+			}, true
+		}
+		return strategy.Signal{}, false
+	}
+	c.trailingBest = min(c.trailingBest, k.Low)
+	stop := c.trailingBest * (1 + c.trailingStopPct)
+	if k.High >= stop {
+		c.pendingExit = true
+		c.recordSignal(k.Time, "buy", "sma trailing stop", stop)
+		return strategy.Signal{
+			InstrumentUID: k.InstrumentUID,
+			Direction:     "buy",
+			Quantity:      c.qty,
+			OrderType:     "market",
+			Reason:        fmt.Sprintf("sma trailing stop %.2f%%", c.trailingStopPct*100),
+			CandleTime:    k.Time,
+		}, true
+	}
+	return strategy.Signal{}, false
+}
+
+func (c *Crossover) liveTrailingStopSignal(k strategy.Candle) (strategy.Signal, bool) {
+	if c.trailingStopPct <= 0 || c.pos == 0 {
+		return strategy.Signal{}, false
+	}
+	if c.trailingBest <= 0 {
+		c.trailingBest = k.Close
+	}
+	if c.pos > 0 {
+		c.trailingBest = max(c.trailingBest, maxPositive(k.High, k.Close))
+		stop := c.trailingBest * (1 - c.trailingStopPct)
+		if k.Close > 0 && k.Close <= stop {
+			c.pendingExit = true
+			c.recordSignal(k.Time, "sell", "sma live trailing stop", stop)
+			return strategy.Signal{
+				InstrumentUID: k.InstrumentUID,
+				Direction:     "sell",
+				Quantity:      c.qty,
+				OrderType:     "market",
+				Reason:        fmt.Sprintf("sma live trailing stop %.2f%%", c.trailingStopPct*100),
+				CandleTime:    k.Time,
+			}, true
+		}
+		return strategy.Signal{}, false
+	}
+	c.trailingBest = min(c.trailingBest, minPositive(k.Low, k.Close))
+	stop := c.trailingBest * (1 + c.trailingStopPct)
+	if k.Close > 0 && k.Close >= stop {
+		c.pendingExit = true
+		c.recordSignal(k.Time, "buy", "sma live trailing stop", stop)
+		return strategy.Signal{
+			InstrumentUID: k.InstrumentUID,
+			Direction:     "buy",
+			Quantity:      c.qty,
+			OrderType:     "market",
+			Reason:        fmt.Sprintf("sma live trailing stop %.2f%%", c.trailingStopPct*100),
+			CandleTime:    k.Time,
+		}, true
+	}
+	return strategy.Signal{}, false
 }
 
 func (c *Crossover) recordCandle(k strategy.Candle, fast, slow float64) {
@@ -173,12 +286,26 @@ func (c *Crossover) IndicatorData() interface{} {
 	sigs := make([]SignalPoint, len(c.signals))
 	copy(sigs, c.signals)
 	return IndicatorSnapshot{
-		FastN:    c.fastN,
-		SlowN:    c.slowN,
-		Position: c.pos,
-		Candles:  candles,
-		Signals:  sigs,
+		FastN:              c.fastN,
+		SlowN:              c.slowN,
+		Position:           c.pos,
+		TrailingStopPct:    c.trailingStopPct,
+		TrailingBestPrice:  c.trailingBest,
+		TrailingStopPrice:  c.trailingStopPrice(),
+		TrailingStopActive: c.trailingStopPct > 0 && c.pos != 0 && c.trailingBest > 0,
+		Candles:            candles,
+		Signals:            sigs,
 	}
+}
+
+func (c *Crossover) trailingStopPrice() float64 {
+	if c.trailingStopPct <= 0 || c.pos == 0 || c.trailingBest <= 0 {
+		return 0
+	}
+	if c.pos > 0 {
+		return c.trailingBest * (1 - c.trailingStopPct)
+	}
+	return c.trailingBest * (1 + c.trailingStopPct)
 }
 
 func (c *Crossover) OnOrderbook(_ strategy.Orderbook) []strategy.Signal { return nil }
@@ -186,20 +313,31 @@ func (c *Crossover) OnOrderbook(_ strategy.Orderbook) []strategy.Signal { return
 func (c *Crossover) OnExecution(ev strategy.ExecutionEvent) {
 	switch strings.ToLower(ev.Status) {
 	case "filled", "partially_filled":
+		if c.pendingExit {
+			c.pos = 0
+			c.pendingExit = false
+			c.trailingBest = 0
+			return
+		}
 		if c.pendingEntry != 0 {
 			c.pos = c.pendingEntry
 			c.pendingEntry = 0
+			if ev.AvgPrice > 0 {
+				c.trailingBest = ev.AvgPrice
+			} else {
+				c.trailingBest = 0
+			}
 		}
 	case "cancelled", "rejected":
-		if strings.Contains(strings.ToLower(ev.Message), "reject") {
-			c.pendingEntry = 0
-		}
+		c.pendingEntry = 0
+		c.pendingExit = false
 	}
 }
 
 // OnSignalDispatchFailed implements strategy.SignalDispatchFailureHandler.
 func (c *Crossover) OnSignalDispatchFailed(_ strategy.Signal, _ string) {
 	c.pendingEntry = 0
+	c.pendingExit = false
 }
 
 func (c *Crossover) Stop() {
@@ -210,32 +348,57 @@ func (c *Crossover) Stop() {
 func (c *Crossover) ResetTradingStateAfterWarmup() {
 	c.pos = 0
 	c.pendingEntry = 0
+	c.pendingExit = false
+	c.trailingBest = 0
 	// Warmup-replayed crossover signals are not real dispatched signals.
 	c.signals = nil
 }
 
+// SyncBrokerPosition aligns strategy state with broker truth before live trading starts.
+func (c *Crossover) SyncBrokerPosition(_ string, quantity float64, averagePrice float64, currentPrice float64) {
+	c.pendingEntry = 0
+	c.pendingExit = false
+	switch {
+	case quantity > 0:
+		c.pos = 1
+		c.trailingBest = maxPositive(averagePrice, currentPrice)
+	case quantity < 0:
+		c.pos = -1
+		c.trailingBest = minPositive(averagePrice, currentPrice)
+	default:
+		c.pos = 0
+		c.trailingBest = 0
+	}
+}
+
 type smaState struct {
-	FastN        int           `json:"fast_n"`
-	SlowN        int           `json:"slow_n"`
-	Qty          int64         `json:"qty"`
-	Closes       []float64     `json:"closes"`
-	Pos          int64         `json:"pos"`
-	PendingEntry int64         `json:"pending_entry"`
-	History      []CandlePoint `json:"history,omitempty"`
-	Signals      []SignalPoint `json:"signals,omitempty"`
+	FastN           int           `json:"fast_n"`
+	SlowN           int           `json:"slow_n"`
+	Qty             int64         `json:"qty"`
+	TrailingStopPct float64       `json:"trailing_stop_pct"`
+	Closes          []float64     `json:"closes"`
+	Pos             int64         `json:"pos"`
+	PendingEntry    int64         `json:"pending_entry"`
+	PendingExit     bool          `json:"pending_exit"`
+	TrailingBest    float64       `json:"trailing_best"`
+	History         []CandlePoint `json:"history,omitempty"`
+	Signals         []SignalPoint `json:"signals,omitempty"`
 }
 
 // Snapshot persists internal buffers for StatefulStrategy.
 func (c *Crossover) Snapshot() ([]byte, error) {
 	st := smaState{
-		FastN:        c.fastN,
-		SlowN:        c.slowN,
-		Qty:          c.qty,
-		Closes:       append([]float64(nil), c.closes...),
-		Pos:          c.pos,
-		PendingEntry: c.pendingEntry,
-		History:      c.history,
-		Signals:      c.signals,
+		FastN:           c.fastN,
+		SlowN:           c.slowN,
+		Qty:             c.qty,
+		TrailingStopPct: c.trailingStopPct,
+		Closes:          append([]float64(nil), c.closes...),
+		Pos:             c.pos,
+		PendingEntry:    c.pendingEntry,
+		PendingExit:     c.pendingExit,
+		TrailingBest:    c.trailingBest,
+		History:         c.history,
+		Signals:         c.signals,
 	}
 	return json.Marshal(st)
 }
@@ -249,18 +412,14 @@ func (c *Crossover) Restore(blob []byte) error {
 	if err := json.Unmarshal(blob, &st); err != nil {
 		return err
 	}
-	if st.FastN > 0 {
-		c.fastN = st.FastN
-	}
-	if st.SlowN > 0 {
-		c.slowN = st.SlowN
-	}
-	if st.Qty > 0 {
-		c.qty = st.Qty
-	}
+	// Configuration parameters are applied by Configure before Restore.
+	// Do not overwrite them from an old snapshot, otherwise a config reload that
+	// changes SMA periods can silently keep trading with stale values.
 	c.closes = append([]float64(nil), st.Closes...)
 	c.pos = st.Pos
 	c.pendingEntry = st.PendingEntry
+	c.pendingExit = st.PendingExit
+	c.trailingBest = st.TrailingBest
 	c.history = st.History
 	c.signals = st.Signals
 	return nil
@@ -285,6 +444,8 @@ var _ strategy.WarmupHint = (*Crossover)(nil)
 var _ strategy.ChartHint = (*Crossover)(nil)
 var _ strategy.PostWarmupCleanup = (*Crossover)(nil)
 var _ strategy.SignalDispatchFailureHandler = (*Crossover)(nil)
+var _ strategy.BrokerPositionSyncer = (*Crossover)(nil)
+var _ strategy.LiveCandleHandler = (*Crossover)(nil)
 
 func smaTail(xs []float64, n int) float64 {
 	if len(xs) < n || n <= 0 {
@@ -314,4 +475,33 @@ func int64From(m map[string]string, key string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+func floatFrom(m map[string]string, key string, def float64) float64 {
+	if v, ok := m[key]; ok {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f
+		}
+	}
+	return def
+}
+
+func maxPositive(a, b float64) float64 {
+	if a <= 0 {
+		return b
+	}
+	if b <= 0 {
+		return a
+	}
+	return max(a, b)
+}
+
+func minPositive(a, b float64) float64 {
+	if a <= 0 {
+		return b
+	}
+	if b <= 0 {
+		return a
+	}
+	return min(a, b)
 }

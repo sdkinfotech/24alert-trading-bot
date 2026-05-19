@@ -416,6 +416,20 @@ func (b *Breakout) ResetTradingStateAfterWarmup() {
 	b.signals = nil
 }
 
+// SyncBrokerPosition aligns strategy state with broker truth before live trading starts.
+func (b *Breakout) SyncBrokerPosition(_ string, quantity float64, _ float64, _ float64) {
+	b.pendingEntry = 0
+	b.pendingExit = false
+	switch {
+	case quantity > 0:
+		b.pos = 1
+	case quantity < 0:
+		b.pos = -1
+	default:
+		b.pos = 0
+	}
+}
+
 var (
 	_ strategy.StatefulStrategy             = (*Breakout)(nil)
 	_ strategy.IndicatorProvider            = (*Breakout)(nil)

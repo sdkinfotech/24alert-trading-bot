@@ -28,8 +28,9 @@ The **`strategy-runner`** binary (`cmd/strategy-runner`) runs configured strateg
 - **Config:** `strategies:` in `config/config.yaml` (`runner_port`, `metrics_port`, `journal_path`, `watchdog`, `notifications.telegram`, `instances[]` with `id`, `type`, `account_id`, `instruments`, `enabled`, `params`, and `endpoint` for `type: grpc`). Enable SQLite audit trail with `features.enable_order_journal`.
 - **Management HTTP:** `GET /health`, `GET /instances`, `POST /instances/{id}/start`, `POST /instances/{id}/stop`, `GET /instances/{id}/pnl`, `GET /instances/{id}/ledger`, `GET /instances/{id}/executions?limit=`, `GET /report/daily?date=` on `runner_port` (default **9020**).
 - **Prometheus:** dedicated port **9120** (`/metrics` on that listener).
-- **Built-in example:** `sma_crossover` (`internal/strategy/sma`).
+- **Built-in strategies:** `sma_crossover`, `level_bounce`, `orb_breakout` (`internal/strategy/{sma,lb,orb}`).
 - **Docker:** service `strategy-runner` in `deployments/docker-compose.yaml`.
+- **Prod diagnostics (SSH on VPS):** [`scripts/diagnose-strategies.sh`](scripts/diagnose-strategies.sh) — `ai-scanner` logs, mounted `config.yaml`, futures instances, `GET /instances`, signals/events.
 
 ## Quick Start
 
@@ -83,7 +84,7 @@ LOG_LEVEL=info
 - `TINVEST_SANDBOX=true` → берётся `TINVEST_SANDBOX_TOKEN`, endpoint автоматически `sandbox-invest-public-api.tbank.ru:443`
 - `TINVEST_SANDBOX=false` → берётся `TINVEST_PROD_TOKEN`, endpoint `invest-public-api.tbank.ru:443`
 - Для обратной совместимости: если `TINVEST_SANDBOX_TOKEN` / `TINVEST_PROD_TOKEN` пуст — fallback на `TINVEST_TOKEN`
-- Endpoint можно переопределить вручную через `TINVEST_ENDPOINT`
+- Endpoint выбирается автоматически по `TINVEST_SANDBOX`; ручной runtime override endpoint сейчас не поддерживается.
 
 > **SECURITY**: `deployments/.env` и любые `.env` файлы в `.gitignore` — **не коммитить**.
 
@@ -441,7 +442,7 @@ logging:
 3. Run `make fmt` and `make lint` before commits
 4. Add unit tests for new features
 5. Update README.md if API changes
-6. See `.tasks/` directory for active development tasks and role-based workflow
+6. See `.tasks/` for active tasks, `.archive/tasks/` for historical tasks, and `BACKLOG.md` for current priorities
 
 ## Development Workflow
 
@@ -454,27 +455,12 @@ Analyst (research) → Backend (implementation) → DevOps (deployment)
 
 ### Task Status
 
-See `.tasks/TASK-NNN/` for active tasks and `BACKLOG.md` for the complete roadmap:
+Active task workspace is intentionally small:
 
-**Phase 1: MVP (Completed ✅)**
-- ✅ **TASK-001**: Server setup and resource validation
-- ✅ **TASK-002**: Trading bot implementation (Go microservices)
-- ✅ **TASK-003**: Deployment and smoke testing (Production Ready)
-
-**Phase 2: Stabilization (In Progress)**
-- ⏳ **TASK-004**: CI/CD pipeline (GitHub Actions) — Planned
-- ⏳ **TASK-005**: Kubernetes migration & scaling — Planned
-- ⏳ **TASK-006**: Monitoring, logging & alerting — Planned
-- ⏳ **TASK-014**: Database migration (PostgreSQL) — Planned
-- ⏳ **TASK-016**: Security audit & hardening — Planned
-
-**Phase 3: Growth (Backlog)**
-- **TASK-007**: Real trading strategies
-- **TASK-008**: Strategy plugin marketplace
-- **TASK-009**: Backtesting engine
-- **TASK-010**: User management & multi-account
-
-See `BACKLOG.md` for the complete roadmap with priorities, complexity estimates, and dependencies.
+- `.tasks/TASK-019/` — current OrderBook Stream handoff history.
+- `.tasks/TASK-003/` — retained in place because it contains historical deployment material that needs a separate secret review before archiving.
+- `.archive/tasks/` — historical completed tasks.
+- `BACKLOG.md` — current roadmap and priorities.
 
 ## Related Repositories
 
@@ -495,6 +481,6 @@ TBD
 ## Support
 
 For issues or questions:
-1. Check `.tasks/TASK-002/analyst/data/` for API reference
-2. Review proto files in `proto/`
-3. Check README in relevant service package
+1. Review `BACKLOG.md` and current Obsidian notes under `24alert/`.
+2. Review proto files in `proto/`.
+3. Check README/docs in the relevant package or service.

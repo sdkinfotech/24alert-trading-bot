@@ -1,63 +1,48 @@
-# Roadmap 24alert Trading Bot
+# Roadmap 24alert
 
-> **Дата создания**: 2026-04-17
-> **Текущая фаза**: Phase 2 — Stabilization & Hardening
+> Last updated: 2026-05-16  
+> Canonical product/ops documentation: Obsidian `24alert/`. This file is a short repository roadmap only.
 
----
+## Current Production State
 
-## Фазы
+- Gateway runs on `srv03-cloud` behind nginx `gateway.24alert.ru:8080`.
+- Public gateway REST is intentionally closed except explicit routes; full REST is available on VPS loopback `127.0.0.1:18080`.
+- `strategy-runner` is live on `127.0.0.1:9020`, dashboard is proxied by nginx at `/dashboard`.
+- Trading mode is futures-only: `BMM6`, `NGM6`, `MCM6`.
+- `ai-scanner` runs as a compose profile/container with cron-based futures scan/backtest.
 
-### Phase 1: MVP (Завершена ✅)
-- Сервер, микросервисы, деплой, smoke-тесты
-- TASK-001..TASK-006
+## Completed
 
-### Phase 2: Stabilization & Hardening (Текущая 🔄)
-Критические проблемы production-системы.
+| Area | Status |
+|------|--------|
+| Gateway REST/WS facade | Done |
+| Docker Compose production deployment | Done |
+| OrderBook WebSocket stream for Traderbook | Done |
+| Strategy runner with dashboard and journal | Done |
+| Futures-only production strategy config | Done |
+| AI Scanner futures-only scan/backtest flow | Done |
+| Port hardening for service ports | Done |
 
-| ID | Название | Приоритет | Сложность | Статус |
-|----|----------|:---------:|:---------:|--------|
-| TASK-007 | Закрытие портов микросервисов наружу | 🔴 CRITICAL | S | Planned |
-| TASK-008 | Авторизация на REST API (JWT middleware) | 🔴 CRITICAL | M | Planned |
-| TASK-009 | Разделение .env и конфигурации по сервисам | 🟠 HIGH | S | Planned |
-| TASK-010 | Swap, мониторинг диска, OOM-защита | 🟠 HIGH | S | Planned |
-| TASK-011 | Healthcheck между сервисами | 🟡 MEDIUM | S | Planned |
-| TASK-012 | Автоматический деплой (GitHub Actions) | 🟡 MEDIUM | M | Planned |
-| TASK-013 | Rate limiting улучшение (burst, adaptive) | 🟡 MEDIUM | M | Planned |
+## Active / Near-term
 
-### Phase 3: Data & Persistence
+| Priority | Work | Why |
+|----------|------|-----|
+| Critical | Futures margin and exact PnL accounting | Current futures PnL/GO are approximate until `GetFuturesMargin` and price-step value are integrated. |
+| High | Strategy auto-rollover for futures contracts | Current futures UID changes on expiration. |
+| High | Clean secret-bearing historical task material | `.tasks/TASK-003/devops/DEPLOYMENT.md` needs separate review/rotation/history decision. |
+| High | Monitoring decision | Either enable local `monitoring` profile or wire `strategy-runner:9120` into shared Traderbook monitoring. |
+| Medium | Backtest engine hardening | Current scanner backtests are useful for ranking, but need production-grade futures accounting. |
+| Medium | Dashboard auth/access policy | Nginx exposes dashboard/API routes; decide if additional auth/ACL is required. |
 
-| ID | Название | Приоритет | Сложность | Статус |
-|----|----------|:---------:|:---------:|--------|
-| TASK-014 | PostgreSQL миграция (история ордеров, портфель) | 🔴 CRITICAL | XL | Planned |
-| TASK-015 | Redis кэш для маркет-данных | 🟡 MEDIUM | M | Planned |
-| TASK-016 | Backup & Disaster Recovery | 🟠 HIGH | M | Planned |
+## Later
 
-### Phase 4: Trading Features
+| Work | Notes |
+|------|-------|
+| PostgreSQL or durable event store | SQLite journal is enough for current runner, but broader history/reporting needs a DB decision. |
+| Multi-account strategy management | Current production strategy account is `2001673385`. |
+| External gRPC strategy plugins | Contract exists; not part of current production flow. |
+| Kubernetes migration | Not needed for current single-VPS operation; revisit only after load/availability requirements change. |
 
-| ID | Название | Приоритет | Сложность | Статус |
-|----|----------|:---------:|:---------:|--------|
-| TASK-017 | Торговые стратегии (MA, RSI, Mean Reversion) | 🟡 MEDIUM | XL | Planned |
-| TASK-018 | Strategy Plugin (внешний gRPC) | 🟡 MEDIUM | XL | Planned |
-| TASK-019 | Backtesting Engine | 🟡 MEDIUM | L | Planned |
+## Archive
 
-### Phase 5: Scaling & Ops
-
-| ID | Название | Приоритет | Сложность | Статус |
-|----|----------|:---------:|:---------:|--------|
-| TASK-020 | Kubernetes миграция | 🟠 HIGH | XXL | Planned |
-| TASK-021 | Horizontal Scaling gateway | 🟡 MEDIUM | L | Planned |
-| TASK-022 | AlertManager (Telegram, Slack) | 🟡 MEDIUM | S | Planned |
-| TASK-023 | Multi-account support | 🟡 MEDIUM | M | Planned |
-
----
-
-## Метрики прогресса
-
-| Фаза | Всего задач | Done | In Progress | Осталось |
-|------|:-----------:|:----:|:-----------:|:--------:|
-| Phase 1 (MVP) | 6 | 6 | 0 | 0 |
-| Phase 2 (Hardening) | 7 | 0 | 0 | 7 |
-| Phase 3 (Data) | 3 | 0 | 0 | 3 |
-| Phase 4 (Trading) | 3 | 0 | 0 | 3 |
-| Phase 5 (Scaling) | 4 | 0 | 0 | 4 |
-| **Итого** | **23** | **6** | **0** | **17** |
+Older phase/task roadmaps were moved to `.archive/` or are preserved in historical `.tasks` handoffs. Use `BACKLOG.md` for current task tracking.

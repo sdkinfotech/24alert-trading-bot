@@ -189,6 +189,8 @@ def find_levels(daily_candles, n=10):
 
 def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
                      tp_mult=1.5, cutoff_hour=18, cutoff_min=30, level_days=10):
+    # atr_mult is kept for CLI/config compatibility. Production entry logic
+    # requires an actual level touch; ATR only sizes stop-loss/take-profit.
     support, resistance = find_levels(daily_candles, level_days)
     if not support or not resistance:
         return []
@@ -207,7 +209,9 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
     take_profit = 0.0
     current_day = ""
     eod_sent = False
-    threshold = atr * atr_mult
+    last_entry_day = ""
+    last_entry_dir = ""
+    last_entry_level = 0.0
 
     for c in candles_15m:
         t = c["time"].astimezone(MSK)
@@ -257,12 +261,20 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
             continue
 
         for s in support:
-            if c["low"] <= s + threshold and c["close"] > s:
+            duplicate_entry = (
+                last_entry_day == day
+                and last_entry_dir == "buy"
+                and abs(last_entry_level - s) < 1e-9
+            )
+            if c["low"] <= s and c["close"] > s and not duplicate_entry:
                 entry_price = c["close"]
                 stop_loss = s - atr * sl_mult
                 take_profit = entry_price + atr * tp_mult
                 trades.append({"time": c["time"].isoformat(), "dir": "buy",
                                "price": entry_price, "reason": f"bounce_S={s:.1f}"})
+                last_entry_day = day
+                last_entry_dir = "buy"
+                last_entry_level = s
                 pos = 1
                 break
 
@@ -270,12 +282,20 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
             continue
 
         for r in resistance:
-            if c["high"] >= r - threshold and c["close"] < r:
+            duplicate_entry = (
+                last_entry_day == day
+                and last_entry_dir == "sell"
+                and abs(last_entry_level - r) < 1e-9
+            )
+            if c["high"] >= r and c["close"] < r and not duplicate_entry:
                 entry_price = c["close"]
                 stop_loss = r + atr * sl_mult
                 take_profit = entry_price - atr * tp_mult
                 trades.append({"time": c["time"].isoformat(), "dir": "sell",
                                "price": entry_price, "reason": f"reject_R={r:.1f}"})
+                last_entry_day = day
+                last_entry_dir = "sell"
+                last_entry_level = r
                 pos = -1
                 break
 
@@ -285,7 +305,7 @@ def run_level_bounce(candles_15m, daily_candles, atr_mult=0.4, sl_mult=0.5,
 def optimize_level_bounce(candles_15m, candles_daily):
     best = None
     results = []
-    for am in [0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
+    for am in [0.0]:
         for sl in [0.3, 0.5, 0.7]:
             for tp in [1.0, 1.5, 2.0]:
                 for ch in [17, 18, 23]:

@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+func TestFormatAITraderLLMErrorRateLimit(t *testing.T) {
+	msg := formatAITraderLLMError(fmt.Errorf("openrouter 429: rate-limited"))
+	if !strings.Contains(msg, "429") || !strings.Contains(msg, "OpenRouter") {
+		t.Fatalf("unexpected: %q", msg)
+	}
+}
+
 func TestParseAITraderLLMReply(t *testing.T) {
 	raw := "```json\n{\"summary\":\"Давление продавцов\",\"market_bias\":\"bearish\",\"action\":\"observe_plan\",\"intent\":\"watch_short\",\"reason\":\"ask wall\",\"next_watch\":\"prints\",\"confidence\":0.7}\n```"
 	out, err := parseAITraderLLMReply(raw)

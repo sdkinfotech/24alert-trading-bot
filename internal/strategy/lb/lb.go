@@ -478,6 +478,33 @@ func (b *Bounce) ResetTradingStateAfterWarmup() {
 	b.signals = nil
 }
 
+// SyncBrokerPosition aligns strategy state with broker truth before live trading starts.
+func (b *Bounce) SyncBrokerPosition(_ string, quantity float64, averagePrice float64, _ float64) {
+	b.pendingEntry = 0
+	b.pendingExit = false
+	b.clearEntryLevels()
+	b.entryPrice = averagePrice
+	switch {
+	case quantity > 0:
+		b.pos = 1
+		if b.atr > 0 {
+			b.stopLoss = averagePrice - b.atr*b.slMult
+			b.takeProfit = averagePrice + b.atr*b.tpMult
+		}
+	case quantity < 0:
+		b.pos = -1
+		if b.atr > 0 {
+			b.stopLoss = averagePrice + b.atr*b.slMult
+			b.takeProfit = averagePrice - b.atr*b.tpMult
+		}
+	default:
+		b.pos = 0
+		b.entryPrice = 0
+		b.stopLoss = 0
+		b.takeProfit = 0
+	}
+}
+
 func (b *Bounce) Stop() { b.stopped = true }
 
 func (b *Bounce) recordCandle(k strategy.Candle, sup, res float64) {

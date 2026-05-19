@@ -1,6 +1,7 @@
 package sma
 
 import (
+	"math"
 	"testing"
 
 	"github.com/24alert/trading-bot/internal/strategy"
@@ -190,5 +191,168 @@ func TestCrossover_Snapshot_includesPendingEntry(t *testing.T) {
 	}
 	if c2.pendingEntry != c.pendingEntry {
 		t.Fatalf("pendingEntry not restored: want %d got %d", c.pendingEntry, c2.pendingEntry)
+	}
+}
+
+func TestCrossover_Restore_keepsConfiguredPeriods(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{"fast_period": "9", "slow_period": "26", "quantity": "1"}); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := c.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c2 := New()
+	if err := c2.Configure(map[string]string{"fast_period": "5", "slow_period": "17", "quantity": "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c2.Restore(blob); err != nil {
+		t.Fatal(err)
+	}
+
+	if c2.fastN != 5 || c2.slowN != 17 {
+		t.Fatalf("Restore must keep configured periods, got fast=%d slow=%d", c2.fastN, c2.slowN)
+	}
+}
+
+func TestCrossover_TrailingStop_LongExitsFlat(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{
+		"fast_period":       "2",
+		"slow_period":       "3",
+		"quantity":          "1",
+		"trailing_stop_pct": "0.10",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.SyncBrokerPosition("uid-1", 1, 100, 100)
+	c.closes = []float64{100, 100}
+
+	if sigs := c.OnCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          110,
+		Low:           109,
+		Close:         109,
+		IsComplete:    true,
+	}); len(sigs) != 0 {
+		t.Fatalf("unexpected signal before trail break: %+v", sigs)
+	}
+	sigs := c.OnCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          109,
+		Low:           98,
+		Close:         100,
+		IsComplete:    true,
+	})
+	if len(sigs) != 1 || sigs[0].Direction != "sell" {
+		t.Fatalf("want trailing sell, got %+v", sigs)
+	}
+	if !c.pendingExit {
+		t.Fatal("trailing exit must set pendingExit")
+	}
+	c.OnExecution(strategy.ExecutionEvent{Status: "filled", AvgPrice: 99})
+	if c.pos != 0 || c.pendingExit {
+		t.Fatalf("filled trailing exit should flatten, pos=%d pendingExit=%t", c.pos, c.pendingExit)
+	}
+}
+
+func TestCrossover_TrailingStop_ShortExitsFlat(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{
+		"fast_period":       "2",
+		"slow_period":       "3",
+		"quantity":          "1",
+		"trailing_stop_pct": "0.10",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.SyncBrokerPosition("uid-1", -1, 100, 100)
+	c.closes = []float64{100, 100}
+
+	if sigs := c.OnCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          91,
+		Low:           90,
+		Close:         91,
+		IsComplete:    true,
+	}); len(sigs) != 0 {
+		t.Fatalf("unexpected signal before trail break: %+v", sigs)
+	}
+	sigs := c.OnCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          100,
+		Low:           89,
+		Close:         99,
+		IsComplete:    true,
+	})
+	if len(sigs) != 1 || sigs[0].Direction != "buy" {
+		t.Fatalf("want trailing buy, got %+v", sigs)
+	}
+	c.OnExecution(strategy.ExecutionEvent{Status: "filled", AvgPrice: 98})
+	if c.pos != 0 || c.pendingExit {
+		t.Fatalf("filled trailing exit should flatten, pos=%d pendingExit=%t", c.pos, c.pendingExit)
+	}
+}
+
+func TestCrossover_LiveTrailingStop_ShortMovesBeforeClose(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{
+		"fast_period":       "2",
+		"slow_period":       "3",
+		"quantity":          "1",
+		"trailing_stop_pct": "0.005",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.SyncBrokerPosition("uid-1", -1, 110.36, 109.65)
+
+	sigs := c.OnLiveCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          110.2,
+		Low:           108.8,
+		Close:         108.8,
+		IsComplete:    false,
+	})
+	if len(sigs) != 0 {
+		t.Fatalf("live trail move should not exit yet, got %+v", sigs)
+	}
+	if c.trailingBest != 108.8 {
+		t.Fatalf("short live trailing best should move to low, got %.4f", c.trailingBest)
+	}
+	wantStop := 108.8 * 1.005
+	if got := c.trailingStopPrice(); math.Abs(got-wantStop) > 1e-9 {
+		t.Fatalf("live trailing stop not moved: want %.4f got %.4f", wantStop, got)
+	}
+}
+
+func TestCrossover_LiveTrailingStop_ShortExitsOnCurrentPrice(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{
+		"fast_period":       "2",
+		"slow_period":       "3",
+		"quantity":          "1",
+		"trailing_stop_pct": "0.005",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.SyncBrokerPosition("uid-1", -1, 110.36, 108.8)
+
+	sigs := c.OnLiveCandle(strategy.Candle{
+		InstrumentUID: "uid-1",
+		High:          109.4,
+		Low:           108.8,
+		Close:         109.35,
+		IsComplete:    false,
+	})
+	if len(sigs) != 1 || sigs[0].Direction != "buy" {
+		t.Fatalf("want live trailing buy, got %+v", sigs)
+	}
+	if sigs[0].Reason != "sma live trailing stop 0.50%" {
+		t.Fatalf("unexpected reason: %q", sigs[0].Reason)
+	}
+	if !c.pendingExit {
+		t.Fatal("live trailing exit must set pendingExit")
 	}
 }

@@ -35,6 +35,9 @@ The dashboard uses these runner endpoints:
 - `GET /instances/{id}/stop-orders` for active broker stop-loss/take-profit orders matching the instance account/instruments.
 - `GET /report/daily` for daily aggregate counts.
 - `GET /ai-trader/sessions`, `POST /ai-trader/sessions`, `GET /ai-trader/sessions/{instance_id}`, `POST /ai-trader/sessions/{instance_id}/stop` for observe/paper AI Trader sessions.
+- `GET /instruments/catalog?q=&kind=all|share|future&limit=` for MOEX share/future picker (AI Trader).
+
+Public access via nginx (`gateway.24alert.ru:8080`) must proxy `/instruments` to strategy-runner `:9020` (same as `/instances` and `/ai-trader`). Without it the picker shows `404 Not Found` from nginx.
 
 ## Operational rule
 
