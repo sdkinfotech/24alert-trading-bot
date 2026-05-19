@@ -357,12 +357,31 @@ export interface CatalogInstrument {
   kind: 'share' | 'future' | string;
 }
 
+export interface AiTraderBufferStats {
+  book_samples: number;
+  print_samples: number;
+  chart_bars: number;
+  level_count: number;
+  daily_levels: number;
+  hourly_levels: number;
+  mid?: number;
+  last_price?: number;
+}
+
+export interface AiTraderCollectEvent {
+  time: string;
+  kind: string;
+  message: string;
+  detail?: string;
+}
+
 export interface AiTraderPhaseProgress {
   collect_seconds: number;
   min_collect_sec: number;
   reports_ready?: string[];
   trading_ready: boolean;
   ready_reason?: string;
+  buffer_stats?: AiTraderBufferStats;
 }
 
 export interface AiTraderLevelPlaybook {
@@ -371,6 +390,8 @@ export interface AiTraderLevelPlaybook {
   levels?: AiTraderLevel[];
   entry_rules?: string[];
   risk_notes?: string[];
+  sl_mult_atr?: number;
+  tp_mult_atr?: number;
   ready_to_trade?: boolean;
 }
 
@@ -426,6 +447,7 @@ export interface AiTraderSession {
   market_context?: AiTraderMarketContext;
   last_decision?: AiTraderDecisionEvent;
   events?: AiTraderDecisionEvent[];
+  collect_feed?: AiTraderCollectEvent[];
 }
 
 export type AdvisorTimeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | 'strategy';

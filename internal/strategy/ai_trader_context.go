@@ -156,13 +156,31 @@ func (r *Runner) warmupAITraderContext(ctx context.Context, s *AITraderSession) 
 			s.ctxState.appendChartBar(marketCandleToBar(c))
 		}
 	}
+	var dailyLv, hourlyLv []AITraderLevel
 	fromDay := now.AddDate(0, 0, -aiTraderDailyLevelDays*2)
 	daily, err := r.mdSvc.GetCandles(ctx, s.InstrumentID, fromDay, now, pb.CandleInterval_CANDLE_INTERVAL_DAY)
 	if err != nil {
 		r.logger.Warn("ai trader levels warmup", "error", err)
 	} else {
-		s.ctxState.setLevels(computeDailyLevels(daily, aiTraderDailyLevelDays))
+		dailyLv = computeDailyLevels(daily, aiTraderDailyLevelDays)
 	}
+	fromHour := now.Add(-72 * time.Hour)
+	hourly, errH := r.mdSvc.GetCandles(ctx, s.InstrumentID, fromHour, now, pb.CandleInterval_CANDLE_INTERVAL_HOUR)
+	if errH != nil {
+		r.logger.Warn("ai trader hourly levels warmup", "error", errH)
+	} else {
+		hourlyLv = computeHourlyLevels(hourly, 48)
+	}
+	if len(dailyLv)+len(hourlyLv) > 0 {
+		s.ctxState.setLevels(mergeLevelLists(dailyLv, hourlyLv))
+	}
+	r.aiTrader.mu.Lock()
+	if cur := r.aiTrader.findLocked(s.ID); cur != nil {
+		cur.appendCollectFeed("levels", fmt.Sprintf("Уровни: daily %d, hourly %d", len(dailyLv), len(hourlyLv)),
+			fmt.Sprintf("1m баров: %d", len(s.ctxState.chartBars)))
+		r.syncAITraderBufferStatsLocked(cur, nil)
+	}
+	r.aiTrader.mu.Unlock()
 }
 
 func marketCandleToBar(c marketdata.Candle) AITraderCandleBar {

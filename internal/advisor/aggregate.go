@@ -37,6 +37,8 @@ type FactsBundle struct {
 	SpoofHints      []string
 	IcebergHints    []string
 	ThoughtLines    []string
+	LevelLines      []string
+	ChartLines      []string
 	TextDigest      string
 }
 
@@ -116,6 +118,26 @@ func extractMarketContext(fb *FactsBundle, mc map[string]any) {
 	if notes, ok := mc["scene_notes"].([]any); ok {
 		for _, n := range notes {
 			fb.SceneNotes = append(fb.SceneNotes, str(n))
+		}
+	}
+	if levels, ok := mc["levels"].([]any); ok {
+		for i, row := range levels {
+			if i >= 8 {
+				break
+			}
+			lm, _ := row.(map[string]any)
+			fb.LevelLines = append(fb.LevelLines, fmt.Sprintf("%s %.4f (%s)", str(lm["kind"]), num(lm["price"]), str(lm["source"])))
+		}
+	}
+	if bars, ok := mc["chart_bars"].([]any); ok && len(bars) > 0 {
+		start := 0
+		if len(bars) > 5 {
+			start = len(bars) - 5
+		}
+		for _, row := range bars[start:] {
+			bm, _ := row.(map[string]any)
+			fb.ChartLines = append(fb.ChartLines, fmt.Sprintf("%s O%.4f H%.4f L%.4f C%.4f vol %.0f",
+				str(bm["time"]), num(bm["open"]), num(bm["high"]), num(bm["low"]), num(bm["close"]), num(bm["volume"])))
 		}
 	}
 	deriveWallSpoofIceberg(fb, mc)
@@ -202,6 +224,12 @@ func formatFactsDigest(fb FactsBundle) string {
 	}
 	for _, i := range fb.IcebergHints {
 		b.WriteString("- iceberg?: " + i + "\n")
+	}
+	for _, lv := range fb.LevelLines {
+		b.WriteString("- level: " + lv + "\n")
+	}
+	for _, ch := range fb.ChartLines {
+		b.WriteString("- chart: " + ch + "\n")
 	}
 	for _, th := range fb.ThoughtLines {
 		if len(fb.ThoughtLines) > 12 {

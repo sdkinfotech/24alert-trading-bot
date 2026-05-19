@@ -324,3 +324,108 @@ body {
 .ai-trader-phase-stepper {
   margin-bottom: 0.5rem;
 }
+
+.ai-trader-buffer-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--surface) 80%, var(--border));
+}
+
+.ai-trader-feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ai-trader-feed-line {
+  border-left: 2px solid var(--border);
+  padding: 0.35rem 0 0.35rem 0.65rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.8125rem;
+}
+
+.ai-trader-feed-line.ai-trader-feed-book {
+  border-left-color: var(--accent);
+}
+
+.ai-trader-feed-line.ai-trader-feed-print {
+  border-left-color: var(--success, #22c55e);
+}
+
+.ai-trader-feed-line.ai-trader-feed-phase {
+  border-left-color: #a78bfa;
+}
+
+.ai-trader-feed-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-right: 0.5rem;
+}
+
+.ai-trader-feed-kind {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 0.35rem;
+}
+
+.ai-trader-feed-msg {
+  margin: 0.15rem 0 0;
+}
+
+.ai-trader-feed-detail {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.ai-trader-feed-inline {
+  border-left: 2px dashed var(--border);
+  padding-left: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-trader-levels-chart {
+  width: 100%;
+  height: 200px;
+  display: block;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border-radius: 0.5rem;
+}
+
+.ai-trader-pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+.ai-trader-pipeline li {
+  padding: 0.2rem 0;
+}
+
+.ai-trader-thought-pipeline {
+  border-left-color: #a78bfa;
+}
+
+.ai-trader-resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  margin-bottom: 1rem;
+}

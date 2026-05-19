@@ -89,7 +89,7 @@ export const api = {
   },
   aiTraderSessions: () => get<AiTraderSession[]>('/ai-trader/sessions'),
   aiTraderSession: (instanceID: string) =>
-    get<AiTraderSession>(`/ai-trader/sessions/${instanceID}`),
+    get<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(instanceID)}`),
   startAiTraderSession: (body: {
     instance_id?: string;
     account_id: string;
@@ -103,7 +103,7 @@ export const api = {
   startAiTraderTrading: (sessionID: string) =>
     post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/start-trading`, {}),
   stopAiTraderSession: (instanceID: string) =>
-    post<AiTraderSession>(`/ai-trader/sessions/${instanceID}/stop`, {}),
+    post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(instanceID)}/stop`, {}),
   advisorAnalyses: (sessionId: string, tf: AdvisorTimeframe, limit = 20) =>
     get<AdvisorAnalysisReport[]>(
       `/advisor/sessions/${encodeURIComponent(sessionId)}/analyses?tf=${encodeURIComponent(tf)}&limit=${limit}`,

@@ -74,11 +74,15 @@ type AITraderSession struct {
 	MarketContext *AITraderMarketContext  `json:"market_context,omitempty"`
 	LastDecision  *AITraderDecisionEvent  `json:"last_decision,omitempty"`
 	Events        []AITraderDecisionEvent `json:"events,omitempty"`
+	CollectFeed   []AITraderCollectEvent  `json:"collect_feed,omitempty"`
 
-	cancel     context.CancelFunc      `json:"-"`
-	ctxState   *aiTraderContextState   `json:"-"`
-	collectBuf *aiTraderCollectBuffer  `json:"-"`
-	lastLLMAt  time.Time               `json:"-"`
+	cancel            context.CancelFunc     `json:"-"`
+	ctxState          *aiTraderContextState  `json:"-"`
+	collectBuf        *aiTraderCollectBuffer `json:"-"`
+	lastLLMAt         time.Time              `json:"-"`
+	lastCollectFeedAt time.Time              `json:"-"`
+	lastReportsReady  []string               `json:"-"`
+	wasTradingReady   bool                   `json:"-"`
 }
 
 type AITraderFeatures struct {
@@ -308,6 +312,8 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		AnalysisSource: "session",
 	}
 	s.Events = []AITraderDecisionEvent{startEv}
+	s.appendCollectFeed("phase", fmt.Sprintf("Старт мониторинга %s: сбор стакана, ленты, 1m графика", ticker),
+		fmt.Sprintf("окно %d с → advisor → playbook", progress.MinCollectSec))
 	r.aiTrader.mu.Unlock()
 
 	r.appendAITraderEvent(startEv)
@@ -786,6 +792,12 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 		ps.Fills = append([]PaperFill(nil), s.PaperState.Fills...)
 		cp.PaperState = &ps
 	}
+	if s.CollectFeed != nil {
+		cp.CollectFeed = append([]AITraderCollectEvent(nil), s.CollectFeed...)
+	}
+	cp.lastCollectFeedAt = time.Time{}
+	cp.lastReportsReady = nil
+	cp.wasTradingReady = false
 	return &cp
 }
 

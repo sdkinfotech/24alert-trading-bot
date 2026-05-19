@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { AiTraderDecisionEvent, AiTraderSession, Instance } from '../api/types';
+import type { AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
-import { EM_DASH, formatDateTime, formatNumber } from '../format';
+import { EM_DASH, formatNumber } from '../format';
 import { InstrumentSearchPicker, type SelectedInstrument } from './InstrumentSearchPicker';
 import { AiTraderAnalysisPanel } from './AiTraderAnalysisPanel';
+import { AiTraderActivityStream } from './AiTraderActivityStream';
+import { AiTraderCollectPanel } from './AiTraderCollectPanel';
+import { AiTraderLevelsChart } from './AiTraderLevelsChart';
+import { AiTraderStrategyBrief } from './AiTraderStrategyBrief';
+import { clearAiTraderLast, readAiTraderLast, writeAiTraderLast } from './aiTraderStorage';
 import { Badge, Button, Card, EmptyState, Stat } from './ui';
 
 const BRENT_MINI: SelectedInstrument = {
@@ -16,13 +21,6 @@ const BRENT_MINI: SelectedInstrument = {
 
 interface Props {
   instances: Instance[];
-}
-
-function analysisTone(source?: string): 'info' | 'warning' | 'neutral' {
-  if (source === 'llm') return 'info';
-  if (source === 'rules_fallback') return 'warning';
-  if (source === 'session') return 'neutral';
-  return 'neutral';
 }
 
 function phaseLabel(phase: string | undefined, t: (k: string) => string): string {
@@ -38,48 +36,6 @@ function phaseLabel(phase: string | undefined, t: (k: string) => string): string
     default:
       return phase ?? EM_DASH;
   }
-}
-
-function ThoughtEntry({ ev, lang, t }: { ev: AiTraderDecisionEvent; lang: 'ru' | 'en'; t: (k: string) => string }) {
-  const analysisLabel = ev.analysis_source === 'llm'
-    ? t('analysisLLM')
-    : ev.analysis_source === 'rules_fallback'
-      ? t('analysisFallback')
-      : ev.analysis_source === 'session'
-        ? t('analysisSession')
-        : t('analysisRules');
-
-  return (
-    <article className="ai-trader-thought">
-      <header className="ai-trader-thought-header">
-        <time className="ai-trader-thought-time">{formatDateTime(ev.time, lang)}</time>
-        <div className="ai-trader-thought-badges">
-          <Badge tone={ev.action === 'block' ? 'danger' : ev.action.includes('plan') ? 'warning' : 'info'}>
-            {ev.action}
-          </Badge>
-          <Badge tone={ev.market_bias === 'blocked' ? 'danger' : ev.market_bias === 'bullish' ? 'success' : ev.market_bias === 'bearish' ? 'warning' : 'neutral'}>
-            {ev.market_bias ?? 'neutral'}
-          </Badge>
-          <Badge tone={analysisTone(ev.analysis_source)}>{analysisLabel}</Badge>
-          {ev.llm_model && (
-            <Badge tone="neutral">
-              {ev.llm_model.length > 28 ? `${ev.llm_model.slice(0, 26)}…` : ev.llm_model}
-            </Badge>
-          )}
-          <span className="ai-trader-thought-conf">{formatNumber(ev.confidence * 100, lang, 0)}%</span>
-        </div>
-      </header>
-      <p className="ai-trader-thought-body">{ev.summary ?? ev.reason}</p>
-      {ev.reason && ev.summary && ev.reason !== ev.summary && (
-        <p className="ai-trader-thought-reason">{ev.reason}</p>
-      )}
-      {ev.next_watch && (
-        <p className="ai-trader-thought-watch">
-          <span className="font-semibold">{t('nextWatch')}:</span> {ev.next_watch}
-        </p>
-      )}
-    </article>
-  );
 }
 
 function PhaseStepper({ session, t }: { session: AiTraderSession; t: (k: string) => string }) {
@@ -121,6 +77,9 @@ export function AiTraderPanel({ instances }: Props) {
   const [instruction, setInstruction] = useState(() => t('aiTraderDefaultInstruction'));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resumeCandidate, setResumeCandidate] = useState<AiTraderSession | null>(null);
+  const advisorRef = useRef<HTMLDivElement>(null);
+  const resumedRef = useRef(false);
 
   const accounts = useMemo(() => {
     const ids = new Set<string>();
@@ -145,8 +104,47 @@ export function AiTraderPanel({ instances }: Props) {
   }, [instances]);
 
   useEffect(() => {
-    if (!accountID && accounts.length > 0) setAccountID(accounts[0]);
+    if (!accountID && accounts.length > 0) {
+      const saved = readAiTraderLast();
+      if (saved?.account_id && accounts.includes(saved.account_id)) {
+        setAccountID(saved.account_id);
+      } else {
+        setAccountID(accounts[0]);
+      }
+    }
   }, [accounts, accountID]);
+
+  useEffect(() => {
+    const saved = readAiTraderLast();
+    if (saved?.instrument_uid && !session) {
+      setInstrument({
+        uid: saved.instrument_uid,
+        ticker: saved.ticker ?? saved.instrument_uid.slice(0, 8),
+        name: '',
+        kind: 'future',
+      });
+    }
+  }, [session]);
+
+  const applySession = useCallback((data: AiTraderSession) => {
+    setSession(data);
+    if (data.instruction) setInstruction(data.instruction);
+    if (data.status === 'running') {
+      setAccountID(data.account_id);
+      setInstrument({
+        uid: data.instrument_uid,
+        ticker: data.ticker ?? data.instrument_uid.slice(0, 8),
+        name: '',
+        kind: '',
+      });
+      writeAiTraderLast({
+        account_id: data.account_id,
+        instrument_uid: data.instrument_uid,
+        ticker: data.ticker,
+        session_id: data.id,
+      });
+    }
+  }, []);
 
   const sessionLookup = session?.id ?? (accountID && instrument?.uid ? `${accountID}:${instrument.uid}` : '');
 
@@ -154,21 +152,42 @@ export function AiTraderPanel({ instances }: Props) {
     if (!sessionLookup) return;
     try {
       const data = await api.aiTraderSession(sessionLookup);
-      setSession(data);
-      if (data.status === 'running') {
-        setAccountID(data.account_id);
-        setInstrument({
-          uid: data.instrument_uid,
-          ticker: data.ticker ?? data.instrument_uid.slice(0, 8),
-          name: '',
-          kind: '',
-        });
-      }
+      applySession(data);
+      setResumeCandidate(null);
       setError(null);
     } catch {
       if (!session?.id) setSession(null);
     }
-  }, [sessionLookup, session?.id]);
+  }, [sessionLookup, session?.id, applySession]);
+
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+    void (async () => {
+      try {
+        const all = await api.aiTraderSessions();
+        const running = all.filter((s) => s.status === 'running');
+        const saved = readAiTraderLast();
+        let pick: AiTraderSession | undefined;
+        if (saved?.session_id) {
+          pick = running.find((s) => s.id === saved.session_id);
+        }
+        if (!pick && saved) {
+          pick = running.find(
+            (s) => s.account_id === saved.account_id && s.instrument_uid === saved.instrument_uid,
+          );
+        }
+        if (!pick && running.length === 1) pick = running[0];
+        if (pick) {
+          applySession(pick);
+        } else if (running.length > 0 && !session) {
+          setResumeCandidate(running[0]);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [applySession, session]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void load(), 0);
@@ -203,7 +222,8 @@ export function AiTraderPanel({ instances }: Props) {
           observation_interval_ms: 2000,
         },
       });
-      setSession(data);
+      applySession(data);
+      setResumeCandidate(null);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -217,7 +237,7 @@ export function AiTraderPanel({ instances }: Props) {
     setLoading(true);
     try {
       const data = await api.startAiTraderTrading(session.id);
-      setSession(data);
+      applySession(data);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -232,6 +252,7 @@ export function AiTraderPanel({ instances }: Props) {
     try {
       const data = await api.stopAiTraderSession(session.id);
       setSession(data);
+      clearAiTraderLast();
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -241,23 +262,26 @@ export function AiTraderPanel({ instances }: Props) {
   }
 
   const f = session?.features;
-  const d = session?.last_decision;
   const sessionRunning = session?.status === 'running';
   const canStartTrading = Boolean(
     sessionRunning && session.phase === 'ready' && session.phase_progress?.trading_ready,
   );
 
-  const thoughtStream = useMemo(() => {
-    const events = session?.events ?? [];
-    if (events.length > 0) return [...events];
-    if (d) return [d];
-    return [];
-  }, [session?.events, d]);
-
   const reportChips = ['5m', '15m', '1h'];
 
   return (
     <div className="space-y-6">
+      {resumeCandidate && !sessionRunning && (
+        <div className="ai-trader-resume-banner">
+          <span className="text-sm">
+            {t('resumeSessionBanner')}: <strong>{resumeCandidate.ticker}</strong> ({resumeCandidate.account_id})
+          </span>
+          <Button variant="primary" onClick={() => applySession(resumeCandidate)}>
+            {t('resumeSessionAction')}
+          </Button>
+        </div>
+      )}
+
       <Card
         title={t('aiTrader')}
         subtitle={t('aiTraderHelp')}
@@ -277,7 +301,7 @@ export function AiTraderPanel({ instances }: Props) {
               disabled={sessionRunning}
               onChange={(e) => {
                 setAccountID(e.target.value);
-                setSession(null);
+                if (!sessionRunning) setSession(null);
               }}
               className="mt-1 mb-3 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
@@ -293,7 +317,7 @@ export function AiTraderPanel({ instances }: Props) {
                 disabled={sessionRunning}
                 onChange={(item) => {
                   setInstrument(item);
-                  setSession(null);
+                  if (!sessionRunning) setSession(null);
                 }}
               />
             </div>
@@ -366,6 +390,11 @@ export function AiTraderPanel({ instances }: Props) {
 
       {session && (
         <>
+          <AiTraderStrategyBrief
+            session={session}
+            onScrollToAdvisor={() => advisorRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          />
+
           <PhaseStepper session={session} t={t} />
 
           <div className="flex flex-wrap gap-2">
@@ -384,27 +413,10 @@ export function AiTraderPanel({ instances }: Props) {
             <Stat label={t('phaseProgress')} value={phaseLabel(session.phase, t)} tone={session.phase === 'ready' ? 'success' : 'info'} />
             <Stat label={t('spread')} value={f ? `${formatNumber(f.spread_bps, lang, 2)} bps` : EM_DASH} tone={f && f.spread_bps > 50 ? 'danger' : 'success'} />
             <Stat label={t('freshness')} value={f ? `${f.data_freshness_ms} ms` : EM_DASH} tone={f?.stale ? 'danger' : 'success'} />
-            {d && (
-              <Stat
-                label={t('marketBias')}
-                value={d.market_bias ?? 'neutral'}
-                tone={d.market_bias === 'bullish' ? 'success' : d.market_bias === 'bearish' ? 'warning' : 'neutral'}
-              />
-            )}
           </div>
 
-          {session.level_playbook?.levels && session.level_playbook.levels.length > 0 && (
-            <Card title={t('playbookLevels')} subtitle={session.level_playbook.summary}>
-              <ul className="text-sm space-y-1 font-mono">
-                {session.level_playbook.levels.map((lv) => (
-                  <li key={`${lv.kind}-${lv.price}-${lv.source}`}>
-                    {lv.kind} {formatNumber(lv.price, lang, 4)}{' '}
-                    <span className="text-[var(--muted)]">({lv.source})</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          <AiTraderLevelsChart session={session} />
+          <AiTraderCollectPanel session={session} />
 
           {session.paper_state && session.phase === 'trading' && (
             <Card title={t('paperPosition')} subtitle={t('paperOrders')}>
@@ -424,20 +436,11 @@ export function AiTraderPanel({ instances }: Props) {
             </Card>
           )}
 
-          <Card title={t('aiTraderThoughtStream')} subtitle={t('aiTraderThoughtStreamHelp')}>
-            {session.last_error && <p className="mb-3 text-sm text-[var(--danger)]">{session.last_error}</p>}
-            {thoughtStream.length > 0 ? (
-              <div className="ai-trader-thought-stream">
-                {thoughtStream.map((ev, i) => (
-                  <ThoughtEntry key={`${ev.time}-${ev.action}-${i}`} ev={ev} lang={lang} t={t} />
-                ))}
-              </div>
-            ) : (
-              <EmptyState>{t('noEvents')}</EmptyState>
-            )}
-          </Card>
+          <AiTraderActivityStream session={session} />
 
-          <AiTraderAnalysisPanel sessionId={session.id} />
+          <div ref={advisorRef}>
+            <AiTraderAnalysisPanel sessionId={session.id} />
+          </div>
         </>
       )}
     </div>

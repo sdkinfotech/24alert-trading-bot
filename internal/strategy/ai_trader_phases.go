@@ -19,11 +19,12 @@ const (
 
 // AITraderPhaseProgress is exposed to the dashboard for phase UI.
 type AITraderPhaseProgress struct {
-	CollectSeconds int      `json:"collect_seconds"`
-	MinCollectSec  int      `json:"min_collect_sec"`
-	ReportsReady   []string `json:"reports_ready,omitempty"`
-	TradingReady   bool     `json:"trading_ready"`
-	ReadyReason    string   `json:"ready_reason,omitempty"`
+	CollectSeconds int                 `json:"collect_seconds"`
+	MinCollectSec  int                 `json:"min_collect_sec"`
+	ReportsReady   []string            `json:"reports_ready,omitempty"`
+	TradingReady   bool                `json:"trading_ready"`
+	ReadyReason    string              `json:"ready_reason,omitempty"`
+	BufferStats    AITraderBufferStats `json:"buffer_stats,omitempty"`
 }
 
 type aiTraderBookSample struct {
@@ -173,23 +174,53 @@ func (r *Runner) tickAITraderPhase(s *AITraderSession, f *AITraderFeatures) {
 	if cur.collectBuf == nil {
 		cur.collectBuf = newAITraderCollectBuffer()
 	}
+	prevPhase := cur.Phase
+	prevPrintN := 0
+	if cur.collectBuf != nil {
+		prevPrintN = len(cur.collectBuf.printSnaps)
+	}
 	cur.collectBuf.appendBook(f)
+	var newPrints []AITraderPrint
 	if cur.ctxState != nil {
-		cur.collectBuf.appendPrints(cur.ctxState.snapshotPrints())
+		newPrints = cur.ctxState.snapshotPrints()
+		cur.collectBuf.appendPrints(newPrints)
 	}
 	sec := cur.collectBuf.collectSeconds()
 	cur.PhaseProgress.CollectSeconds = sec
 	cur.PhaseProgress.MinCollectSec = aiTraderCollectMinSec()
+	r.syncAITraderBufferStatsLocked(cur, f)
+
+	if f != nil {
+		cur.appendCollectFeed("book", fmt.Sprintf("Стакан: mid %.4f, spread %.1f bps, imb %.2f",
+			f.Mid, f.SpreadBPS, f.Imbalance),
+			fmt.Sprintf("bid wall %s | ask wall %s",
+				fmt.Sprintf("%.4f x %d", f.LargestBidWall.Price, f.LargestBidWall.Quantity),
+				fmt.Sprintf("%.4f x %d", f.LargestAskWall.Price, f.LargestAskWall.Quantity)))
+	}
+	if added := len(cur.collectBuf.printSnaps) - prevPrintN; added > 0 && len(newPrints) > 0 {
+		last := newPrints[len(newPrints)-1]
+		cur.appendCollectFeed("print", fmt.Sprintf("Лента: +%d принтов (всего %d в буфере)", added, len(cur.collectBuf.printSnaps)),
+			fmt.Sprintf("последний %s %.0f @ %.4f", last.Direction, float64(last.Quantity), last.Price))
+	}
 
 	switch cur.Phase {
 	case AITraderPhaseCollecting:
 		if sec >= cur.PhaseProgress.MinCollectSec {
 			cur.Phase = AITraderPhaseAnalyzing
 			cur.PhaseProgress.ReadyReason = "минутное окно наблюдения завершено, начинаем анализ"
+			r.onPhaseCollectingToAnalyzingLocked(cur, f)
 		}
 	case AITraderPhaseAnalyzing, AITraderPhaseReady:
 		r.refreshAdvisorReportsLocked(cur)
+		wasReady := cur.wasTradingReady
 		r.evaluateTradingReadinessLocked(cur, f)
+		if cur.PhaseProgress.TradingReady && !wasReady {
+			r.onTradingReadyLocked(cur)
+		}
+		cur.wasTradingReady = cur.PhaseProgress.TradingReady
+	}
+	if prevPhase != cur.Phase && cur.Phase == AITraderPhaseReady && !cur.PhaseProgress.TradingReady {
+		cur.appendCollectFeed("phase", "Фаза ready: ожидаем финальный playbook", cur.PhaseProgress.ReadyReason)
 	}
 	cur.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	r.aiTrader.mu.Unlock()
@@ -197,6 +228,7 @@ func (r *Runner) tickAITraderPhase(s *AITraderSession, f *AITraderFeatures) {
 
 func (r *Runner) refreshAdvisorReportsLocked(s *AITraderSession) {
 	reports := fetchAdvisorReportsReady(s.ID)
+	r.noteAdvisorReportsLocked(s, reports)
 	s.PhaseProgress.ReportsReady = reports
 }
 
