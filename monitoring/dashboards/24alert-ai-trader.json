@@ -1,0 +1,107 @@
+{
+  "title": "24alert AI Trader",
+  "uid": "24alert-ai-trader",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "Europe/Moscow",
+  "panels": [
+    {
+      "type": "row",
+      "title": "PnL & Risk",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Session PnL (RUB)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "alert24_ai_trader_pnl_rub",
+          "legendFormat": "{{ session_id }} {{ ticker }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyRUB" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Drawdown (RUB)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "alert24_ai_trader_drawdown_rub",
+          "legendFormat": "{{ session_id }}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyRUB" } }
+    },
+    {
+      "type": "stat",
+      "title": "Win rate",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "alert24_ai_trader_win_rate", "legendFormat": "{{ session_id }}" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } }
+    },
+    {
+      "type": "stat",
+      "title": "Kill switch",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "alert24_ai_trader_kill_switch_active" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OFF", "color": "green" } } },
+            { "type": "value", "options": { "1": { "text": "ON", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Execution",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Paper orders",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(alert24_ai_trader_orders_total[5m])",
+          "legendFormat": "{{ mode }} {{ side }} {{ status }}"
+        }
+      ]
+    },
+    {
+      "type": "heatmap",
+      "title": "Fill quality (bps)",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(alert24_ai_trader_fill_quality_bps_bucket[5m])) by (le)",
+          "format": "heatmap",
+          "legendFormat": "{{ le }}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Micro signals",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(alert24_ai_trader_micro_signals_total[5m])",
+          "legendFormat": "{{ kind }}"
+        }
+      ]
+    }
+  ]
+}
