@@ -148,9 +148,8 @@ type AITraderDecisionEvent struct {
 }
 
 type AITraderManager struct {
-	mu         sync.Mutex
-	sessions   map[string]*AITraderSession
-	killSwitch bool
+	mu       sync.Mutex
+	sessions map[string]*AITraderSession
 }
 
 func NewAITraderManager() *AITraderManager {

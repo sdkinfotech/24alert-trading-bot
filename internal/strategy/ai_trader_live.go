@@ -18,15 +18,10 @@ type aiTraderLiveConfig struct {
 var aiTraderLive aiTraderLiveConfig
 
 func (r *Runner) aiTraderKillSwitchActive() bool {
-	r.aiTrader.mu.Lock()
-	defer r.aiTrader.mu.Unlock()
-	return r.aiTrader.killSwitch || aiTraderLive.killSwitchActive()
+	return aiTraderLive.killSwitchActive()
 }
 
 func (r *Runner) SetAITraderKillSwitch(on bool) {
-	r.aiTrader.mu.Lock()
-	r.aiTrader.killSwitch = on
-	r.aiTrader.mu.Unlock()
 	aiTraderLive.setKillSwitch(on)
 	if on {
 		metrics.AITraderKillSwitch.Set(1)

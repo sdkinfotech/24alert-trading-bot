@@ -76,10 +76,11 @@ func trendDirection(mctx *AITraderMarketContext) string {
 		return ""
 	}
 	b := mctx.ChartBars
-	first := b[len(b)-10].Close
-	if len(b) < 10 {
-		first = b[0].Close
+	idx := len(b) - 10
+	if idx < 0 {
+		idx = 0
 	}
+	first := b[idx].Close
 	last := b[len(b)-1].Close
 	if last > first*1.001 {
 		return "up"
