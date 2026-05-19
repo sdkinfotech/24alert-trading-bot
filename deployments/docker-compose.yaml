@@ -190,8 +190,9 @@ services:
       - REDIS_ADDR=redis:6379
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - AI_CHAT_MODEL=${AI_CHAT_MODEL:-anthropic/claude-sonnet-4}
-      - AI_TRADER_MODEL=${AI_TRADER_MODEL:-google/gemma-4-31b-it:free}
-      - AI_TRADER_LLM_INTERVAL_SEC=${AI_TRADER_LLM_INTERVAL_SEC:-15}
+      - AI_TRADER_MODEL=${AI_TRADER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      - AI_TRADER_MODEL_FALLBACKS=${AI_TRADER_MODEL_FALLBACKS:-google/gemma-4-31b-it:free}
+      - AI_TRADER_LLM_INTERVAL_SEC=${AI_TRADER_LLM_INTERVAL_SEC:-30}
       - GATEWAY_URL=http://24alert-gateway:8080
     volumes:
       - ../config/config.yaml:/app/config/config.yaml

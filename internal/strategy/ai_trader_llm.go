@@ -13,8 +13,9 @@ import (
 const (
 	defaultAITraderLLMInterval = 15 * time.Second
 	aiTraderLLMTimeout         = 45 * time.Second
-	// Free high-frequency model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
-	defaultAITraderModel = "google/gemma-4-31b-it:free"
+	// Free model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
+	defaultAITraderModel = "nvidia/nemotron-3-super-120b-a12b:free"
+	defaultAITraderModelFallbacks = "google/gemma-4-31b-it:free"
 )
 
 type aiTraderLLMOutput struct {
@@ -125,9 +126,14 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 	ev, err := r.callAITraderLLM(llmCtx, apiKey, s, f, mctx, base)
 	if err != nil {
 		r.logger.Warn("ai trader llm", "session", s.ID, "error", err)
+		if isOpenRouterRateLimit(err) {
+			// Retry sooner than full interval when provider throttles free tier.
+			s.lastLLMAt = time.Now().UTC().Add(-aiTraderLLMInterval(s) + 45*time.Second)
+		}
 		base.AnalysisSource = "rules_fallback"
 		base.Summary = "LLM временно недоступен, используется rule-engine: " + base.Summary
-		base.Reason = err.Error() + "; " + base.Reason
+		base.Reason = formatAITraderLLMError(err) + " | " + base.Reason
+		base.OperatorNote = strings.TrimSpace(base.OperatorNote + " " + formatAITraderLLMError(err))
 		return base, true
 	}
 	ev.AnalysisSource = "llm"
@@ -172,17 +178,81 @@ func applyAITraderRiskGate(ev, base AITraderDecisionEvent, f *AITraderFeatures) 
 	return ev
 }
 
+func aiTraderModelCandidates() []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(m string) {
+		m = strings.TrimSpace(m)
+		if m == "" || seen[m] {
+			return
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	add(aiTraderModel())
+	if fb := strings.TrimSpace(os.Getenv("AI_TRADER_MODEL_FALLBACKS")); fb != "" {
+		for _, part := range strings.Split(fb, ",") {
+			add(part)
+		}
+	} else {
+		for _, part := range strings.Split(defaultAITraderModelFallbacks, ",") {
+			add(part)
+		}
+	}
+	return out
+}
+
+func isOpenRouterRateLimit(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") || strings.Contains(msg, "rate-limit") || strings.Contains(msg, "rate limited")
+}
+
+func formatAITraderLLMError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if isOpenRouterRateLimit(err) {
+		return "OpenRouter: лимит free-модели (429). Подождите 1–2 мин, увеличьте AI_TRADER_LLM_INTERVAL_SEC или смените AI_TRADER_MODEL / пополните OpenRouter."
+	}
+	msg := strings.TrimSpace(err.Error())
+	if len(msg) > 240 {
+		return msg[:240] + "…"
+	}
+	return msg
+}
+
 func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) (AITraderDecisionEvent, error) {
 	msgs := buildAITraderLLMMessages(s, f, mctx, base)
-	raw, err := callOpenRouter(apiKey, aiTraderModel(), msgs)
-	if err != nil {
-		return AITraderDecisionEvent{}, err
+	var lastErr error
+	for _, model := range aiTraderModelCandidates() {
+		raw, err := callOpenRouter(apiKey, model, msgs)
+		if err != nil {
+			lastErr = err
+			if isOpenRouterRateLimit(err) {
+				r.logger.Warn("ai trader llm rate limited", "session", s.ID, "model", model)
+				continue
+			}
+			return AITraderDecisionEvent{}, err
+		}
+		out, err := parseAITraderLLMReply(raw)
+		if err != nil {
+			lastErr = err
+			r.logger.Warn("ai trader llm parse", "session", s.ID, "model", model, "error", err)
+			continue
+		}
+		ev := mergeAITraderLLMOutput(s, f, base, out)
+		if model != aiTraderModel() {
+			ev.OperatorNote = strings.TrimSpace(ev.OperatorNote + " | model=" + model)
+		}
+		return ev, nil
 	}
-	out, err := parseAITraderLLMReply(raw)
-	if err != nil {
-		return AITraderDecisionEvent{}, err
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no ai trader models configured")
 	}
-	return mergeAITraderLLMOutput(s, f, base, out), nil
+	return AITraderDecisionEvent{}, lastErr
 }
 
 func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) []chatMessage {
