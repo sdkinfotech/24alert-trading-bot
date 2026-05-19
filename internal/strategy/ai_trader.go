@@ -273,6 +273,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		old.Status = "stopped"
 		old.StoppedAt = now.Format(time.RFC3339)
 		old.UpdatedAt = now.Format(time.RFC3339)
+		notifyAdvisorFinalize(old.ID)
 	}
 	r.aiTrader.sessions[sessionKey] = s
 	startEv := AITraderDecisionEvent{
@@ -292,6 +293,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 
 	r.appendAITraderEvent(startEv)
 	s.ctxState = newAITraderContextState()
+	notifyAdvisorRegister(s)
 	go r.runAITraderSession(ctx, s, depth)
 	return cloneAITraderSession(s), nil
 }
@@ -310,6 +312,7 @@ func (r *Runner) StopAITraderSession(instanceID string) (*AITraderSession, bool)
 	s.Status = "stopped"
 	s.StoppedAt = now
 	s.UpdatedAt = now
+	notifyAdvisorFinalize(s.ID)
 	return cloneAITraderSession(s), true
 }
 
@@ -643,6 +646,7 @@ func (r *Runner) finishAITraderSession(s *AITraderSession, err error) {
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
 		cur.LastError = err.Error()
 	}
+	notifyAdvisorFinalize(cur.ID)
 }
 
 func aiTraderSessionKey(accountID, uid string) string {

@@ -333,9 +333,27 @@ Current market source:
 Dashboard:
 
 - new `AI Trader` tab in Strategy Dashboard;
-- operator can start `observe` or `paper` for the selected futures strategy;
-- UI shows microstructure features, last decision, and decision journal;
+- operator can start `observe` or `paper` for any MOEX instrument (catalog search);
+- UI shows thought stream (micro LLM ~30s) plus **timeframe analysis** tabs fed by `advisor-svc`;
 - live orders are explicitly labelled as disabled.
+
+## advisor-svc (hierarchical analysis)
+
+Separate service `cmd/advisor-svc` on port **9030** (`ADVISOR_PORT`), metrics **9130**.
+
+| Component | Role |
+|-----------|------|
+| `strategy-runner` | Micro observe + thought stream; calls `POST /advisor/sessions/register` and `finalize` on stop |
+| `advisor-svc` | Ingest runner session every ~12s, snapshot every ≥5m to SQLite (`ADVISOR_DB_PATH`), rollup agents |
+| Dashboard | `GET /advisor/sessions/{id}/analyses?tf=5m` (poll 5s), strategy tab with drafts |
+
+Timeframes (MSK calendar buckets): `5m` → `15m` → `30m` → `1h` → `4h` → `1d` → `strategy`.
+
+Env: `ADVISOR_MODEL`, `ADVISOR_MODEL_FALLBACKS`, `OPENROUTER_API_KEY`, `STRATEGY_RUNNER_URL`, `ADVISOR_URL` (runner hook).
+
+Prometheus: `advisor_reports_total{timeframe,status}`, `advisor_llm_errors_total`, `advisor_ingest_snapshots_total`.
+
+Nginx: `deployments/nginx-advisor-location.snippet` → `location /advisor` → `127.0.0.1:9030`.
 
 Next steps before live:
 

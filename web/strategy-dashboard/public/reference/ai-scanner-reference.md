@@ -14,6 +14,8 @@ Key production rules:
 - Clearing `14:00-14:05` is blocked.
 - Weekend trading is blocked intentionally.
 - Manual instances: `fut-brent-mini-lb`, `fut-gas-mini-sma`, `fut-mechel-lb`.
+- Current manual strategy baseline: `BMM6` `sma_crossover` `1h` `fast=4 slow=9 trailing_stop_pct=0.005`; `NGM6` `sma_crossover` `1h` `fast=5 slow=17`; `MCM6` `sma_crossover` `1h` `fast=4 slow=9`; all `quantity=1`.
+- Brent/Mechel `-lb` suffixes are legacy IDs only. Always read the current `type` field from config or `/instances`.
 - Read `/workspace/memory/agent-memory.md` before strategy decisions.
 - Write reports to `/workspace/reports/`.
 

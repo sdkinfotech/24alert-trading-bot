@@ -4,6 +4,7 @@ import type { AiTraderDecisionEvent, AiTraderSession, Instance } from '../api/ty
 import { useI18n } from '../i18n';
 import { EM_DASH, formatDateTime, formatNumber } from '../format';
 import { InstrumentSearchPicker, type SelectedInstrument } from './InstrumentSearchPicker';
+import { AiTraderAnalysisPanel } from './AiTraderAnalysisPanel';
 import { Badge, Button, Card, EmptyState, Stat } from './ui';
 
 interface Props {
@@ -287,6 +288,8 @@ export function AiTraderPanel({ instances }: Props) {
               <EmptyState>{t('noEvents')}</EmptyState>
             )}
           </Card>
+
+          <AiTraderAnalysisPanel sessionId={session.id} />
         </>
       )}
     </div>

@@ -12,6 +12,9 @@ import type {
   StopOrder,
   AiTraderLimits,
   AiTraderSession,
+  AdvisorAnalysisReport,
+  AdvisorStrategyResponse,
+  AdvisorTimeframe,
   CatalogInstrument,
   AiChatResponse,
   AiChatStatus,
@@ -99,4 +102,16 @@ export const api = {
   }) => post<AiTraderSession>('/ai-trader/sessions', body),
   stopAiTraderSession: (instanceID: string) =>
     post<AiTraderSession>(`/ai-trader/sessions/${instanceID}/stop`, {}),
+  advisorAnalyses: (sessionId: string, tf: AdvisorTimeframe, limit = 20) =>
+    get<AdvisorAnalysisReport[]>(
+      `/advisor/sessions/${encodeURIComponent(sessionId)}/analyses?tf=${encodeURIComponent(tf)}&limit=${limit}`,
+    ),
+  advisorReport: (sessionId: string, reportId: string) =>
+    get<AdvisorAnalysisReport>(
+      `/advisor/sessions/${encodeURIComponent(sessionId)}/analyses/${encodeURIComponent(reportId)}`,
+    ),
+  advisorStrategy: (sessionId: string) =>
+    get<AdvisorStrategyResponse>(`/advisor/sessions/${encodeURIComponent(sessionId)}/strategy`),
+  advisorFinalize: (sessionId: string) =>
+    post<{ status: string }>(`/advisor/sessions/${encodeURIComponent(sessionId)}/finalize`, {}),
 };

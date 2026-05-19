@@ -12,6 +12,7 @@ export default defineConfig({
       '/report': 'http://127.0.0.1:9020',
       '/instruments': 'http://127.0.0.1:9020',
       '/ai-trader': 'http://127.0.0.1:9020',
+      '/advisor': 'http://127.0.0.1:9030',
     },
   },
   build: {

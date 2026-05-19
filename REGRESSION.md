@@ -34,6 +34,8 @@ Run on `srv03-cloud` unless stated otherwise.
 ### Strategy Runner
 
 - [ ] `curl -fsS http://127.0.0.1:9020/health` returns OK.
+- [ ] `curl -fsS http://127.0.0.1:9030/health` returns OK (advisor-svc).
+- [ ] `https://gateway.24alert.ru:8080/advisor/health` proxies to advisor-svc (after nginx snippet).
 - [ ] `curl -fsS http://127.0.0.1:9020/instances` shows futures instances running.
 - [ ] `curl -fsS 'http://127.0.0.1:9020/instances/fut-gas-mini-sma/indicator'` returns indicator data.
 - [ ] `curl -fsS 'http://127.0.0.1:9020/instances/fut-mechel-lb/events?limit=20'` returns event timeline.
@@ -50,7 +52,7 @@ Run on `srv03-cloud` unless stated otherwise.
 
 ### Port Hardening
 
-- [ ] Service ports are loopback-only: `9001`, `9002`, `9003`, `9004`, `6379`, `9020`, `9120`.
+- [ ] Service ports are loopback-only: `9001`, `9002`, `9003`, `9004`, `6379`, `9020`, `9120`, `9030`, `9130`.
 - [ ] External access goes through nginx `:8080` only.
 - [ ] If `monitoring` profile is enabled, `9090` must be loopback-only.
 

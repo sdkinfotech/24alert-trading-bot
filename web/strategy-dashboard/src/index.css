@@ -276,6 +276,25 @@ body {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+.advisor-section {
+  margin-top: 0.75rem;
+}
+.advisor-section-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.advisor-bullets {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+}
+.advisor-summary-md {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  margin-bottom: 0.5rem;
+}
+
 .ai-trader-thought-watch {
   color: var(--text);
   font-size: 0.85rem;

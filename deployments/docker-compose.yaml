@@ -194,6 +194,7 @@ services:
       - AI_TRADER_MODEL_FALLBACKS=${AI_TRADER_MODEL_FALLBACKS:-google/gemma-4-31b-it:free}
       - AI_TRADER_LLM_INTERVAL_SEC=${AI_TRADER_LLM_INTERVAL_SEC:-30}
       - GATEWAY_URL=http://24alert-gateway:8080
+      - ADVISOR_URL=http://advisor-svc:9030
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
       - strategy-data:/app/data
@@ -205,6 +206,40 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  advisor-svc:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        SERVICE_NAME: advisor-svc
+    container_name: 24alert-advisor-svc
+    ports:
+      - "127.0.0.1:9030:9030"
+      - "127.0.0.1:9130:9130"
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - ADVISOR_MODEL=${ADVISOR_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      - ADVISOR_MODEL_FALLBACKS=${ADVISOR_MODEL_FALLBACKS:-google/gemma-4-31b-it:free}
+      - ADVISOR_DB_PATH=/app/data/advisor_memory.db
+      - STRATEGY_RUNNER_URL=http://strategy-runner:9020
+    volumes:
+      - strategy-data:/app/data
+    networks:
+      - trading-bot-net
+    restart: unless-stopped
+    depends_on:
+      strategy-runner:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9030/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ai-scanner:
     build:

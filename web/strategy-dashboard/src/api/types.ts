@@ -375,3 +375,81 @@ export interface AiTraderSession {
   last_decision?: AiTraderDecisionEvent;
   events?: AiTraderDecisionEvent[];
 }
+
+export type AdvisorTimeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | 'strategy';
+
+export interface AdvisorParticipantNote {
+  role: string;
+  notes: string;
+}
+
+export interface AdvisorLimitNote {
+  side: string;
+  price: number;
+  quantity: number;
+  event: string;
+}
+
+export interface AdvisorDensityNote {
+  price: number;
+  side: string;
+  assessment: string;
+  reason: string;
+}
+
+export interface AdvisorStructured {
+  market_regime?: string;
+  key_levels?: string[];
+  participants?: AdvisorParticipantNote[];
+  volume_notes?: string[];
+  large_limits?: AdvisorLimitNote[];
+  repositioning?: string[];
+  mm_clouds?: string[];
+  densities?: AdvisorDensityNote[];
+  iceberg_hints?: string[];
+  conclusions?: string[];
+  next_watch?: string[];
+  trading_ideas?: string[];
+  confidence?: number;
+}
+
+export interface AdvisorAnalysisReport {
+  id: string;
+  session_id: string;
+  timeframe: AdvisorTimeframe;
+  period_start: string;
+  period_end: string;
+  status: 'ok' | 'failed' | 'pending' | string;
+  summary_md?: string;
+  structured?: AdvisorStructured;
+  source_report_ids?: string[];
+  model?: string;
+  prompt_version?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface AdvisorStrategyDraft {
+  id: string;
+  session_id: string;
+  kind: string;
+  title: string;
+  body: string;
+  ticker?: string;
+  instrument_uid?: string;
+  created_at: string;
+}
+
+export interface AdvisorSynthesis {
+  session_id: string;
+  summary_md: string;
+  structured?: AdvisorStructured;
+  drafts?: AdvisorStrategyDraft[];
+  model?: string;
+  created_at: string;
+}
+
+export interface AdvisorStrategyResponse {
+  synthesis: AdvisorSynthesis | null;
+  reports: AdvisorAnalysisReport[];
+}
