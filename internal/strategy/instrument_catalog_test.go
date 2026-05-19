@@ -1,6 +1,16 @@
 package strategy
 
-import "testing"
+import (
+	"testing"
+)
+
+func TestDecodeGatewayInstrumentsWrapped(t *testing.T) {
+	raw := `{"data":[{"uid":"u1","ticker":"SBER","name":"Sber","instrument_type":"share"}]}`
+	out, err := decodeGatewayInstruments([]byte(raw))
+	if err != nil || len(out) != 1 || out[0].Ticker != "SBER" {
+		t.Fatalf("unexpected decode: %+v err=%v", out, err)
+	}
+}
 
 func TestFilterCatalogInstruments(t *testing.T) {
 	items := []CatalogInstrument{

@@ -1,6 +1,7 @@
 package strategy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,7 +39,11 @@ func gatewayBaseURL() string {
 	if u := strings.TrimSpace(os.Getenv("GATEWAY_URL")); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	return "http://gateway:8080"
+	// container_name in compose is 24alert-gateway; service DNS "gateway" may be missing after --no-deps recreate
+	if u := strings.TrimSpace(os.Getenv("GATEWAY_HOST")); u != "" {
+		return "http://" + strings.TrimRight(u, "/") + ":8080"
+	}
+	return "http://24alert-gateway:8080"
 }
 
 func (c *instrumentCatalog) ensure(ctx context.Context) error {
@@ -120,11 +125,28 @@ func fetchGatewayInstruments(ctx context.Context, url string) ([]gatewayInstrume
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gateway %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	var out []gatewayInstrument
-	if err := json.Unmarshal(body, &out); err != nil {
+	return decodeGatewayInstruments(body)
+}
+
+func decodeGatewayInstruments(body []byte) ([]gatewayInstrument, error) {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
+		return nil, nil
+	}
+	if body[0] == '[' {
+		var out []gatewayInstrument
+		if err := json.Unmarshal(body, &out); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	var wrapped struct {
+		Data []gatewayInstrument `json:"data"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return wrapped.Data, nil
 }
 
 func filterCatalogInstruments(items []CatalogInstrument, query, kind string, limit int) []CatalogInstrument {

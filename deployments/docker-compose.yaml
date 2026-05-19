@@ -192,7 +192,7 @@ services:
       - AI_CHAT_MODEL=${AI_CHAT_MODEL:-anthropic/claude-sonnet-4}
       - AI_TRADER_MODEL=${AI_TRADER_MODEL:-google/gemma-4-31b-it:free}
       - AI_TRADER_LLM_INTERVAL_SEC=${AI_TRADER_LLM_INTERVAL_SEC:-15}
-      - GATEWAY_URL=http://gateway:8080
+      - GATEWAY_URL=http://24alert-gateway:8080
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
       - strategy-data:/app/data
