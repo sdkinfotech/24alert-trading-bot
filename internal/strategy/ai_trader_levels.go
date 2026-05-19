@@ -3,6 +3,7 @@ package strategy
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 )
 
@@ -183,6 +184,44 @@ func nearestResistance(levels []AITraderLevel, mid float64) (AITraderLevel, bool
 		}
 	}
 	return best, ok
+}
+
+// formatLevelsByDistance returns human/LLM-readable lines sorted by proximity to ref price.
+func formatLevelsByDistance(levels []AITraderLevel, ref float64) []string {
+	if len(levels) == 0 {
+		return nil
+	}
+	type item struct {
+		lv   AITraderLevel
+		dist float64
+		bps  float64
+	}
+	items := make([]item, 0, len(levels))
+	for _, lv := range levels {
+		if lv.Price <= 0 {
+			continue
+		}
+		dist := ref - lv.Price
+		bps := 0.0
+		if ref > 0 {
+			bps = (dist / ref) * 10000
+		}
+		items = append(items, item{lv: lv, dist: dist, bps: bps})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return math.Abs(items[i].bps) < math.Abs(items[j].bps)
+	})
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		dir := "at price"
+		if it.bps > 2 {
+			dir = fmt.Sprintf("%.0f bps below", it.bps)
+		} else if it.bps < -2 {
+			dir = fmt.Sprintf("%.0f bps above", -it.bps)
+		}
+		out = append(out, fmt.Sprintf("- %s %.4f | %s | %s", it.lv.Kind, it.lv.Price, it.lv.Source, dir))
+	}
+	return out
 }
 
 func playbookEntrySummary(pb *LevelPlaybook) string {

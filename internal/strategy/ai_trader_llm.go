@@ -479,24 +479,16 @@ func writeAITraderContextSummary(b *strings.Builder, f *AITraderFeatures, mctx *
 	}
 
 	if len(mctx.Levels) > 0 {
-		b.WriteString("\n== Уровни ==\n")
-		var support, resistance []string
-		for _, lv := range mctx.Levels {
-			line := fmt.Sprintf("%.4f (%s/%s)", lv.Price, lv.Kind, lv.Source)
-			switch strings.ToLower(lv.Kind) {
-			case "support", "support_zone":
-				support = append(support, line)
-			case "resistance", "resistance_zone":
-				resistance = append(resistance, line)
-			default:
-				support = append(support, line)
-			}
+		b.WriteString("\n== Уровни (относительно цены) ==\n")
+		ref := f.Mid
+		if mctx.TapeStats.LastPrice > 0 {
+			ref = mctx.TapeStats.LastPrice
 		}
-		if len(support) > 0 {
-			b.WriteString("Support: " + strings.Join(support, ", ") + "\n")
+		if ref > 0 {
+			fmt.Fprintf(b, "reference price %.4f\n", ref)
 		}
-		if len(resistance) > 0 {
-			b.WriteString("Resistance: " + strings.Join(resistance, ", ") + "\n")
+		for _, line := range formatLevelsByDistance(mctx.Levels, ref) {
+			b.WriteString(line + "\n")
 		}
 	}
 

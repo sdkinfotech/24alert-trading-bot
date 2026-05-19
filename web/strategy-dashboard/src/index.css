@@ -395,12 +395,62 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.ai-trader-levels-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .ai-trader-levels-chart {
   width: 100%;
-  height: 200px;
+  min-height: 280px;
+  height: auto;
   display: block;
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   border-radius: 0.5rem;
+}
+
+.ai-trader-chart-axis {
+  font-size: 10px;
+  fill: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.ai-trader-chart-level-label {
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+}
+
+.ai-trader-chart-price-label {
+  font-size: 10px;
+  fill: var(--accent);
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+}
+
+.ai-trader-nearest-levels {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--surface) 85%, var(--border));
+}
+
+.ai-trader-levels-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.ai-trader-levels-table th,
+.ai-trader-levels-table td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-trader-levels-table th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .ai-trader-pipeline {

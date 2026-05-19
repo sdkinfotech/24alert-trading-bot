@@ -2,129 +2,256 @@ import { useMemo } from 'react';
 import type { AiTraderCandleBar, AiTraderSession } from '../api/types';
 import { useI18n } from '../i18n';
 import { formatNumber } from '../format';
-import { Card } from './ui';
+import { Badge, Card } from './ui';
+import {
+  barPriceRange,
+  enrichLevels,
+  pickChartLevels,
+  shortLevelSource,
+  type EnrichedLevel,
+} from './aiTraderLevelUtils';
 
 interface Props {
   session: AiTraderSession;
 }
 
-function levelColor(kind: string): string {
-  if (kind === 'support') return 'var(--success, #22c55e)';
-  if (kind === 'resistance') return 'var(--danger, #ef4444)';
-  return 'var(--muted)';
+const CHART_W = 720;
+const CHART_H = 280;
+const PAD_LEFT = 52;
+const PAD_RIGHT = 88;
+
+function levelStroke(lv: EnrichedLevel): string {
+  if (lv.kind === 'support') return '#22c55e';
+  if (lv.kind === 'resistance') return '#ef4444';
+  return '#94a3b8';
+}
+
+function levelDash(source: string): string {
+  if (source.startsWith('hourly')) return '5 4';
+  if (source.startsWith('daily')) return '10 4';
+  return '4 2';
 }
 
 export function AiTraderLevelsChart({ session }: Props) {
   const { t, lang } = useI18n();
   const bars = session.market_context?.chart_bars ?? [];
-  const levels = session.market_context?.levels ?? session.level_playbook?.levels ?? [];
-  const mid = session.features?.mid ?? session.phase_progress?.buffer_stats?.mid;
-  const last =
+  const rawLevels = session.market_context?.levels ?? session.level_playbook?.levels ?? [];
+  const refPrice =
     session.phase_progress?.buffer_stats?.last_price ??
     session.market_context?.tape_stats?.last_price ??
-    mid;
+    session.features?.mid ??
+    0;
+
+  const enriched = useMemo(() => enrichLevels(rawLevels, refPrice), [rawLevels, refPrice]);
 
   const layout = useMemo(() => {
-    if (bars.length === 0 && levels.length === 0) return null;
-    const prices: number[] = [];
-    for (const b of bars) {
-      prices.push(b.low, b.high, b.close);
+    const recent = bars.slice(-45);
+    const br = barPriceRange(recent);
+    if (!br && enriched.length === 0) return null;
+
+    let minP = br?.min ?? refPrice * 0.998;
+    let maxP = br?.max ?? refPrice * 1.002;
+    if (refPrice > 0) {
+      minP = Math.min(minP, refPrice);
+      maxP = Math.max(maxP, refPrice);
     }
-    for (const l of levels) {
-      if (l.price > 0) prices.push(l.price);
-    }
-    if (last && last > 0) prices.push(last);
-    if (mid && mid > 0) prices.push(mid);
-    if (prices.length === 0) return null;
-    let minP = Math.min(...prices);
-    let maxP = Math.max(...prices);
-    const pad = (maxP - minP) * 0.08 || maxP * 0.001 || 0.01;
+    const span = maxP - minP || refPrice * 0.002 || 0.01;
+    const pad = Math.max(span * 0.12, refPrice * 0.0008);
     minP -= pad;
     maxP += pad;
-    const range = maxP - minP || 1;
-    const w = 640;
-    const h = 200;
-    const y = (p: number) => h - ((p - minP) / range) * h;
-    return { minP, maxP, w, h, y, bars: bars.slice(-30), levels };
-  }, [bars, levels, last, mid]);
+    const range = maxP - minP;
+    const plotH = CHART_H - 24;
+    const plotW = CHART_W - PAD_LEFT - PAD_RIGHT;
+    const y = (p: number) => 12 + plotH - ((p - minP) / range) * plotH;
 
-  if (!layout) {
+    const visible = pickChartLevels(enriched, refPrice, minP, maxP);
+    const tickCount = 5;
+    const ticks: number[] = [];
+    for (let i = 0; i < tickCount; i++) {
+      ticks.push(minP + (range * i) / (tickCount - 1));
+    }
+
+    const nearestSupport = enriched.filter((l) => l.price <= refPrice).sort((a, b) => b.price - a.price)[0];
+    const nearestResistance = enriched.filter((l) => l.price > refPrice).sort((a, b) => a.price - b.price)[0];
+
+    return {
+      minP,
+      maxP,
+      y,
+      plotW,
+      plotH,
+      recent,
+      visible,
+      ticks,
+      nearestSupport,
+      nearestResistance,
+    };
+  }, [bars, enriched, refPrice]);
+
+  if (!layout || refPrice <= 0) {
     return (
-      <Card title={t('levelsChartTitle')} subtitle={t('levelsChartEmpty')}>
+      <Card title={t('levelsChartTitle')} subtitle={t('levelsChartWaiting')}>
         <p className="text-sm text-[var(--muted)]">{t('levelsChartWaiting')}</p>
       </Card>
     );
   }
 
-  const barW = Math.max(2, layout.w / Math.max(layout.bars.length, 1) - 2);
+  const barW = Math.max(3, layout.plotW / Math.max(layout.recent.length, 1) - 1.5);
 
   return (
-    <Card title={t('levelsChartTitle')} subtitle={t('levelsChartHelp')}>
-      <svg
-        className="ai-trader-levels-chart"
-        viewBox={`0 0 ${layout.w} ${layout.h}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={t('levelsChartTitle')}
-      >
-        {layout.levels.map((lv) => (
-          <g key={`${lv.kind}-${lv.price}-${lv.source}`}>
-            <line
-              x1={0}
-              y1={layout.y(lv.price)}
-              x2={layout.w}
-              y2={layout.y(lv.price)}
-              stroke={levelColor(lv.kind)}
-              strokeWidth={1}
-              strokeDasharray={lv.source.startsWith('hourly') ? '4 3' : '6 2'}
-              opacity={0.75}
-            />
-          </g>
-        ))}
-        {layout.bars.map((b: AiTraderCandleBar, i: number) => {
-          const x = i * (barW + 2) + 4;
-          const openY = layout.y(b.open);
-          const closeY = layout.y(b.close);
-          const highY = layout.y(b.high);
-          const lowY = layout.y(b.low);
-          const up = b.close >= b.open;
-          const color = up ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
-          return (
-            <g key={b.time}>
-              <line x1={x + barW / 2} y1={highY} x2={x + barW / 2} y2={lowY} stroke={color} strokeWidth={1} />
-              <rect
-                x={x}
-                y={Math.min(openY, closeY)}
-                width={barW}
-                height={Math.max(2, Math.abs(closeY - openY))}
-                fill={color}
-                opacity={0.85}
+    <Card title={t('levelsChartTitle')} subtitle={t('levelsChartZoomNote')}>
+      <div className="ai-trader-levels-wrap">
+        <svg
+          className="ai-trader-levels-chart"
+          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label={t('levelsChartTitle')}
+        >
+          {layout.ticks.map((tick) => (
+            <g key={tick}>
+              <line
+                x1={PAD_LEFT}
+                y1={layout.y(tick)}
+                x2={PAD_LEFT + layout.plotW}
+                y2={layout.y(tick)}
+                stroke="var(--border)"
+                strokeWidth={0.5}
+                opacity={0.5}
               />
+              <text
+                x={PAD_LEFT - 6}
+                y={layout.y(tick) + 4}
+                textAnchor="end"
+                className="ai-trader-chart-axis"
+              >
+                {formatNumber(tick, lang, 2)}
+              </text>
             </g>
-          );
-        })}
-        {last != null && last > 0 && (
+          ))}
+
+          {layout.visible.map((lv) => {
+            const yy = layout.y(lv.price);
+            return (
+              <g key={`${lv.kind}-${lv.price}-${lv.source}`}>
+                <line
+                  x1={PAD_LEFT}
+                  y1={yy}
+                  x2={PAD_LEFT + layout.plotW}
+                  y2={yy}
+                  stroke={levelStroke(lv)}
+                  strokeWidth={lv.source.startsWith('daily') ? 1.5 : 1}
+                  strokeDasharray={levelDash(lv.source)}
+                  opacity={0.9}
+                />
+                <text
+                  x={PAD_LEFT + layout.plotW + 4}
+                  y={yy + 4}
+                  className="ai-trader-chart-level-label"
+                  fill={levelStroke(lv)}
+                >
+                  {shortLevelSource(lv.source)} {formatNumber(lv.price, lang, 2)}
+                </text>
+              </g>
+            );
+          })}
+
+          {layout.recent.map((b: AiTraderCandleBar, i: number) => {
+            const x = PAD_LEFT + i * (barW + 1.5);
+            const openY = layout.y(b.open);
+            const closeY = layout.y(b.close);
+            const highY = layout.y(b.high);
+            const lowY = layout.y(b.low);
+            const up = b.close >= b.open;
+            const color = up ? '#22c55e' : '#ef4444';
+            const bodyH = Math.max(2, Math.abs(closeY - openY));
+            return (
+              <g key={b.time}>
+                <line x1={x + barW / 2} y1={highY} x2={x + barW / 2} y2={lowY} stroke={color} strokeWidth={1.2} />
+                <rect
+                  x={x}
+                  y={Math.min(openY, closeY)}
+                  width={barW}
+                  height={bodyH}
+                  fill={color}
+                  opacity={0.9}
+                />
+              </g>
+            );
+          })}
+
           <line
-            x1={0}
-            y1={layout.y(last)}
-            x2={layout.w}
-            y2={layout.y(last)}
+            x1={PAD_LEFT}
+            y1={layout.y(refPrice)}
+            x2={PAD_LEFT + layout.plotW}
+            y2={layout.y(refPrice)}
             stroke="var(--accent)"
-            strokeWidth={2}
+            strokeWidth={2.5}
           />
-        )}
-      </svg>
-      <div className="mt-2 flex flex-wrap gap-3 text-xs font-mono text-[var(--muted)]">
-        {last != null && last > 0 && (
-          <span>
-            {t('currentPrice')}: <strong className="text-[var(--accent)]">{formatNumber(last, lang, 4)}</strong>
-          </span>
-        )}
-        {mid != null && mid > 0 && (
-          <span>mid: {formatNumber(mid, lang, 4)}</span>
-        )}
-        <span>{t('levelsLegendDaily')}</span>
-        <span className="opacity-70">{t('levelsLegendHourly')}</span>
+          <text
+            x={PAD_LEFT + layout.plotW + 4}
+            y={layout.y(refPrice) + 4}
+            className="ai-trader-chart-price-label"
+          >
+            {t('currentPrice')} {formatNumber(refPrice, lang, 2)}
+          </text>
+        </svg>
+
+        <div className="ai-trader-nearest-levels">
+          {layout.nearestSupport && (
+            <p className="text-sm">
+              <span className="text-[var(--success)] font-semibold">{t('nearestSupport')}:</span>{' '}
+              {formatNumber(layout.nearestSupport.price, lang, 4)}{' '}
+              <span className="text-[var(--muted)]">
+                ({formatNumber(Math.abs(layout.nearestSupport.dist_bps), lang, 1)} bps {t('levelBelow')})
+              </span>
+            </p>
+          )}
+          {layout.nearestResistance && (
+            <p className="text-sm">
+              <span className="text-[var(--danger)] font-semibold">{t('nearestResistance')}:</span>{' '}
+              {formatNumber(layout.nearestResistance.price, lang, 4)}{' '}
+              <span className="text-[var(--muted)]">
+                ({formatNumber(Math.abs(layout.nearestResistance.dist_bps), lang, 1)} bps {t('levelAbove')})
+              </span>
+            </p>
+          )}
+        </div>
+
+        <div className="ai-trader-levels-ladder mt-4">
+          <h4 className="text-xs font-semibold text-[var(--muted)] mb-2">{t('levelsLadderTitle')}</h4>
+          <p className="text-xs text-[var(--muted)] mb-2">{t('levelsLadderHelp')}</p>
+          <table className="ai-trader-levels-table">
+            <thead>
+              <tr>
+                <th>{t('levelKind')}</th>
+                <th>{t('levelPrice')}</th>
+                <th>{t('levelSource')}</th>
+                <th>{t('levelDistance')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {enriched.slice(0, 12).map((lv) => (
+                <tr key={`${lv.kind}-${lv.price}-${lv.source}`}>
+                  <td>
+                    <Badge tone={lv.kind === 'support' ? 'success' : lv.kind === 'resistance' ? 'danger' : 'neutral'}>
+                      {lv.kind}
+                    </Badge>
+                  </td>
+                  <td className="font-mono">{formatNumber(lv.price, lang, 4)}</td>
+                  <td className="text-[var(--muted)] text-xs">{shortLevelSource(lv.source)}</td>
+                  <td className="font-mono">
+                    {lv.dist_bps >= 0 ? '−' : '+'}
+                    {formatNumber(Math.abs(lv.dist_bps), lang, 1)} bps
+                    <span className="text-[var(--muted)] ml-1">
+                      ({lv.dist_bps > 2 ? t('levelBelow') : lv.dist_bps < -2 ? t('levelAbove') : '≈'})
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Card>
   );
