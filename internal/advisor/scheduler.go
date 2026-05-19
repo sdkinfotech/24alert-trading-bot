@@ -44,6 +44,7 @@ func (svc *Service) catchUpTimeframe(ctx context.Context, sessionID string, tf T
 		}
 		if err := svc.runAgent(ctx, sessionID, tf, periodEnd); err != nil {
 			svc.log.Warn("advisor agent", "session_id", sessionID, "tf", tf, "period_end", periodEnd, "error", err)
+			break
 		}
 		_ = svc.store.SetLastPeriodEnd(ctx, sessionID, tf, periodEnd)
 		lastEnd = periodEnd
@@ -52,7 +53,7 @@ func (svc *Service) catchUpTimeframe(ctx context.Context, sessionID string, tf T
 }
 
 func (svc *Service) retryFailedReports(ctx context.Context) {
-	cutoff := time.Now().UTC().Add(-2 * time.Minute)
+	cutoff := time.Now().UTC().Add(-30 * time.Second)
 	failed, err := svc.store.ListFailedReports(ctx, cutoff, 10)
 	if err != nil {
 		return

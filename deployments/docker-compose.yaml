@@ -224,6 +224,11 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - ADVISOR_MODEL=${ADVISOR_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
       - ADVISOR_MODEL_FALLBACKS=${ADVISOR_MODEL_FALLBACKS:-google/gemma-4-31b-it:free}
+      # Last resort after free models + retries (5m/rollup reports)
+      - ADVISOR_PAID_MODEL=${ADVISOR_PAID_MODEL:-google/gemini-2.5-flash}
+      - ADVISOR_LLM_RETRIES=${ADVISOR_LLM_RETRIES:-2}
+      - ADVISOR_LLM_MAX_TOKENS=${ADVISOR_LLM_MAX_TOKENS:-4096}
+      - ADVISOR_FACTS_FALLBACK=${ADVISOR_FACTS_FALLBACK:-true}
       - ADVISOR_DB_PATH=/app/data/advisor_memory.db
       - STRATEGY_RUNNER_URL=http://strategy-runner:9020
     volumes:

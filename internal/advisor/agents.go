@@ -20,7 +20,7 @@ func (svc *Service) runAgent(ctx context.Context, sessionID string, tf Timeframe
 		if rep.Status == ReportStatusOK {
 			return nil
 		}
-		if rep.Status == ReportStatusFailed && time.Since(rep.CreatedAt) < 2*time.Minute {
+		if rep.Status == ReportStatusFailed && time.Since(rep.CreatedAt) < 30*time.Second {
 			return nil
 		}
 	}

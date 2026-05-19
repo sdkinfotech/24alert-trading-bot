@@ -349,7 +349,22 @@ Separate service `cmd/advisor-svc` on port **9030** (`ADVISOR_PORT`), metrics **
 
 Timeframes (MSK calendar buckets): `5m` → `15m` → `30m` → `1h` → `4h` → `1d` → `strategy`.
 
-Env: `ADVISOR_MODEL`, `ADVISOR_MODEL_FALLBACKS`, `OPENROUTER_API_KEY`, `STRATEGY_RUNNER_URL`, `ADVISOR_URL` (runner hook).
+Env (OpenRouter):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ADVISOR_MODEL` | Nemotron free | Primary free model |
+| `ADVISOR_MODEL_FALLBACKS` | Gemma free | Comma-separated free fallbacks |
+| `ADVISOR_PAID_MODEL` | `google/gemini-2.5-flash` | Last resort after free tier fails |
+| `ADVISOR_LLM_RETRIES` | `2` | Attempts per model (429/5xx/parse retry) |
+| `ADVISOR_LLM_MAX_TOKENS` | `4096` | Cap for JSON reports |
+| `ADVISOR_FACTS_FALLBACK` | `true` | Deterministic digest if all LLM fail |
+| `OPENROUTER_API_KEY` | — | Required |
+| `STRATEGY_RUNNER_URL`, `ADVISOR_URL` | — | Runner hook |
+
+If `ADVISOR_MODEL` is unset and fallbacks empty, inherits `AI_TRADER_MODEL` / `AI_TRADER_MODEL_FALLBACKS`.
+
+LLM requests use `response_format: json_object`. Scheduler advances `last_period_end` only after a successful report; failed periods retry every ~30s. Paid model is never used until free models and retries are exhausted.
 
 Prometheus: `advisor_reports_total{timeframe,status}`, `advisor_llm_errors_total`, `advisor_ingest_snapshots_total`.
 
