@@ -24,6 +24,7 @@ func (s *Server) Handler() http.Handler { return s.mux }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.handleHealth)
+	s.mux.HandleFunc("GET /advisor/health", s.handleHealth)
 	s.mux.HandleFunc("POST /advisor/sessions/register", s.handleRegister)
 	s.mux.HandleFunc("POST /advisor/sessions/{id}/finalize", s.handleFinalize)
 	s.mux.HandleFunc("GET /advisor/sessions/{id}/analyses", s.handleListAnalyses)
