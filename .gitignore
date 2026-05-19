@@ -52,6 +52,11 @@ docs/swagger.yaml
 *.log
 logs/
 
+# Python / generated test artifacts
+__pycache__/
+*.pyc
+coverage
+
 # Qwen agent local files
 .qwen/
 
@@ -60,6 +65,7 @@ web/strategy-dashboard/node_modules/
 web/strategy-dashboard/dist/
 
 # Temporary
+.tmp/
 .tasks/.tmp/
 tmp/
 temp/
