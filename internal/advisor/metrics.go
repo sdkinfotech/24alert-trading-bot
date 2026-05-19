@@ -12,11 +12,12 @@ var (
 		Help:      "Analysis reports produced by timeframe and status",
 	}, []string{"timeframe", "status"})
 
-	AdvisorLLMErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	// AdvisorLLMErrorsTotal is deprecated; use alert24_llm_requests_total{service="advisor",result!="success"}.
+	AdvisorLLMErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "advisor",
 		Name:      "llm_errors_total",
-		Help:      "LLM failures when generating advisor reports",
-	})
+		Help:      "Deprecated: LLM failures (use alert24_llm_requests_total). Kept for existing dashboards.",
+	}, []string{"model"})
 
 	AdvisorIngestSnapshotsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: "advisor",

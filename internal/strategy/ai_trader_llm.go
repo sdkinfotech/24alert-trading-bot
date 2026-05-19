@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 const (
@@ -131,6 +133,7 @@ func (r *Runner) decideAITraderWithBrain(ctx context.Context, s *AITraderSession
 			s.lastLLMAt = time.Now().UTC().Add(-aiTraderLLMInterval(s) + 45*time.Second)
 		}
 		base.AnalysisSource = "rules_fallback"
+		base.LLMModel = "rules_fallback"
 		base.Summary = "LLM временно недоступен, используется rule-engine: " + base.Summary
 		base.Reason = formatAITraderLLMError(err) + " | " + base.Reason
 		base.OperatorNote = strings.TrimSpace(base.OperatorNote + " " + formatAITraderLLMError(err))
@@ -227,23 +230,32 @@ func formatAITraderLLMError(err error) string {
 func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) (AITraderDecisionEvent, error) {
 	msgs := buildAITraderLLMMessages(s, f, mctx, base)
 	var lastErr error
+	lastModel := "unknown"
 	for _, model := range aiTraderModelCandidates() {
+		lastModel = model
+		attemptStart := time.Now()
 		raw, err := callOpenRouter(apiKey, model, msgs)
 		if err != nil {
 			lastErr = err
+			result := metrics.ClassifyLLMError(err)
+			metrics.RecordLLMRequest(metrics.LLMServiceAITrader, model, result, 0)
 			if isOpenRouterRateLimit(err) {
-				r.logger.Warn("ai trader llm rate limited", "session", s.ID, "model", model)
+				r.logger.Warn("ai trader llm rate limited", "session", s.ID, "model", model, "result", result)
 				continue
 			}
-			return AITraderDecisionEvent{}, err
+			r.logger.Warn("ai trader llm call failed", "session", s.ID, "model", model, "error", err, "result", result)
+			continue
 		}
 		out, err := parseAITraderLLMReply(raw)
 		if err != nil {
 			lastErr = err
+			metrics.RecordLLMRequest(metrics.LLMServiceAITrader, model, metrics.LLMResultParseError, 0)
 			r.logger.Warn("ai trader llm parse", "session", s.ID, "model", model, "error", err)
 			continue
 		}
+		metrics.RecordLLMRequest(metrics.LLMServiceAITrader, model, metrics.LLMResultSuccess, time.Since(attemptStart))
 		ev := mergeAITraderLLMOutput(s, f, base, out)
+		ev.LLMModel = model
 		if model != aiTraderModel() {
 			ev.OperatorNote = strings.TrimSpace(ev.OperatorNote + " | model=" + model)
 		}
@@ -252,6 +264,7 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 	if lastErr == nil {
 		lastErr = fmt.Errorf("no ai trader models configured")
 	}
+	metrics.RecordLLMRequest(metrics.LLMServiceAITrader, lastModel, metrics.ClassifyLLMError(lastErr), 0)
 	return AITraderDecisionEvent{}, lastErr
 }
 

@@ -264,6 +264,7 @@ export interface AiTraderDecisionEvent {
   confidence: number;
   risk_result: string;
   analysis_source?: 'llm' | 'rules' | 'rules_fallback' | 'session';
+  llm_model?: string;
   features?: AiTraderFeatures;
 }
 

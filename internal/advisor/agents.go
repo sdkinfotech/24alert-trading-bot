@@ -128,7 +128,7 @@ func (svc *Service) runStrategyAgent(ctx context.Context, sessionID string) erro
 	}
 	syn, err := runStrategyLLM(ctx, ticker, instruction, *dayRep, all)
 	if err != nil {
-		AdvisorLLMErrorsTotal.Inc()
+		AdvisorLLMErrorsTotal.WithLabelValues("unknown").Inc()
 		return err
 	}
 	syn.SessionID = sessionID
@@ -162,7 +162,7 @@ func (svc *Service) runStrategyAgent(ctx context.Context, sessionID string) erro
 }
 
 func (svc *Service) saveFailedReport(ctx context.Context, sessionID string, tf Timeframe, start, end time.Time, err error) error {
-	AdvisorLLMErrorsTotal.Inc()
+	AdvisorLLMErrorsTotal.WithLabelValues("unknown").Inc()
 	rep := AnalysisReport{
 		SessionID:     sessionID,
 		Timeframe:     tf,

@@ -44,6 +44,11 @@ function ReportBody({ report, t }: { report: AdvisorAnalysisReport; t: (k: strin
       {report.status === 'failed' && (
         <p className="text-sm text-[var(--danger)]">{report.error_message ?? t('advisorReportFailed')}</p>
       )}
+      {report.model && (
+        <p className="text-xs text-[var(--muted)]">
+          model: <Badge tone="neutral">{report.model}</Badge>
+        </p>
+      )}
       {report.summary_md && (
         <div className="advisor-summary-md whitespace-pre-wrap">{report.summary_md}</div>
       )}

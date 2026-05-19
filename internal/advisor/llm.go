@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 const (
@@ -267,15 +269,21 @@ func runLLMWithFallback[T any](ctx context.Context, messages []chatMessage, pars
 	retries := advisorLLMRetries()
 	models := advisorModels()
 	var lastErr error
+	lastModel := "unknown"
 	log := slog.Default()
 
 	for _, model := range models {
+		lastModel = model
 		for attempt := 0; attempt < retries; attempt++ {
+			attemptStart := time.Now()
 			raw, err := callOpenRouter(ctx, model, messages)
 			if err != nil {
 				lastErr = err
+				result := metrics.ClassifyLLMError(err)
+				metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, model, result, 0)
+				AdvisorLLMErrorsTotal.WithLabelValues(metrics.LLMModelLabel(model)).Inc()
 				log.Warn("advisor llm call",
-					"model", model, "attempt", attempt+1, "error", err)
+					"model", model, "attempt", attempt+1, "error", err, "result", result)
 				if isRetryableHTTP(err) {
 					if isRateLimit(err) {
 						select {
@@ -292,6 +300,8 @@ func runLLMWithFallback[T any](ctx context.Context, messages []chatMessage, pars
 			out, err := parse(raw)
 			if err != nil {
 				lastErr = err
+				metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, model, metrics.LLMResultParseError, 0)
+				AdvisorLLMErrorsTotal.WithLabelValues(metrics.LLMModelLabel(model)).Inc()
 				log.Warn("advisor llm parse",
 					"model", model, "attempt", attempt+1, "error", err,
 					"raw_preview", truncateForLog(raw, 200))
@@ -300,12 +310,15 @@ func runLLMWithFallback[T any](ctx context.Context, messages []chatMessage, pars
 				}
 				break
 			}
+			metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, model, metrics.LLMResultSuccess, time.Since(attemptStart))
+			log.Info("advisor llm ok", "model", model, "attempt", attempt+1, "duration_ms", time.Since(attemptStart).Milliseconds())
 			return *out, model, nil
 		}
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("all advisor models exhausted")
 	}
+	metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, lastModel, metrics.ClassifyLLMError(lastErr), 0)
 	return zero, "", lastErr
 }
 
@@ -336,6 +349,7 @@ func runAnalysisLLM(ctx context.Context, tf Timeframe, ticker, instruction strin
 	}
 
 	if factsFallbackEnabled() && strings.TrimSpace(facts.TextDigest) != "" {
+		metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, factsFallbackModel, metrics.LLMResultFallback, 0)
 		rep := buildFactsFallbackReport(tf, facts, err)
 		return rep, factsFallbackModel, nil
 	}
@@ -430,6 +444,7 @@ Drafts are for operator review only — not auto-trading.`
 	}
 
 	if factsFallbackEnabled() {
+		metrics.RecordLLMRequest(metrics.LLMServiceAdvisor, factsFallbackModel, metrics.LLMResultFallback, 0)
 		return buildStrategyFallbackSynthesis(ticker, dayReport, allReports, err), nil
 	}
 	return StrategySynthesis{}, err

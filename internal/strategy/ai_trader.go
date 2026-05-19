@@ -127,6 +127,7 @@ type AITraderDecisionEvent struct {
 	Confidence     float64           `json:"confidence"`
 	RiskResult     string            `json:"risk_result"`
 	AnalysisSource string            `json:"analysis_source,omitempty"`
+	LLMModel       string            `json:"llm_model,omitempty"`
 	Features       *AITraderFeatures `json:"features,omitempty"`
 }
 

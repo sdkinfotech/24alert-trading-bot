@@ -35,6 +35,11 @@ scrape_configs:
       - targets: ["strategy-runner:9120"]
     metrics_path: /metrics
 
+  - job_name: "24alert-advisor-svc"
+    static_configs:
+      - targets: ["advisor-svc:9130"]
+    metrics_path: /metrics
+
   - job_name: "24alert-ai-scanner"
     static_configs:
       - targets: ["ai-scanner:9130"]

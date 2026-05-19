@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
 const (
@@ -450,8 +452,10 @@ func registerAIChatHandlers(mux *http.ServeMux, r *Runner, parentCtx context.Con
 		cancel()
 		msgs := chat.messages(systemPrompt(fullCtx))
 
+		chatStart := time.Now()
 		reply, err := callOpenRouter(apiKey, model, msgs)
 		if err != nil {
+			metrics.RecordLLMRequest(metrics.LLMServiceAIChat, model, metrics.ClassifyLLMError(err), 0)
 			chat.addAssistant("[error: " + err.Error() + "]")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
@@ -462,6 +466,7 @@ func registerAIChatHandlers(mux *http.ServeMux, r *Runner, parentCtx context.Con
 			return
 		}
 
+		metrics.RecordLLMRequest(metrics.LLMServiceAIChat, model, metrics.LLMResultSuccess, time.Since(chatStart))
 		chat.addAssistant(reply)
 
 		w.Header().Set("Content-Type", "application/json")

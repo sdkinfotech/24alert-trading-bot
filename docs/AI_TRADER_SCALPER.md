@@ -252,8 +252,10 @@ Metrics:
 - `alert24_ai_trader_dropped_events_total`
 - `alert24_ai_trader_decisions_total`
 - `alert24_ai_trader_decision_latency_seconds`
-- `alert24_ai_trader_llm_latency_seconds`
-- `alert24_ai_trader_llm_errors_total`
+- `alert24_llm_requests_total{service,model,result}` — `service`: `advisor`, `ai_trader`, `ai_chat`; `result`: `success`, `rate_limit`, `parse_error`, `http_error`, `fallback`
+- `alert24_llm_request_duration_seconds{service,model}` — latency успешных вызовов
+- `advisor_reports_total{timeframe,status}`, `advisor_llm_errors_total{model}` (legacy)
+- Grafana: dashboard **24alert LLM / OpenRouter** (`deployments/grafana/dashboards/llm-observability.json`)
 - `alert24_ai_trader_risk_rejections_total`
 - `alert24_ai_trader_orders_total`
 - `alert24_ai_trader_cancel_replace_total`
@@ -366,7 +368,7 @@ If `ADVISOR_MODEL` is unset and fallbacks empty, inherits `AI_TRADER_MODEL` / `A
 
 LLM requests use `response_format: json_object`. Scheduler advances `last_period_end` only after a successful report; failed periods retry every ~30s. Paid model is never used until free models and retries are exhausted.
 
-Prometheus: `advisor_reports_total{timeframe,status}`, `advisor_llm_errors_total`, `advisor_ingest_snapshots_total`.
+Prometheus: см. метрики LLM выше; `advisor_ingest_snapshots_total`. API отчётов advisor: поле `model` (какая модель или `facts-fallback`). AI Trader events: `llm_model`.
 
 Nginx: `deployments/nginx-advisor-location.snippet` → `location /advisor` → `127.0.0.1:9030`.
 
