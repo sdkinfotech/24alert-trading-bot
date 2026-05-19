@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	defaultAITraderLLMInterval = 15 * time.Second
+	defaultAITraderLLMInterval = 90 * time.Second
 	aiTraderLLMTimeout         = 45 * time.Second
-	// Free model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at ~15s polling).
+	// Free model; override with AI_TRADER_MODEL. Do not inherit AI_CHAT_MODEL (Sonnet is too costly at high polling).
 	defaultAITraderModel = "nvidia/nemotron-3-super-120b-a12b:free"
 	defaultAITraderModelFallbacks = "google/gemma-4-31b-it:free"
 )

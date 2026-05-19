@@ -306,7 +306,7 @@ Runtime API:
  - microstructure features are computed locally from the order book;
  - hard safety gates (stale feed, wide spread) stay rule-based;
  - interpretive conclusions use OpenRouter LLM (`OPENROUTER_API_KEY`), about once
-   every 15s (`AI_TRADER_LLM_INTERVAL_SEC`), with `analysis_source=llm` in the API;
+   every 90s by default (`AI_TRADER_LLM_INTERVAL_SEC`, min 10, max 120), with `analysis_source=llm` in the API;
  - if LLM is unavailable, the session falls back to rule-based text
    (`analysis_source=rules_fallback`).
 

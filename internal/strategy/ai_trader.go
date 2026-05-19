@@ -283,7 +283,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		Mode:           mode,
 		Action:         "start",
 		Intent:         "observe_market",
-		Summary:        "Сессия AI Trader запущена. Поток выводов LLM обновляется каждые ~15 с.",
+		Summary:        fmt.Sprintf("Сессия AI Trader запущена. Поток выводов LLM обновляется каждые ~%d с.", int(aiTraderLLMInterval(s).Seconds())),
 		Reason:         "operator started safe AI Trader session without live order permissions",
 		Confidence:     1,
 		RiskResult:     "live_orders_disabled",
