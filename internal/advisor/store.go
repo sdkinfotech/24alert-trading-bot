@@ -239,6 +239,31 @@ ORDER BY created_at_ms ASC LIMIT ?`,
 	return scanReports(rows)
 }
 
+func (s *Store) ListFailedReportsForRunning(ctx context.Context, olderThan time.Time, limit int) ([]AnalysisReport, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT r.id, r.session_id, r.timeframe, r.period_start_ms, r.period_end_ms, r.status, r.summary_md,
+  r.structured_json, r.source_ids_json, r.model, r.prompt_version, r.error_message, r.created_at_ms
+FROM analysis_reports r
+INNER JOIN advisor_sessions s ON s.session_id = r.session_id
+WHERE r.status=? AND r.created_at_ms < ? AND s.status='running'
+ORDER BY r.created_at_ms ASC LIMIT ?`,
+		ReportStatusFailed, olderThan.UnixMilli(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanReports(rows)
+}
+
+func (s *Store) GetSessionStatus(ctx context.Context, sessionID string) (string, error) {
+	var status string
+	err := s.db.QueryRowContext(ctx, `SELECT status FROM advisor_sessions WHERE session_id=?`, sessionID).Scan(&status)
+	return status, err
+}
+
 func (s *Store) DeleteDraftsForSession(ctx context.Context, sessionID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM strategy_drafts WHERE session_id=?`, sessionID)
 	return err

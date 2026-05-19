@@ -71,8 +71,19 @@ func (r *Runner) shouldRunAITraderLLM(s *AITraderSession) bool {
 	if s == nil || !aiTraderLLMEnabled() {
 		return false
 	}
+	switch s.Phase {
+	case AITraderPhaseCollecting:
+		return false
+	case AITraderPhaseTrading:
+		// Slower narrative updates while executing paper limits.
+		if s.lastLLMAt.IsZero() {
+			return true
+		}
+		return time.Since(s.lastLLMAt) >= aiTraderLLMInterval(s)*2
+	}
+	// analyzing / ready
 	if s.lastLLMAt.IsZero() {
-		return true
+		return s.PhaseProgress.CollectSeconds >= s.PhaseProgress.MinCollectSec
 	}
 	return time.Since(s.lastLLMAt) >= aiTraderLLMInterval(s)
 }
@@ -270,10 +281,25 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 
 func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) []chatMessage {
 	var b strings.Builder
-	b.WriteString("Ты — AI Trader 24alert. Отдельная prompt-driven сессия, НЕ SMA/Level/ORB.\n")
-	b.WriteString("Режим: " + s.Mode + ". Real broker orders ЗАПРЕЩЕНЫ.\n")
+	b.WriteString("Ты — AI Trader 24alert, intraday level strategy (стакан + лента + дневные S/R).\n")
+	b.WriteString(fmt.Sprintf("Фаза: %s. strategy_kind=%s. Брокерские заявки ЗАПРЕЩЕНЫ до фазы trading.\n", s.Phase, s.StrategyKind))
 	b.WriteString("Инструкция оператора: " + strings.TrimSpace(s.Instruction) + "\n")
-	b.WriteString(fmt.Sprintf("Инструмент: %s (%s), счёт %s\n\n", s.Ticker, s.InstrumentID, s.AccountID))
+	b.WriteString(fmt.Sprintf("Инструмент: %s (%s), счёт %s\n", s.Ticker, s.InstrumentID, s.AccountID))
+	b.WriteString(fmt.Sprintf("Прогресс: сбор %d/%d с; отчёты advisor: %v; trading_ready=%v\n\n",
+		s.PhaseProgress.CollectSeconds, s.PhaseProgress.MinCollectSec, s.PhaseProgress.ReportsReady, s.PhaseProgress.TradingReady))
+	if s.collectBuf != nil {
+		b.WriteString("== Агрегат окна наблюдения ==\n")
+		b.WriteString(s.collectBuf.digestForLLM())
+		b.WriteString("\n")
+	}
+	if s.LevelPlaybook != nil {
+		b.WriteString("== Level playbook ==\n")
+		b.WriteString(s.LevelPlaybook.Summary + "\n")
+		for _, lv := range s.LevelPlaybook.Levels {
+			b.WriteString(fmt.Sprintf("- %s %.4f (%s)\n", lv.Kind, lv.Price, lv.Source))
+		}
+		b.WriteString("\n")
+	}
 
 	writeAITraderContextSummary(&b, f, mctx)
 
@@ -350,7 +376,7 @@ func parseAITraderLLMReply(raw string) (*aiTraderLLMOutput, error) {
 }
 
 func mergeAITraderLLMOutput(s *AITraderSession, f *AITraderFeatures, base AITraderDecisionEvent, out *aiTraderLLMOutput) AITraderDecisionEvent {
-	action := sanitizeAITraderLLMAction(out.Action, s.Mode)
+	action := sanitizeAITraderLLMAction(out.Action, s)
 	bias := sanitizeAITraderLLMBias(out.MarketBias)
 	conf := out.Confidence
 	if conf < 0 {
@@ -381,14 +407,14 @@ func mergeAITraderLLMOutput(s *AITraderSession, f *AITraderFeatures, base AITrad
 	}
 }
 
-func sanitizeAITraderLLMAction(action, mode string) string {
+func sanitizeAITraderLLMAction(action string, s *AITraderSession) string {
 	action = strings.TrimSpace(strings.ToLower(action))
 	switch action {
 	case "hold", "observe_plan", "paper_plan", "observe_wall", "block":
 	default:
 		action = "hold"
 	}
-	if mode == AITraderModeObserve && action == "paper_plan" {
+	if s != nil && s.Phase != AITraderPhaseTrading && action == "paper_plan" {
 		action = "observe_plan"
 	}
 	return action

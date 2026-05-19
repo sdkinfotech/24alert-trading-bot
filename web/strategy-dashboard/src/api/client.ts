@@ -95,11 +95,13 @@ export const api = {
     account_id: string;
     instrument_uid: string;
     ticker?: string;
-    mode: 'observe' | 'paper';
+    strategy_kind?: string;
     instruction: string;
     depth?: number;
     limits?: AiTraderLimits;
   }) => post<AiTraderSession>('/ai-trader/sessions', body),
+  startAiTraderTrading: (sessionID: string) =>
+    post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/start-trading`, {}),
   stopAiTraderSession: (instanceID: string) =>
     post<AiTraderSession>(`/ai-trader/sessions/${instanceID}/stop`, {}),
   advisorAnalyses: (sessionId: string, tf: AdvisorTimeframe, limit = 20) =>

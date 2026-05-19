@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	AITraderModeObserve = "observe"
-	AITraderModePaper   = "paper"
+	AITraderModeObserve = "observe" // deprecated
+	AITraderModePaper   = "paper"   // deprecated
 	AITraderModeLive    = "armed_live"
 )
 
@@ -30,7 +30,8 @@ type AITraderSessionRequest struct {
 	AccountID     string         `json:"account_id"`
 	InstrumentUID string         `json:"instrument_uid"`
 	Ticker        string         `json:"ticker,omitempty"`
-	Mode          string         `json:"mode"`
+	StrategyKind  string         `json:"strategy_kind,omitempty"`
+	Mode          string         `json:"mode,omitempty"` // deprecated: use strategy_kind level_intraday
 	Instruction   string         `json:"instruction"`
 	Depth         int32          `json:"depth"`
 	Limits        AITraderLimits `json:"limits"`
@@ -56,10 +57,15 @@ type AITraderSession struct {
 	AccountID     string                  `json:"account_id"`
 	InstrumentID  string                  `json:"instrument_uid"`
 	Ticker        string                  `json:"ticker,omitempty"`
-	Mode          string                  `json:"mode"`
+	StrategyKind  string                  `json:"strategy_kind"`
+	Mode          string                  `json:"mode,omitempty"` // legacy mirror of strategy_kind
 	Instruction   string                  `json:"instruction"`
 	Limits        AITraderLimits          `json:"limits"`
 	Status        string                  `json:"status"`
+	Phase         string                  `json:"phase"`
+	PhaseProgress AITraderPhaseProgress   `json:"phase_progress"`
+	LevelPlaybook *LevelPlaybook          `json:"level_playbook,omitempty"`
+	PaperState    *PaperTradingState      `json:"paper_state,omitempty"`
 	StartedAt     string                  `json:"started_at"`
 	UpdatedAt     string                  `json:"updated_at"`
 	StoppedAt     string                  `json:"stopped_at,omitempty"`
@@ -69,9 +75,10 @@ type AITraderSession struct {
 	LastDecision  *AITraderDecisionEvent  `json:"last_decision,omitempty"`
 	Events        []AITraderDecisionEvent `json:"events,omitempty"`
 
-	cancel    context.CancelFunc    `json:"-"`
-	ctxState  *aiTraderContextState `json:"-"`
-	lastLLMAt time.Time             `json:"-"`
+	cancel     context.CancelFunc      `json:"-"`
+	ctxState   *aiTraderContextState   `json:"-"`
+	collectBuf *aiTraderCollectBuffer  `json:"-"`
+	lastLLMAt  time.Time               `json:"-"`
 }
 
 type AITraderFeatures struct {
@@ -195,15 +202,21 @@ func mergeAITraderLimits(in AITraderLimits) AITraderLimits {
 }
 
 func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessionRequest) (*AITraderSession, error) {
-	mode := strings.TrimSpace(strings.ToLower(req.Mode))
-	if mode == "" {
-		mode = AITraderModeObserve
+	kind := strings.TrimSpace(strings.ToLower(req.StrategyKind))
+	if kind == "" {
+		kind = strings.TrimSpace(strings.ToLower(req.Mode))
 	}
-	if mode == AITraderModeLive {
+	if kind == AITraderModeObserve || kind == AITraderModePaper {
+		return nil, fmt.Errorf("режимы observe/paper сняты: используйте strategy_kind=%q и фазовый поток (мониторинг → готовность → торговля)", AITraderStrategyLevelIntraday)
+	}
+	if kind == AITraderModeLive {
 		return nil, fmt.Errorf("armed_live is disabled: implement OrderControl and live RiskGate first")
 	}
-	if mode != AITraderModeObserve && mode != AITraderModePaper {
-		return nil, fmt.Errorf("unsupported ai trader mode %q", req.Mode)
+	if kind == "" {
+		kind = AITraderStrategyLevelIntraday
+	}
+	if kind != AITraderStrategyLevelIntraday {
+		return nil, fmt.Errorf("unsupported ai trader strategy %q", kind)
 	}
 	instanceID := strings.TrimSpace(req.InstanceID)
 	accountID := strings.TrimSpace(req.AccountID)
@@ -254,19 +267,24 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 	now := time.Now().UTC()
 	sessionKey := aiTraderSessionKey(accountID, uid)
 	id := fmt.Sprintf("ai-trader-%s-%s", sanitizeAITraderID(ticker), now.Format("20060102-150405"))
+	progress := defaultAITraderPhaseProgress()
 	s := &AITraderSession{
-		ID:           id,
-		InstanceID:   instanceID,
-		AccountID:    accountID,
-		InstrumentID: uid,
-		Ticker:       ticker,
-		Mode:         mode,
-		Instruction:  strings.TrimSpace(req.Instruction),
-		Limits:       limits,
-		Status:       "running",
-		StartedAt:    now.Format(time.RFC3339),
-		UpdatedAt:    now.Format(time.RFC3339),
-		cancel:       cancel,
+		ID:            id,
+		InstanceID:    instanceID,
+		AccountID:     accountID,
+		InstrumentID:  uid,
+		Ticker:        ticker,
+		StrategyKind:  kind,
+		Mode:          kind,
+		Instruction:   strings.TrimSpace(req.Instruction),
+		Limits:        limits,
+		Status:        "running",
+		Phase:         AITraderPhaseCollecting,
+		PhaseProgress: progress,
+		StartedAt:     now.Format(time.RFC3339),
+		UpdatedAt:     now.Format(time.RFC3339),
+		cancel:        cancel,
+		collectBuf:    newAITraderCollectBuffer(),
 	}
 	r.aiTrader.mu.Lock()
 	if old := r.aiTrader.sessions[sessionKey]; old != nil && old.cancel != nil && old.Status == "running" {
@@ -280,11 +298,11 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 	startEv := AITraderDecisionEvent{
 		Time:           now.Format(time.RFC3339),
 		SessionID:      id,
-		Mode:           mode,
+		Mode:           kind,
 		Action:         "start",
-		Intent:         "observe_market",
-		Summary:        fmt.Sprintf("Сессия AI Trader запущена. Поток выводов LLM обновляется каждые ~%d с.", int(aiTraderLLMInterval(s).Seconds())),
-		Reason:         "operator started safe AI Trader session without live order permissions",
+		Intent:         "collect_market",
+		Summary:        fmt.Sprintf("Мониторинг уровней %s: сбор стакана и ленты ~%d с, затем отчёты advisor.", ticker, progress.MinCollectSec),
+		Reason:         "level_intraday session: accumulate microstructure before trading",
 		Confidence:     1,
 		RiskResult:     "live_orders_disabled",
 		AnalysisSource: "session",
@@ -388,11 +406,66 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	}
 	features := computeAITraderFeatures(book, s.Ticker, s.Limits.StaleDataMS)
 	r.recordAITraderBookDigest(s, book, features)
+	r.tickAITraderPhase(s, features)
+	if s.Phase == AITraderPhaseTrading {
+		r.tickPaperTrading(s, features)
+	}
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
 		r.updateAITraderState(s, features, decision)
 		r.appendAITraderEvent(decision)
+	} else {
+		r.refreshAITraderFeaturesOnly(s, features)
+		r.attachAITraderMarketContext(s)
 	}
+}
+
+// StartAITraderTrading moves a ready session into paper level trading.
+func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error) {
+	r.aiTrader.mu.Lock()
+	s := r.aiTrader.findLocked(sessionID)
+	if s == nil {
+		r.aiTrader.mu.Unlock()
+		return nil, fmt.Errorf("ai trader session not found")
+	}
+	if s.Status != "running" {
+		r.aiTrader.mu.Unlock()
+		return nil, fmt.Errorf("session is not running")
+	}
+	if s.Phase != AITraderPhaseReady {
+		r.aiTrader.mu.Unlock()
+		return nil, fmt.Errorf("session phase is %q, need %q", s.Phase, AITraderPhaseReady)
+	}
+	if !s.PhaseProgress.TradingReady {
+		r.aiTrader.mu.Unlock()
+		return nil, fmt.Errorf("trading not ready: %s", s.PhaseProgress.ReadyReason)
+	}
+	s.Phase = AITraderPhaseTrading
+	if s.PaperState == nil {
+		s.PaperState = newPaperTradingState()
+	}
+	f := s.Features
+	if f != nil {
+		r.startPaperTradingFromPlaybook(s, f)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	ev := AITraderDecisionEvent{
+		Time: now, SessionID: s.ID, Mode: s.StrategyKind,
+		Action: "start_trading", Intent: "trade_levels",
+		Summary: "Торговля по playbook (paper): лимитки у ключевых уровней.",
+		Reason:  playbookEntrySummary(s.LevelPlaybook),
+		Confidence: 0.85, RiskResult: "paper_only", AnalysisSource: "session",
+	}
+	s.Events = append([]AITraderDecisionEvent{ev}, s.Events...)
+	s.LastDecision = &ev
+	s.UpdatedAt = now
+	r.aiTrader.mu.Unlock()
+	r.appendAITraderEvent(ev)
+	out, ok := r.AITraderSession(sessionID)
+	if !ok {
+		return nil, fmt.Errorf("ai trader session not found after start trading")
+	}
+	return out, nil
 }
 
 func computeAITraderFeatures(book *marketdata.Orderbook, ticker string, staleMS int64) *AITraderFeatures {
@@ -483,7 +556,7 @@ func decideAITraderRules(s *AITraderSession, f *AITraderFeatures) AITraderDecisi
 		reason = fmt.Sprintf("visible liquidity wall detected: %s; track persistence and pull/add behavior", describeAITraderWall(f))
 		confidence = 0.55
 	}
-	if s.Mode == AITraderModeObserve && action == "paper_plan" {
+	if s.Phase != AITraderPhaseTrading && action == "paper_plan" {
 		action = "observe_plan"
 	}
 	summary, nextWatch, note := buildAITraderConclusion(action, bias, s, f)
@@ -682,6 +755,9 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 	}
 	cp := *s
 	cp.cancel = nil
+	cp.ctxState = nil
+	cp.collectBuf = nil
+	cp.lastLLMAt = time.Time{}
 	if s.Events != nil {
 		cp.Events = append([]AITraderDecisionEvent(nil), s.Events...)
 	}
@@ -698,6 +774,17 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 	if s.MarketContext != nil {
 		mc := *s.MarketContext
 		cp.MarketContext = &mc
+	}
+	if s.LevelPlaybook != nil {
+		pb := *s.LevelPlaybook
+		pb.Levels = append([]AITraderLevel(nil), s.LevelPlaybook.Levels...)
+		cp.LevelPlaybook = &pb
+	}
+	if s.PaperState != nil {
+		ps := *s.PaperState
+		ps.WorkingOrders = append([]PaperOrder(nil), s.PaperState.WorkingOrders...)
+		ps.Fills = append([]PaperFill(nil), s.PaperState.Fills...)
+		cp.PaperState = &ps
 	}
 	return &cp
 }

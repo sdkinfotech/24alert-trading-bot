@@ -301,3 +301,26 @@ body {
   line-height: 1.4;
   margin: 0.5rem 0 0;
 }
+
+@keyframes ai-trader-start-trading-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, #22c55e 45%, transparent);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 16px 4px color-mix(in srgb, #22c55e 55%, transparent);
+    opacity: 0.92;
+  }
+}
+
+.ai-trader-start-trading-pulse {
+  animation: ai-trader-start-trading-pulse 2.2s ease-in-out infinite;
+  background: color-mix(in srgb, #22c55e 88%, var(--accent)) !important;
+  border-color: #16a34a !important;
+  color: #fff !important;
+}
+
+.ai-trader-phase-stepper {
+  margin-bottom: 0.5rem;
+}

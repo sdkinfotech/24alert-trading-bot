@@ -25,10 +25,15 @@ func TestParseAITraderLLMReply(t *testing.T) {
 }
 
 func TestSanitizeAITraderLLMActionObserveMode(t *testing.T) {
-	if got := sanitizeAITraderLLMAction("paper_plan", AITraderModeObserve); got != "observe_plan" {
+	collecting := &AITraderSession{Phase: AITraderPhaseAnalyzing}
+	if got := sanitizeAITraderLLMAction("paper_plan", collecting); got != "observe_plan" {
 		t.Fatalf("expected observe_plan, got %s", got)
 	}
-	if got := sanitizeAITraderLLMAction("buy_now", AITraderModePaper); got != "hold" {
+	trading := &AITraderSession{Phase: AITraderPhaseTrading}
+	if got := sanitizeAITraderLLMAction("paper_plan", trading); got != "paper_plan" {
+		t.Fatalf("expected paper_plan, got %s", got)
+	}
+	if got := sanitizeAITraderLLMAction("buy_now", trading); got != "hold" {
 		t.Fatalf("expected hold, got %s", got)
 	}
 }
@@ -54,7 +59,7 @@ func TestApplyAITraderRiskGateWideSpread(t *testing.T) {
 }
 
 func TestMergeAITraderLLMOutput(t *testing.T) {
-	s := &AITraderSession{ID: "s1", Mode: AITraderModePaper}
+	s := &AITraderSession{ID: "s1", Phase: AITraderPhaseTrading, StrategyKind: AITraderStrategyLevelIntraday}
 	base := decideAITraderRules(s, &AITraderFeatures{SpreadBPS: 1})
 	out := &aiTraderLLMOutput{
 		Summary:    "Стакан перекошен в сторону продавцов",

@@ -54,11 +54,14 @@ func (svc *Service) catchUpTimeframe(ctx context.Context, sessionID string, tf T
 
 func (svc *Service) retryFailedReports(ctx context.Context) {
 	cutoff := time.Now().UTC().Add(-30 * time.Second)
-	failed, err := svc.store.ListFailedReports(ctx, cutoff, 10)
+	failed, err := svc.store.ListFailedReportsForRunning(ctx, cutoff, 10)
 	if err != nil {
 		return
 	}
 	for _, rep := range failed {
+		if !svc.shouldRetryFailedReport(ctx, rep) {
+			continue
+		}
 		_ = svc.runAgent(ctx, rep.SessionID, rep.Timeframe, rep.PeriodEnd)
 	}
 }

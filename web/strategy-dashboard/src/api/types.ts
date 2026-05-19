@@ -357,16 +357,67 @@ export interface CatalogInstrument {
   kind: 'share' | 'future' | string;
 }
 
+export interface AiTraderPhaseProgress {
+  collect_seconds: number;
+  min_collect_sec: number;
+  reports_ready?: string[];
+  trading_ready: boolean;
+  ready_reason?: string;
+}
+
+export interface AiTraderLevelPlaybook {
+  summary?: string;
+  market_bias?: string;
+  levels?: AiTraderLevel[];
+  entry_rules?: string[];
+  risk_notes?: string[];
+  ready_to_trade?: boolean;
+}
+
+export interface PaperOrder {
+  id: string;
+  side: string;
+  price: number;
+  quantity: number;
+  level_ref?: string;
+  status: string;
+  placed_at: string;
+}
+
+export interface PaperFill {
+  time: string;
+  side: string;
+  price: number;
+  quantity: number;
+  note?: string;
+}
+
+export interface PaperTradingState {
+  position_lots: number;
+  avg_price: number;
+  realized_rub: number;
+  working_orders?: PaperOrder[];
+  fills?: PaperFill[];
+  updated_at: string;
+}
+
+export type AiTraderPhase = 'collecting' | 'analyzing' | 'ready' | 'trading' | 'stopped';
+
 export interface AiTraderSession {
   id: string;
   instance_id: string;
   account_id: string;
   instrument_uid: string;
   ticker?: string;
-  mode: 'observe' | 'paper' | 'armed_live';
+  strategy_kind?: string;
+  mode?: string;
   instruction: string;
   limits: AiTraderLimits;
   status: string;
+  phase?: AiTraderPhase;
+  phase_progress?: AiTraderPhaseProgress;
+  level_playbook?: AiTraderLevelPlaybook;
+  paper_state?: PaperTradingState;
   started_at: string;
   updated_at: string;
   stopped_at?: string;

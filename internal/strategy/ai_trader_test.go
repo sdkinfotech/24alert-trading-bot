@@ -57,9 +57,10 @@ func TestDecideAITraderRejectsStale(t *testing.T) {
 
 func TestDecideAITraderBuildsReadableConclusion(t *testing.T) {
 	s := &AITraderSession{
-		ID:     "s1",
-		Mode:   AITraderModePaper,
-		Limits: defaultAITraderLimits(),
+		ID:           "s1",
+		StrategyKind: AITraderStrategyLevelIntraday,
+		Phase:        AITraderPhaseTrading,
+		Limits:       defaultAITraderLimits(),
 	}
 	f := &AITraderFeatures{
 		BestBid:      100,

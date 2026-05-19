@@ -30,6 +30,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /advisor/sessions/{id}/analyses", s.handleListAnalyses)
 	s.mux.HandleFunc("GET /advisor/sessions/{id}/analyses/{reportID}", s.handleGetAnalysis)
 	s.mux.HandleFunc("GET /advisor/sessions/{id}/strategy", s.handleStrategy)
+	s.mux.HandleFunc("GET /advisor/sessions/{id}/readiness", s.handleReadiness)
 	s.mux.HandleFunc("GET /advisor/knowledge", s.handleKnowledge)
 }
 
@@ -104,6 +105,16 @@ func (s *Server) handleStrategy(w http.ResponseWriter, r *http.Request) {
 	}
 	if syn == nil && len(reports) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"synthesis": nil, "reports": []AnalysisReport{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	resp, err := s.svc.SessionReadiness(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

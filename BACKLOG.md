@@ -1,6 +1,6 @@
 # Product Backlog — 24alert
 
-**Last Updated**: 2026-05-18  
+**Last Updated**: 2026-05-19  
 **Status**: Phase 2 — production stabilization for futures-only trading
 
 ## Current Production Baseline
@@ -28,6 +28,7 @@
 
 | ID | Title | Status | Notes |
 |----|-------|--------|-------|
+| TASK-028 | AI Trader level intraday | Done | Phased collect→analyze→ready→trading; BMM6 preset; paper limits; advisor readiness. |
 | TASK-019 | OrderBook WebSocket Stream | Done | Public WSS stream for Traderbook, nginx TLS/ACL, docs. |
 | STRAT-001 | Strategy runner productionization | Done | Dashboard, journal, ledger, watchdog, futures-only config. |
 | STRAT-002 | AI Scanner futures-only selection | Done | Futures endpoint, contract price filter, backtest-first decision. |

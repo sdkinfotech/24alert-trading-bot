@@ -453,6 +453,17 @@ func (st *aiTraderContextState) appendChartBar(bar AITraderCandleBar) {
 	}
 }
 
+func (st *aiTraderContextState) snapshotPrints() []AITraderPrint {
+	if st == nil {
+		return nil
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	out := make([]AITraderPrint, len(st.prints))
+	copy(out, st.prints)
+	return out
+}
+
 func (st *aiTraderContextState) setLevels(levels []AITraderLevel) {
 	st.mu.Lock()
 	defer st.mu.Unlock()

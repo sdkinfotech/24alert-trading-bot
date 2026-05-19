@@ -294,6 +294,16 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(session)
 	})
+	mux.HandleFunc("POST /ai-trader/sessions/{instance_id}/start-trading", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		session, err := r.StartAITraderTrading(instanceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
 	registerAIChatHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))

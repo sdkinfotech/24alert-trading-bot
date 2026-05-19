@@ -10,12 +10,18 @@ that can be enabled from the dashboard for a selected futures instrument.
 
 Add a separate `advisor-svc` / `ai-trader` service. The operator selects a
 futures ticker in the UI, provides a short trading instruction, and starts a
-session in one of three modes:
+**level intraday** session (`strategy_kind: level_intraday`).
 
-- `observe`: watch market microstructure and write decisions, no virtual fills;
-- `paper`: trade virtually using order book / prints;
-- `armed_live`: place real orders through deterministic risk gates and order
-  control.
+Phased UX (no separate observe/paper buttons):
+
+| Phase | Behavior |
+|-------|----------|
+| `collecting` | Poll order book + prints; ring buffers ≥60s; **no micro-LLM** |
+| `analyzing` | Micro-LLM on buffered window; advisor rollups 5m/15m/1h |
+| `ready` | `trading_ready` + `level_playbook`; UI enables **Start trading** |
+| `trading` | Virtual limit orders at playbook levels (paper engine v1) |
+
+`armed_live` (real broker orders) remains a future slice behind OrderControl.
 
 The target live trader watches order books, public prints, last price, strategy
 state, broker position, technical context, and adjacent instruments. It can
@@ -222,14 +228,17 @@ Initial tactics:
 
 ## UI Panel
 
-Add an `AI Trader` panel to the strategy dashboard:
+`AI Trader` tab in Strategy Dashboard (`web/strategy-dashboard`):
 
-- futures ticker/UID selector;
-- account selector;
-- mode selector;
+- default instrument preset **Brent mini (BMM6)** — UID `dc1ffa30-70a4-4a7b-807a-4f31c2951f7e`;
+- account + instrument picker (MOEX catalog + strategy picks);
+- **Start monitoring** → `POST /ai-trader/sessions` with `strategy_kind: level_intraday` (no `mode`);
+- phase stepper: collecting → analyzing → ready → trading;
+- report chips 5m / 15m / 1h from `phase_progress.reports_ready`;
+- **Start trading** — disabled until `phase=ready` and `trading_ready`; green pulse when enabled;
+- level playbook S/R list; paper position/orders when `phase=trading`;
 - instruction textarea;
-- limits form;
-- start/pause/stop;
+- stop session;
 - kill switch;
 - flatten;
 - cancel all active orders;
@@ -289,30 +298,41 @@ Persist every decision with:
 8. Enable `armed_live` only for one selected futures instrument with small
    limits, short timeout, and visible kill switch.
 
-## Implemented Slice: observe/paper foundation
+## Implemented Slice: level intraday (TASK-028)
 
-Status: implemented in `strategy-runner` as a safe foundation, not yet as a
-separate `advisor-svc`.
+Status: implemented in `strategy-runner` + `advisor-svc`; live broker execution
+not enabled.
 
 Runtime API:
 
 - `GET /ai-trader/sessions`
-- `POST /ai-trader/sessions`
-- `GET /ai-trader/sessions/{instance_id}`
-- `POST /ai-trader/sessions/{instance_id}/stop`
+- `POST /ai-trader/sessions` — `strategy_kind: level_intraday` only; legacy `mode` (`observe`/`paper`) → **400**
+- `GET /ai-trader/sessions/{id}` — `phase`, `phase_progress`, `level_playbook`, `paper_state`
+- `POST /ai-trader/sessions/{id}/start-trading` — only from `phase=ready`
+- `POST /ai-trader/sessions/{id}/stop`
+- `GET /advisor/sessions/{id}/readiness` — `trading_ready`, playbook draft
+
+Env:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AI_TRADER_COLLECT_MIN_SEC` | `60` | Minimum observation before micro-LLM |
+| `AI_TRADER_TRADING_MIN_REPORT_TF` | `15m` | Require advisor report before `trading_ready` |
+| `AI_TRADER_LLM_INTERVAL_SEC` | `90` | Micro-LLM cadence in `analyzing`/`trading` |
 
  Decision brain:
 
- - microstructure features are computed locally from the order book;
+ - 60s+ ring buffers: order book snapshots, prints, minute aggregates;
+ - microstructure features from order book + tape;
  - hard safety gates (stale feed, wide spread) stay rule-based;
- - interpretive conclusions use OpenRouter LLM (`OPENROUTER_API_KEY`), about once
-   every 90s by default (`AI_TRADER_LLM_INTERVAL_SEC`, min 10, max 120), with `analysis_source=llm` in the API;
- - if LLM is unavailable, the session falls back to rule-based text
-   (`analysis_source=rules_fallback`).
+ - micro-LLM blocked during `collecting`; OpenRouter (`OPENROUTER_API_KEY`), default ~90s interval;
+ - daily S/R from LB logic + intraday walls/POC → `level_playbook`;
+ - advisor 15m rollup + synthesis → `trading_ready` gate;
+ - paper limit engine in `trading` phase (`alert24_ai_trader_orders_total`).
 
  Safety properties:
 
- - supported modes are only `observe` and `paper`;
+ - `observe` / `paper` request modes are **deprecated** (400 with hint);
 - `armed_live` is rejected server-side;
 - a session is created from `account_id + instrument_uid + operator prompt`;
 - `instance_id` is only a backward-compatible fallback for prefilling
@@ -334,10 +354,9 @@ Current market source:
 
 Dashboard:
 
-- new `AI Trader` tab in Strategy Dashboard;
-- operator can start `observe` or `paper` for any MOEX instrument (catalog search);
-- UI shows thought stream (micro LLM ~30s) plus **timeframe analysis** tabs fed by `advisor-svc`;
-- live orders are explicitly labelled as disabled.
+- `AI Trader` tab: **Start monitoring** / **Start trading** (gated);
+- thought stream + advisor timeframe analysis tabs;
+- live broker orders remain disabled (paper only in `trading` phase).
 
 ## advisor-svc (hierarchical analysis)
 
@@ -366,7 +385,9 @@ Env (OpenRouter):
 
 If `ADVISOR_MODEL` is unset and fallbacks empty, inherits `AI_TRADER_MODEL` / `AI_TRADER_MODEL_FALLBACKS`.
 
-LLM requests use `response_format: json_object`. Scheduler advances `last_period_end` only after a successful report; failed periods retry every ~30s. Paid model is never used until free models and retries are exhausted.
+LLM requests use `response_format: json_object`. Scheduler advances `last_period_end` only after a successful report; failed periods retry every ~30s **only for advisor sessions with `status=running`**, with ≥60s backoff between retries (`internal/advisor/retry.go`). Paid model is never used until free models and retries are exhausted.
+
+15m/1h structured reports may include `key_levels`, `regime`, `confidence`. Readiness endpoint merges synthesis + playbook for the runner poll (every ~30s in `analyzing`).
 
 Prometheus: см. метрики LLM выше; `advisor_ingest_snapshots_total`. API отчётов advisor: поле `model` (какая модель или `facts-fallback`). AI Trader events: `llm_model`.
 

@@ -18,6 +18,7 @@ scp monitoring/dashboards/24alert-gateway-api.json \
     monitoring/dashboards/24alert-strategy-runner.json \
     monitoring/dashboards/24alert-ai-scanner.json \
     monitoring/dashboards/24alert-infrastructure.json \
+    monitoring/dashboards/24alert-llm-observability.json \
   "${REMOTE_USER}@${REMOTE_HOST}:/tmp/"
 
 echo "2. Copying alert rules..."
@@ -33,10 +34,13 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" "\
   sudo cp /tmp/24alert-strategy-runner.json ${MONITORING_DIR}/grafana/dashboards-24alert/strategy-runner.json && \
   sudo cp /tmp/24alert-ai-scanner.json ${MONITORING_DIR}/grafana/dashboards-24alert/24alert-ai-scanner.json && \
   sudo cp /tmp/24alert-infrastructure.json ${MONITORING_DIR}/grafana/dashboards-24alert/24alert-infrastructure.json && \
+  sudo cp /tmp/24alert-llm-observability.json ${MONITORING_DIR}/grafana/dashboards-24alert/24alert-llm-observability.json && \
   docker kill -s HUP prometheus && \
   docker restart grafana >/dev/null"
 
 echo ""
 echo "=== Done ==="
-echo "Dashboards: http://${REMOTE_HOST}:3535/d/24alert-strategy/24alert-strategy-runner"
+echo "Dashboards:"
+echo "  Strategy: http://${REMOTE_HOST}:3535/d/24alert-strategy/24alert-strategy-runner"
+echo "  LLM:      http://${REMOTE_HOST}:3535/d/24alert-llm/24alert-llm-openrouter"
 echo "Alert rules applied to Prometheus."
