@@ -90,12 +90,17 @@ export const api = {
   aiTraderSessions: () => get<AiTraderSession[]>('/ai-trader/sessions'),
   aiTraderSession: (instanceID: string) =>
     get<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(instanceID)}`),
+  aiTraderConfig: () => get<import('./types').AiTraderPublicConfig>('/ai-trader/config'),
+  setAiTraderKillSwitch: (active: boolean) =>
+    post<{ kill_switch: boolean }>('/ai-trader/kill-switch', { active }),
   startAiTraderSession: (body: {
     instance_id?: string;
     account_id: string;
     instrument_uid: string;
     ticker?: string;
     strategy_kind?: string;
+    mode?: string;
+    confirm_live?: boolean;
     instruction: string;
     depth?: number;
     limits?: AiTraderLimits;

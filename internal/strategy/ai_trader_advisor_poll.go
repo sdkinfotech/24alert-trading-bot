@@ -116,13 +116,7 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 		return
 	}
 	minTF := aiTraderTradingMinReportTF()
-	hasMinReport := false
-	for _, tf := range s.PhaseProgress.ReportsReady {
-		if tf == minTF {
-			hasMinReport = true
-			break
-		}
-	}
+	hasMinReport := advisorReportGateOK(s.PhaseProgress.ReportsReady, minTF)
 	collectOK := s.PhaseProgress.CollectSeconds >= s.PhaseProgress.MinCollectSec
 	if f != nil && f.Stale {
 		s.PhaseProgress.TradingReady = false
@@ -156,7 +150,11 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 	levelsOK := s.LevelPlaybook != nil && len(s.LevelPlaybook.Levels) >= 2
 	advisorReady := readiness != nil && readiness.TradingReady
 
-	if collectOK && hasMinReport && levelsOK && (advisorReady || r.rulesReadyForTrading(s, f)) {
+	rulesFallback := r.rulesReadyForTrading(s, f)
+	if !hasMinReport && rulesFallback {
+		hasMinReport = true
+	}
+	if collectOK && hasMinReport && levelsOK && (advisorReady || rulesFallback) {
 		s.PhaseProgress.TradingReady = true
 		reason := "уровни и отчёт " + minTF + " готовы"
 		if readiness != nil && readiness.ReadyReason != "" {
@@ -198,10 +196,36 @@ func mergeStringSets(a, b []string) []string {
 	return out
 }
 
+func advisorReportGateOK(reports []string, minTF string) bool {
+	for _, tf := range reports {
+		if tf == minTF {
+			return true
+		}
+	}
+	// Allow 5m rollup while waiting for 15m when min gate is 15m.
+	if minTF == "15m" {
+		for _, tf := range reports {
+			if tf == "5m" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (r *Runner) rulesReadyForTrading(s *AITraderSession, f *AITraderFeatures) bool {
 	if s == nil || f == nil || s.LevelPlaybook == nil {
 		return false
 	}
 	// Deterministic fallback when advisor LLM has not set trading_ready yet.
-	return len(s.LevelPlaybook.Levels) >= 4 && s.PhaseProgress.CollectSeconds >= s.PhaseProgress.MinCollectSec
+	if len(s.LevelPlaybook.Levels) < 4 {
+		return false
+	}
+	if s.PhaseProgress.CollectSeconds < s.PhaseProgress.MinCollectSec {
+		return false
+	}
+	if f.Stale || f.SpreadBPS > s.Limits.MaxSpreadBPS {
+		return false
+	}
+	return true
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { AiTraderSession, Instance } from '../api/types';
+import type { AiTraderPublicConfig, AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
 import { EM_DASH, formatNumber } from '../format';
 import { InstrumentSearchPicker, type SelectedInstrument } from './InstrumentSearchPicker';
@@ -78,6 +78,9 @@ export function AiTraderPanel({ instances }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resumeCandidate, setResumeCandidate] = useState<AiTraderSession | null>(null);
+  const [armedLive, setArmedLive] = useState(false);
+  const [traderConfig, setTraderConfig] = useState<AiTraderPublicConfig | null>(null);
+  const [killSwitch, setKillSwitch] = useState(false);
   const advisorRef = useRef<HTMLDivElement>(null);
   const resumedRef = useRef(false);
 
@@ -113,6 +116,16 @@ export function AiTraderPanel({ instances }: Props) {
       }
     }
   }, [accounts, accountID]);
+
+  useEffect(() => {
+    void api
+      .aiTraderConfig()
+      .then((c) => {
+        setTraderConfig(c);
+        setKillSwitch(c.kill_switch);
+      })
+      .catch(() => setTraderConfig(null));
+  }, []);
 
   useEffect(() => {
     const saved = readAiTraderLast();
@@ -203,6 +216,9 @@ export function AiTraderPanel({ instances }: Props) {
       setError(t('aiTraderPickInstrument'));
       return;
     }
+    if (armedLive && !window.confirm(t('armedLiveConfirm'))) {
+      return;
+    }
     setLoading(true);
     try {
       const data = await api.startAiTraderSession({
@@ -210,6 +226,8 @@ export function AiTraderPanel({ instances }: Props) {
         instrument_uid: instrument.uid,
         ticker: instrument.ticker,
         strategy_kind: 'level_intraday',
+        mode: armedLive ? 'armed_live' : undefined,
+        confirm_live: armedLive,
         instruction,
         depth: 50,
         limits: {
@@ -361,6 +379,34 @@ export function AiTraderPanel({ instances }: Props) {
               className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-60"
             />
             <p className="mt-2 text-xs text-[var(--muted)]">{t('aiTraderSeparate')}</p>
+            {traderConfig?.armed_live_enabled && !sessionRunning && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-[var(--danger)]">
+                <input
+                  type="checkbox"
+                  checked={armedLive}
+                  onChange={(e) => setArmedLive(e.target.checked)}
+                />
+                {t('armedLiveMode')}
+              </label>
+            )}
+            {sessionRunning && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge tone={session.execution_mode === 'armed_live' ? 'danger' : 'neutral'}>
+                  {session.execution_mode === 'armed_live' ? t('armedLiveActive') : t('paperMode')}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  disabled={loading}
+                  onClick={() => {
+                    void api.setAiTraderKillSwitch(!killSwitch).then((r) => {
+                      setKillSwitch(r.kill_switch);
+                    });
+                  }}
+                >
+                  {killSwitch ? t('killSwitchOff') : t('killSwitchOn')}
+                </Button>
+              </div>
+            )}
             {error && <p className="mt-2 text-sm text-[var(--danger)]">{error}</p>}
           </div>
           <div className="flex flex-col gap-2 lg:w-48">
@@ -418,7 +464,26 @@ export function AiTraderPanel({ instances }: Props) {
           <AiTraderLevelsChart session={session} />
           <AiTraderCollectPanel session={session} />
 
-          {session.paper_state && session.phase === 'trading' && (
+          {session.live_state && session.execution_mode === 'armed_live' && session.phase === 'trading' && (
+            <Card title={t('livePosition')} subtitle={t('liveOrders')}>
+              <p className="text-sm">
+                pos={session.live_state.position_lots} @ {formatNumber(session.live_state.avg_price, lang, 4)}
+                {' '}| realized {formatNumber(session.live_state.realized_rub, lang, 2)} RUB
+              </p>
+              {session.live_state.working_orders && session.live_state.working_orders.length > 0 && (
+                <ul className="mt-2 text-xs font-mono space-y-1">
+                  {session.live_state.working_orders.map((o) => (
+                    <li key={o.id}>
+                      {o.status} {o.side} {o.quantity}@{formatNumber(o.price, lang, 4)}
+                      {o.broker_order_id ? ` id=${o.broker_order_id.slice(0, 8)}` : ''} ({o.level_ref})
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          )}
+
+          {session.paper_state && session.execution_mode !== 'armed_live' && session.phase === 'trading' && (
             <Card title={t('paperPosition')} subtitle={t('paperOrders')}>
               <p className="text-sm">
                 pos={session.paper_state.position_lots} @ {formatNumber(session.paper_state.avg_price, lang, 4)}

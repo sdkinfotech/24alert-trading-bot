@@ -304,6 +304,10 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(session)
 	})
+	mux.HandleFunc("GET /ai-trader/config", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(r.AITraderPublicConfig())
+	})
 	mux.HandleFunc("POST /ai-trader/kill-switch", func(w http.ResponseWriter, req *http.Request) {
 		var body struct {
 			Active bool `json:"active"`

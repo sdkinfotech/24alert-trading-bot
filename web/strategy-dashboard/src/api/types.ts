@@ -413,6 +413,55 @@ export interface PaperFill {
   note?: string;
 }
 
+export interface LiveOrder {
+  id: string;
+  broker_order_id?: string;
+  side: string;
+  price: number;
+  quantity: number;
+  level_ref?: string;
+  status: string;
+  placed_at: string;
+}
+
+export interface LiveFill {
+  time: string;
+  side: string;
+  price: number;
+  quantity: number;
+  broker_order_id?: string;
+  note?: string;
+}
+
+export interface LiveTradingState {
+  position_lots: number;
+  avg_price: number;
+  realized_rub: number;
+  stop_loss?: number;
+  take_profit?: number;
+  working_orders?: LiveOrder[];
+  fills?: LiveFill[];
+  halted?: boolean;
+  halt_reason?: string;
+  updated_at: string;
+}
+
+export interface AiTraderTradeSignal {
+  side: string;
+  level_price: number;
+  confidence: number;
+  reason?: string;
+  risk_override?: string;
+  received_at?: string;
+}
+
+export interface AiTraderPublicConfig {
+  armed_live_enabled: boolean;
+  stream_book: boolean;
+  kill_switch: boolean;
+  min_report_tf: string;
+}
+
 export interface PaperTradingState {
   position_lots: number;
   avg_price: number;
@@ -439,6 +488,10 @@ export interface AiTraderSession {
   phase_progress?: AiTraderPhaseProgress;
   level_playbook?: AiTraderLevelPlaybook;
   paper_state?: PaperTradingState;
+  execution_mode?: 'paper' | 'armed_live';
+  live_state?: LiveTradingState;
+  last_trade_signal?: AiTraderTradeSignal;
+  session_regime?: string;
   started_at: string;
   updated_at: string;
   stopped_at?: string;

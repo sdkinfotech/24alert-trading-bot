@@ -7,7 +7,7 @@ import (
 	"github.com/24alert/trading-bot/pkg/metrics"
 )
 
-// Live trading gates (armed_live still blocked; shadow mode for fill quality).
+// Live trading gates and kill-switch for armed_live sessions.
 type aiTraderLiveConfig struct {
 	mu              sync.RWMutex
 	killSwitch      bool

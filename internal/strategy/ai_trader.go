@@ -31,10 +31,11 @@ type AITraderSessionRequest struct {
 	InstrumentUID string         `json:"instrument_uid"`
 	Ticker        string         `json:"ticker,omitempty"`
 	StrategyKind  string         `json:"strategy_kind,omitempty"`
-	Mode          string         `json:"mode,omitempty"` // deprecated: use strategy_kind level_intraday
+	Mode          string         `json:"mode,omitempty"` // level_intraday | armed_live
 	Instruction   string         `json:"instruction"`
 	Depth         int32          `json:"depth"`
 	Limits        AITraderLimits `json:"limits"`
+	ConfirmLive   bool           `json:"confirm_live,omitempty"`
 }
 
 type AITraderLimits struct {
@@ -65,7 +66,9 @@ type AITraderSession struct {
 	Phase         string                  `json:"phase"`
 	PhaseProgress AITraderPhaseProgress   `json:"phase_progress"`
 	LevelPlaybook *LevelPlaybook          `json:"level_playbook,omitempty"`
-	PaperState    *PaperTradingState      `json:"paper_state,omitempty"`
+	PaperState      *PaperTradingState      `json:"paper_state,omitempty"`
+	ExecutionMode   string                  `json:"execution_mode,omitempty"` // paper | armed_live
+	LiveState       *LiveTradingState       `json:"live_state,omitempty"`
 	StartedAt     string                  `json:"started_at"`
 	UpdatedAt     string                  `json:"updated_at"`
 	StoppedAt     string                  `json:"stopped_at,omitempty"`
@@ -218,8 +221,17 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 	if kind == AITraderModeObserve || kind == AITraderModePaper {
 		return nil, fmt.Errorf("режимы observe/paper сняты: используйте strategy_kind=%q и фазовый поток (мониторинг → готовность → торговля)", AITraderStrategyLevelIntraday)
 	}
-	if kind == AITraderModeLive {
-		return nil, fmt.Errorf("armed_live is disabled: implement OrderControl and live RiskGate first")
+	execMode := ExecutionModePaper
+	wantLive := kind == AITraderModeLive || strings.EqualFold(strings.TrimSpace(req.Mode), AITraderModeLive)
+	if wantLive {
+		if !aiTraderArmedLiveEnabled() {
+			return nil, fmt.Errorf("armed_live disabled: set AI_TRADER_ARMED_LIVE=true on server")
+		}
+		if !req.ConfirmLive {
+			return nil, fmt.Errorf("armed_live requires confirm_live=true")
+		}
+		execMode = ExecutionModeArmedLive
+		kind = AITraderStrategyLevelIntraday
 	}
 	if kind == "" {
 		kind = AITraderStrategyLevelIntraday
@@ -285,6 +297,7 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		Ticker:        ticker,
 		StrategyKind:  kind,
 		Mode:          kind,
+		ExecutionMode: execMode,
 		Instruction:   strings.TrimSpace(req.Instruction),
 		Limits:        limits,
 		Status:        "running",
@@ -313,8 +326,12 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 		Summary:        fmt.Sprintf("Мониторинг уровней %s: сбор стакана и ленты ~%d с, затем отчёты advisor.", ticker, progress.MinCollectSec),
 		Reason:         "level_intraday session: accumulate microstructure before trading",
 		Confidence:     1,
-		RiskResult:     "live_orders_disabled",
+		RiskResult:     aiTraderStartRiskResult(execMode),
 		AnalysisSource: "session",
+	}
+	if execMode == ExecutionModeArmedLive {
+		startEv.OperatorNote = "ARMED LIVE: реальные заявки на бирже. Kill-switch доступен."
+		startEv.Summary = fmt.Sprintf("Боевая торговля %s: сбор ~%d с, затем лимитки у уровней.", ticker, progress.MinCollectSec)
 	}
 	s.Events = []AITraderDecisionEvent{startEv}
 	s.appendCollectFeed("phase", fmt.Sprintf("Старт мониторинга %s: сбор стакана, ленты, 1m графика", ticker),
@@ -336,6 +353,11 @@ func (r *Runner) StopAITraderSession(instanceID string) (*AITraderSession, bool)
 		return nil, false
 	}
 	if s.cancel != nil && s.Status == "running" {
+		if s.isArmedLive() && s.LiveState != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			r.cancelAllLiveOrders(ctx, s)
+			cancel()
+		}
 		s.cancel()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -432,7 +454,11 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	r.tickAITraderPhase(s, features)
 	sig := s.LastTradeSignal
 	if s.Phase == AITraderPhaseTrading {
-		r.tickPaperTrading(s, features, mctx, sig, s.SessionRegime)
+		if s.isArmedLive() {
+			r.tickLiveTrading(ctx, s, features, mctx, sig, s.SessionRegime)
+		} else {
+			r.tickPaperTrading(s, features, mctx, sig, s.SessionRegime)
+		}
 	}
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
@@ -465,21 +491,37 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 		return nil, fmt.Errorf("trading not ready: %s", s.PhaseProgress.ReadyReason)
 	}
 	s.Phase = AITraderPhaseTrading
-	if s.PaperState == nil {
-		s.PaperState = newPaperTradingState()
-	}
 	f := s.Features
 	mctx := s.MarketContext
-	if f != nil {
-		r.startPaperTradingFromPlaybook(s, f, mctx, s.LastTradeSignal)
-	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	var summary, riskResult string
+	if s.isArmedLive() {
+		if s.LiveState == nil {
+			s.LiveState = newLiveTradingState()
+		}
+		if f != nil {
+			reqCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			r.startLiveTradingFromPlaybook(reqCtx, s, f, mctx, s.LastTradeSignal)
+			cancel()
+		}
+		summary = "Боевая торговля: лимитки у ключевых уровней (брокер)."
+		riskResult = "live_armed"
+	} else {
+		if s.PaperState == nil {
+			s.PaperState = newPaperTradingState()
+		}
+		if f != nil {
+			r.startPaperTradingFromPlaybook(s, f, mctx, s.LastTradeSignal)
+		}
+		summary = "Торговля по playbook (paper): лимитки у ключевых уровней."
+		riskResult = "paper_only"
+	}
 	ev := AITraderDecisionEvent{
 		Time: now, SessionID: s.ID, Mode: s.StrategyKind,
 		Action: "start_trading", Intent: "trade_levels",
-		Summary: "Торговля по playbook (paper): лимитки у ключевых уровней.",
+		Summary: summary,
 		Reason:  playbookEntrySummary(s.LevelPlaybook),
-		Confidence: 0.85, RiskResult: "paper_only", AnalysisSource: "session",
+		Confidence: 0.85, RiskResult: riskResult, AnalysisSource: "session",
 	}
 	s.Events = append([]AITraderDecisionEvent{ev}, s.Events...)
 	s.LastDecision = &ev
@@ -810,6 +852,16 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 		ps.WorkingOrders = append([]PaperOrder(nil), s.PaperState.WorkingOrders...)
 		ps.Fills = append([]PaperFill(nil), s.PaperState.Fills...)
 		cp.PaperState = &ps
+	}
+	if s.LiveState != nil {
+		ls := *s.LiveState
+		ls.WorkingOrders = append([]LiveOrder(nil), s.LiveState.WorkingOrders...)
+		ls.Fills = append([]LiveFill(nil), s.LiveState.Fills...)
+		cp.LiveState = &ls
+	}
+	if s.LastTradeSignal != nil {
+		sig := *s.LastTradeSignal
+		cp.LastTradeSignal = &sig
 	}
 	if s.CollectFeed != nil {
 		cp.CollectFeed = append([]AITraderCollectEvent(nil), s.CollectFeed...)
