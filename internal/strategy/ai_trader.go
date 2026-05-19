@@ -75,8 +75,13 @@ type AITraderSession struct {
 	LastDecision  *AITraderDecisionEvent  `json:"last_decision,omitempty"`
 	Events        []AITraderDecisionEvent `json:"events,omitempty"`
 	CollectFeed   []AITraderCollectEvent  `json:"collect_feed,omitempty"`
+	LastTradeSignal *AITraderTradeSignal  `json:"last_trade_signal,omitempty"`
+	SessionRegime   string                `json:"session_regime,omitempty"`
+	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
 
 	cancel            context.CancelFunc     `json:"-"`
+	streamBook        *marketdata.Orderbook  `json:"-"`
+	streamBookAt      time.Time              `json:"-"`
 	ctxState          *aiTraderContextState  `json:"-"`
 	collectBuf        *aiTraderCollectBuffer `json:"-"`
 	lastLLMAt         time.Time              `json:"-"`
@@ -143,8 +148,9 @@ type AITraderDecisionEvent struct {
 }
 
 type AITraderManager struct {
-	mu       sync.Mutex
-	sessions map[string]*AITraderSession
+	mu         sync.Mutex
+	sessions   map[string]*AITraderSession
+	killSwitch bool
 }
 
 func NewAITraderManager() *AITraderManager {
@@ -410,11 +416,24 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 		r.updateAITraderError(s, err.Error())
 		return
 	}
+	if sb := r.preferStreamBook(s); sb != nil {
+		book = sb
+	}
 	features := computeAITraderFeatures(book, s.Ticker, s.Limits.StaleDataMS)
 	r.recordAITraderBookDigest(s, book, features)
+	r.attachAITraderMarketContext(s)
+	mctx := s.MarketContext
+	r.recordAITraderTick(s, "features", features)
+	if mctx != nil {
+		r.recordAITraderTick(s, "tape", mctx.TapeStats)
+	}
+	s.SessionRegime = detectSessionRegime(mctx)
+	updateRegimeMetrics(s.ID, s.SessionRegime)
+	s.MicroSignals = r.detectMicrostructure(s, features, mctx)
 	r.tickAITraderPhase(s, features)
+	sig := s.LastTradeSignal
 	if s.Phase == AITraderPhaseTrading {
-		r.tickPaperTrading(s, features)
+		r.tickPaperTrading(s, features, mctx, sig, s.SessionRegime)
 	}
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
@@ -451,8 +470,9 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 		s.PaperState = newPaperTradingState()
 	}
 	f := s.Features
+	mctx := s.MarketContext
 	if f != nil {
-		r.startPaperTradingFromPlaybook(s, f)
+		r.startPaperTradingFromPlaybook(s, f, mctx, s.LastTradeSignal)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	ev := AITraderDecisionEvent{

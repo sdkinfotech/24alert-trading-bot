@@ -304,6 +304,44 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(session)
 	})
+	mux.HandleFunc("POST /ai-trader/kill-switch", func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Active bool `json:"active"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		r.SetAITraderKillSwitch(body.Active)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"kill_switch": r.AITraderKillSwitch()})
+	})
+	mux.HandleFunc("GET /ai-trader/kill-switch", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"kill_switch": r.AITraderKillSwitch()})
+	})
+	mux.HandleFunc("POST /ai-trader/shadow-mode", func(w http.ResponseWriter, req *http.Request) {
+		var body struct {
+			Active bool `json:"active"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		r.SetAITraderShadowMode(body.Active)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"shadow_mode": r.AITraderShadowMode()})
+	})
+	mux.HandleFunc("GET /ai-trader/sessions/{instance_id}/eval", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		res, err := EvalTradeSignalsOnReplay(instanceID, 5)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(res)
+	})
 	registerAIChatHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))

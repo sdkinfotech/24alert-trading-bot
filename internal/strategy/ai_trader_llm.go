@@ -21,13 +21,22 @@ const (
 )
 
 type aiTraderLLMOutput struct {
-	Summary    string  `json:"summary"`
-	MarketBias string  `json:"market_bias"`
-	Action     string  `json:"action"`
-	Intent     string  `json:"intent"`
-	Reason     string  `json:"reason"`
-	NextWatch  string  `json:"next_watch"`
-	Confidence float64 `json:"confidence"`
+	Summary     string                   `json:"summary"`
+	MarketBias  string                   `json:"market_bias"`
+	Action      string                   `json:"action"`
+	Intent      string                   `json:"intent"`
+	Reason      string                   `json:"reason"`
+	NextWatch   string                   `json:"next_watch"`
+	Confidence  float64                  `json:"confidence"`
+	TradeSignal *aiTraderLLMTradeSignal  `json:"trade_signal,omitempty"`
+}
+
+type aiTraderLLMTradeSignal struct {
+	Side         string  `json:"side"`
+	LevelPrice   float64 `json:"level_price"`
+	Confidence   float64 `json:"confidence"`
+	Reason       string  `json:"reason"`
+	RiskOverride string  `json:"risk_override"`
 }
 
 func aiTraderLLMInterval(s *AITraderSession) time.Duration {
@@ -267,6 +276,10 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 		metrics.RecordLLMRequest(metrics.LLMServiceAITrader, model, metrics.LLMResultSuccess, time.Since(attemptStart))
 		ev := mergeAITraderLLMOutput(s, f, base, out)
 		ev.LLMModel = model
+		if sig := llmOutputToSignal(out); sig != nil {
+			r.persistAITraderSignal(s.ID, sig)
+			r.recordAITraderTick(s, "trade_signal", sig)
+		}
 		if model != aiTraderModel() {
 			ev.OperatorNote = strings.TrimSpace(ev.OperatorNote + " | model=" + model)
 		}
@@ -310,6 +323,20 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 		b.WriteString("Спред шире лимита: дай аналитический вывод по стакану/ленте, но action только hold/observe, без торговых планов.\n")
 	}
 
+	if fb := paperFeedbackForLLM(s.PaperState); fb != "" {
+		b.WriteString("\n== Paper execution feedback ==\n")
+		b.WriteString(fb + "\n")
+	}
+	if len(s.MicroSignals) > 0 {
+		b.WriteString("\n== Microstructure (deterministic) ==\n")
+		for _, ms := range s.MicroSignals {
+			b.WriteString(fmt.Sprintf("- %s %s @ %.4f: %s\n", ms.Kind, ms.Side, ms.Price, ms.Detail))
+		}
+	}
+	if s.SessionRegime != "" {
+		b.WriteString("\n== Session regime ==\n" + s.SessionRegime + "\n")
+	}
+
 	if len(s.Events) > 0 {
 		b.WriteString("\n== Хронология твоих прошлых выводов (смотри развитие ситуации) ==\n")
 		max := 5
@@ -335,15 +362,24 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
   "intent": "короткий код намерения",
   "reason": "почему так — сошлись принты, стенки, уровни, свечи",
   "next_watch": "что наблюдать дальше",
-  "confidence": 0.0
+  "confidence": 0.0,
+  "trade_signal": {
+    "side": "buy|sell|none",
+    "level_price": 0.0,
+    "confidence": 0.0,
+    "reason": "почему этот уровень",
+    "risk_override": "hold|cancel_all|flatten"
+  }
 }
 
 Правила:
 - Опирайся на book_timeline, recent_prints, tape_stats, chart_bars, levels и scene_notes.
 - Если лента агрессивно бьёт в одну сторону — отрази это; если стенку сняли — отрази.
 - Сравни цену с ближайшими support/resistance из levels.
-- Не предлагай market/limit/stop, buy/sell/enter/exit/flatten.
-- В observe режиме paper_plan -> observe_plan.
+- В фазе trading: trade_signal влияет на paper-лимитки (side+level_price при confidence>=0.55).
+- Вне trading: trade_signal.side должен быть none.
+- risk_override: cancel_all — снять заявки; flatten — закрыть позицию.
+- action остаётся hold|observe_plan|paper_plan|observe_wall|block (нарратив).
 - confidence 0..1.
 `)
 
@@ -405,6 +441,41 @@ func mergeAITraderLLMOutput(s *AITraderSession, f *AITraderFeatures, base AITrad
 		AnalysisSource: "llm",
 		Features:       f,
 	}
+}
+
+func llmOutputToSignal(out *aiTraderLLMOutput) *AITraderTradeSignal {
+	if out == nil || out.TradeSignal == nil {
+		return nil
+	}
+	ts := out.TradeSignal
+	sig := &AITraderTradeSignal{
+		Side:         strings.TrimSpace(strings.ToLower(ts.Side)),
+		LevelPrice:   ts.LevelPrice,
+		Confidence:   ts.Confidence,
+		Reason:       strings.TrimSpace(ts.Reason),
+		RiskOverride: strings.TrimSpace(strings.ToLower(ts.RiskOverride)),
+		ReceivedAt:   time.Now().UTC().Format(time.RFC3339),
+	}
+	if sig.Confidence < 0 {
+		sig.Confidence = 0
+	}
+	if sig.Confidence > 1 {
+		sig.Confidence = 1
+	}
+	return sig
+}
+
+func (r *Runner) persistAITraderSignal(sessionID string, sig *AITraderTradeSignal) {
+	if sig == nil {
+		return
+	}
+	r.aiTrader.mu.Lock()
+	defer r.aiTrader.mu.Unlock()
+	cur := r.aiTrader.findLocked(sessionID)
+	if cur == nil {
+		return
+	}
+	cur.LastTradeSignal = sig
 }
 
 func sanitizeAITraderLLMAction(action string, s *AITraderSession) string {

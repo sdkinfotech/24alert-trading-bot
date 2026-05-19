@@ -128,6 +128,7 @@ type aiTraderContextState struct {
 	sceneNotes   []string
 	lastBidWall  string
 	lastAskWall  string
+	micro        *aiTraderMicroState
 }
 
 func newAITraderContextState() *aiTraderContextState {
@@ -140,6 +141,10 @@ func (r *Runner) initAITraderContext(ctx context.Context, s *AITraderSession) {
 	}
 	r.warmupAITraderContext(ctx, s)
 	go r.runAITraderMarketFeeds(ctx, s)
+	if aiTraderStreamBookEnabled() {
+		depth := int32(20)
+		go r.runAITraderOrderbookStream(ctx, s, depth)
+	}
 }
 
 func (r *Runner) warmupAITraderContext(ctx context.Context, s *AITraderSession) {
