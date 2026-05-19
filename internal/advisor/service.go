@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultIngestInterval = 12 * time.Second
-	defaultSnapMinGap     = 5 * time.Minute
+	defaultSnapMinGap     = 60 * time.Second // multiple snapshots per 5m window for rollup
 	defaultSchedInterval  = 30 * time.Second
 )
 
@@ -70,7 +70,12 @@ func (svc *Service) Register(ctx context.Context, req RegisterRequest) error {
 		return errBadRequest("session_id required")
 	}
 	started := ParseStartedAt(req.StartedAt)
-	return svc.store.UpsertSession(ctx, req.SessionID, req.AccountID, req.InstrumentUID, req.Ticker, req.Mode, req.Instruction, "running", started)
+	if err := svc.store.UpsertSession(ctx, req.SessionID, req.AccountID, req.InstrumentUID, req.Ticker, req.Mode, req.Instruction, "running", started); err != nil {
+		return err
+	}
+	// First snapshot ASAP so 5m rollup has data after the first closed window.
+	go svc.ingestSession(context.Background(), req.SessionID)
+	return nil
 }
 
 func (svc *Service) Finalize(ctx context.Context, sessionID string) error {
@@ -118,7 +123,7 @@ func (svc *Service) ingestTick(ctx context.Context) {
 func (svc *Service) ingestSession(ctx context.Context, sessionID string) {
 	sess, err := svc.runner.GetSession(ctx, sessionID)
 	if err != nil {
-		svc.log.Debug("advisor ingest fetch session", "session_id", sessionID, "error", err)
+		svc.log.Warn("advisor ingest fetch session", "session_id", sessionID, "error", err)
 		return
 	}
 	if strings.EqualFold(sess.Status, "stopped") {

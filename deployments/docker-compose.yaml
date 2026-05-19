@@ -377,6 +377,7 @@ services:
 
 networks:
   trading-bot-net:
+    name: 24alert-trading-bot-net
     driver: bridge
 
 volumes:

@@ -26,7 +26,15 @@ func notifyAdvisorRegister(s *AITraderSession) {
 		"instruction":    s.Instruction,
 		"started_at":     s.StartedAt,
 	})
-	go advisorPOST("/advisor/sessions/register", body)
+	go func() {
+		for attempt := 1; attempt <= 3; attempt++ {
+			if advisorPOST("/advisor/sessions/register", body) {
+				return
+			}
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+		slog.Warn("advisor register failed after retries", "session_id", s.ID)
+	}()
 }
 
 // notifyAdvisorFinalize triggers day/strategy rollup when session stops.
@@ -37,7 +45,7 @@ func notifyAdvisorFinalize(sessionID string) {
 	go advisorPOST("/advisor/sessions/"+sessionID+"/finalize", []byte("{}"))
 }
 
-func advisorPOST(path string, body []byte) {
+func advisorPOST(path string, body []byte) bool {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("ADVISOR_URL")), "/")
 	if base == "" {
 		base = "http://advisor-svc:9030"
@@ -46,17 +54,20 @@ func advisorPOST(path string, body []byte) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(body))
 	if err != nil {
-		return
+		slog.Debug("advisor notify failed", "path", path, "error", err)
+		return false
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		slog.Debug("advisor notify failed", "path", path, "error", err)
-		return
+		return false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
-		slog.Debug("advisor notify bad status", "path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(b)))
+		slog.Warn("advisor notify bad status", "path", path, "status", resp.StatusCode, "body", strings.TrimSpace(string(b)))
+		return false
 	}
+	return true
 }
