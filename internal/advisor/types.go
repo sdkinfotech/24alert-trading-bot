@@ -135,41 +135,41 @@ type DensityNote struct {
 
 // AnalysisReport is stored analysis row.
 type AnalysisReport struct {
-	ID              string
-	SessionID       string
-	Timeframe       Timeframe
-	PeriodStart     time.Time
-	PeriodEnd       time.Time
-	Status          string
-	SummaryMD       string
-	Structured      AnalysisStructured
-	SourceReportIDs []string
-	Model           string
-	PromptVersion   string
-	ErrorMessage    string
-	CreatedAt       time.Time
+	ID              string             `json:"id"`
+	SessionID       string             `json:"session_id"`
+	Timeframe       Timeframe          `json:"timeframe"`
+	PeriodStart     time.Time          `json:"period_start"`
+	PeriodEnd       time.Time          `json:"period_end"`
+	Status          string             `json:"status"`
+	SummaryMD       string             `json:"summary_md"`
+	Structured      AnalysisStructured `json:"structured"`
+	SourceReportIDs []string           `json:"source_report_ids,omitempty"`
+	Model           string             `json:"model,omitempty"`
+	PromptVersion   string             `json:"prompt_version,omitempty"`
+	ErrorMessage    string             `json:"error_message,omitempty"`
+	CreatedAt       time.Time          `json:"created_at"`
 }
 
 // StrategyDraft is a prompt/rule draft from the top agent.
 type StrategyDraft struct {
-	ID          string
-	SessionID   string
-	Kind        string
-	Title       string
-	Body        string
-	Ticker      string
-	InstrumentUID string
-	CreatedAt   time.Time
+	ID            string    `json:"id"`
+	SessionID     string    `json:"session_id"`
+	Kind          string    `json:"kind"`
+	Title         string    `json:"title"`
+	Body          string    `json:"body"`
+	Ticker        string    `json:"ticker,omitempty"`
+	InstrumentUID string    `json:"instrument_uid,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // StrategySynthesis is day-level top report.
 type StrategySynthesis struct {
-	SessionID   string
-	SummaryMD   string
-	Structured  AnalysisStructured
-	Drafts      []StrategyDraft
-	Model       string
-	CreatedAt   time.Time
+	SessionID  string             `json:"session_id"`
+	SummaryMD  string             `json:"summary_md"`
+	Structured AnalysisStructured `json:"structured"`
+	Drafts     []StrategyDraft    `json:"drafts,omitempty"`
+	Model      string             `json:"model,omitempty"`
+	CreatedAt  time.Time          `json:"created_at"`
 }
 
 // RegisterRequest from runner or UI.

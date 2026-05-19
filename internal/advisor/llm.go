@@ -188,6 +188,9 @@ No broker orders. Be specific to the instrument.`, tf, ticker, instruction)
 
 func parseAnalysisJSON(raw string) (*llmAnalysisOutput, error) {
 	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("empty LLM response")
+	}
 	if i := strings.Index(raw, "{"); i >= 0 {
 		if j := strings.LastIndex(raw, "}"); j > i {
 			raw = raw[i : j+1]
