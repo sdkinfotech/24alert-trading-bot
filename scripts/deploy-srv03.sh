@@ -30,16 +30,24 @@ if [ ! -f "$PASSWORD_FILE" ] || grep -q "CHANGE_ME" "$PASSWORD_FILE" 2>/dev/null
     echo ""
 fi
 
-# --- Step 3: Rebuild Docker images ---
-echo "2. Building Docker images..."
-docker compose -p 24alert -f deployments/docker-compose.yaml build
+# --- Step 3: Shared Docker network (must exist before compose up) ---
+echo "2. Ensuring Docker network..."
+bash scripts/ensure-docker-network.sh
 
-# --- Step 4: Restart app services ---
-echo "3. Restarting app services..."
-docker compose -p 24alert -f deployments/docker-compose.yaml up -d
+# --- Step 4: Rebuild Docker images ---
+echo "3. Building Docker images..."
+bash scripts/compose.sh build
 
-# --- Step 5: Health check ---
-echo "4. Waiting for health check..."
+# --- Step 5: Restart app services ---
+echo "4. Restarting app services..."
+bash scripts/compose.sh up -d
+
+# --- Step 5b: Inter-service network check ---
+echo "4b. Verifying container network..."
+bash scripts/verify-docker-network.sh
+
+# --- Step 6: Health check ---
+echo "5. Waiting for health check..."
 sleep 5
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
 if [ "$HTTP_STATUS" = "200" ]; then
@@ -48,7 +56,7 @@ else
     echo "   WARNING: Gateway returned $HTTP_STATUS"
 fi
 
-# --- Step 6: Verify /metrics endpoint ---
+# --- Step 7: Verify /metrics endpoint ---
 METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/metrics || echo "000")
 if [ "$METRICS_STATUS" = "200" ]; then
     echo "   Metrics endpoint: OK (200)"
@@ -56,13 +64,13 @@ else
     echo "   WARNING: /metrics returned $METRICS_STATUS"
 fi
 
-# --- Step 7: Start monitoring (if password is set) ---
+# --- Step 8: Start monitoring (if password is set) ---
 if [ -f "$PASSWORD_FILE" ] && ! grep -q "CHANGE_ME" "$PASSWORD_FILE" 2>/dev/null; then
-    echo "5. Starting monitoring stack (Prometheus Agent + Promtail)..."
-    docker compose -p 24alert -f deployments/docker-compose.yaml --profile monitoring up -d
+    echo "6. Starting monitoring stack (Prometheus Agent + Promtail)..."
+    bash scripts/compose.sh --profile monitoring up -d
     echo "   Monitoring started!"
 else
-    echo "5. Skipping monitoring start — set the password first (see step 2)."
+    echo "6. Skipping monitoring start — set the password first (see step 2)."
 fi
 
 echo ""
@@ -71,4 +79,5 @@ echo ""
 echo "Verify:"
 echo "  curl http://localhost:8080/health"
 echo "  curl http://localhost:8080/metrics | head -20"
-echo "  docker compose -p 24alert -f deployments/docker-compose.yaml ps"
+echo "  bash scripts/compose.sh ps"
+echo "  bash scripts/verify-docker-network.sh"

@@ -48,7 +48,7 @@ func notifyAdvisorFinalize(sessionID string) {
 func advisorPOST(path string, body []byte) bool {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("ADVISOR_URL")), "/")
 	if base == "" {
-		base = "http://advisor-svc:9030"
+		base = "http://24alert-advisor-svc:9030"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()

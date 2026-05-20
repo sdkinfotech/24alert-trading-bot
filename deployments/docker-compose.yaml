@@ -201,7 +201,7 @@ services:
       - AI_TRADER_PAPER_COMMISSION_BPS=${AI_TRADER_PAPER_COMMISSION_BPS:-4}
       - AI_TRADER_PAPER_SLIPPAGE_BPS=${AI_TRADER_PAPER_SLIPPAGE_BPS:-1}
       - GATEWAY_URL=http://24alert-gateway:8080
-      - ADVISOR_URL=http://advisor-svc:9030
+      - ADVISOR_URL=http://24alert-advisor-svc:9030
     volumes:
       - ../config/config.yaml:/app/config/config.yaml
       - strategy-data:/app/data
@@ -237,7 +237,7 @@ services:
       - ADVISOR_LLM_MAX_TOKENS=${ADVISOR_LLM_MAX_TOKENS:-4096}
       - ADVISOR_FACTS_FALLBACK=${ADVISOR_FACTS_FALLBACK:-true}
       - ADVISOR_DB_PATH=/app/data/advisor_memory.db
-      - STRATEGY_RUNNER_URL=http://strategy-runner:9020
+      - STRATEGY_RUNNER_URL=http://24alert-strategy-runner:9020
     volumes:
       - strategy-data:/app/data
     networks:
@@ -267,7 +267,7 @@ services:
       - SCAN_POSTMARKET_CRON=${SCAN_POSTMARKET_CRON:-0 2 * * 2-6}
       - SCAN_PREMARKET_CRON=${SCAN_PREMARKET_CRON:-50 9 * * 1-5}
       - SCAN_HEALTH_CRON=${SCAN_HEALTH_CRON:-0 */4 * * *}
-      - STRATEGY_RUNNER_URL=http://strategy-runner:9020
+      - STRATEGY_RUNNER_URL=http://24alert-strategy-runner:9020
       - GATEWAY_URL=http://gateway:8080
     volumes:
       - ./ai-scanner/workspace/.cursor:/workspace/.cursor:ro
@@ -376,9 +376,11 @@ services:
       - monitoring
 
 networks:
+  # External fixed name: same network regardless of `docker compose -p` (deployments vs 24alert).
+  # Create once: docker network create 24alert-trading-bot-net  (see scripts/ensure-docker-network.sh)
   trading-bot-net:
     name: 24alert-trading-bot-net
-    driver: bridge
+    external: true
 
 volumes:
   redis-data:

@@ -235,7 +235,7 @@ func (r *Runner) refreshAdvisorReportsLocked(s *AITraderSession) {
 func fetchAdvisorReportsReady(sessionID string) []string {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("ADVISOR_URL")), "/")
 	if base == "" {
-		base = "http://advisor-svc:9030"
+		base = "http://24alert-advisor-svc:9030"
 	}
 	var ready []string
 	for _, tf := range []string{"5m", "15m", "30m", "1h"} {

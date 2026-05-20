@@ -1,7 +1,7 @@
 .PHONY: help proto-gen dashboard-build build build-all test lint ci-check ci-test clean run-all fmt install-tools \
-       docker-build docker-up docker-down docker-logs docker-monitoring-up docker-monitoring-down
+       docker-build docker-up docker-down docker-logs docker-monitoring-up docker-monitoring-down docker-verify-network
 
-COMPOSE := docker compose -p 24alert -f deployments/docker-compose.yaml
+COMPOSE := bash scripts/compose.sh
 
 help:
 	@echo "24Alert Trading Bot - Make targets"
@@ -110,6 +110,9 @@ docker-up:
 	@echo "Starting services..."
 	$(COMPOSE) up -d
 	@echo "Services started! Check with: make docker-logs"
+
+docker-verify-network:
+	bash scripts/verify-docker-network.sh
 
 docker-down:
 	@echo "Stopping services..."

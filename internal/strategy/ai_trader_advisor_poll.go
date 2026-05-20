@@ -83,7 +83,7 @@ func playbookFromAdvisorDTO(d *advisorPlaybookDTO) *LevelPlaybook {
 func fetchAdvisorReadiness(sessionID string) (*AdvisorReadiness, error) {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("ADVISOR_URL")), "/")
 	if base == "" {
-		base = "http://advisor-svc:9030"
+		base = "http://24alert-advisor-svc:9030"
 	}
 	url := base + "/advisor/sessions/" + sessionID + "/readiness"
 	ctx, cancel := contextWithTimeout(5 * time.Second)

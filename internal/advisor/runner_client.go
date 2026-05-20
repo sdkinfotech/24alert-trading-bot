@@ -20,7 +20,7 @@ type RunnerClient struct {
 func NewRunnerClient() *RunnerClient {
 	base := strings.TrimRight(strings.TrimSpace(os.Getenv("STRATEGY_RUNNER_URL")), "/")
 	if base == "" {
-		base = "http://strategy-runner:9020"
+		base = "http://24alert-strategy-runner:9020"
 	}
 	return &RunnerClient{
 		base: base,

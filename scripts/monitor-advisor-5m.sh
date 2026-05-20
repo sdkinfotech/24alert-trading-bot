@@ -70,5 +70,5 @@ else
 fi
 
 echo "=== advisor -> runner connectivity ==="
-sudo docker exec 24alert-advisor-svc curl -s -o /dev/null -w "runner_http=%{http_code}\n" http://strategy-runner:9020/health 2>/dev/null || \
-  echo "curl from advisor container failed"
+sudo docker exec 24alert-advisor-svc curl -s -o /dev/null -w "runner_http=%{http_code}\n" http://24alert-strategy-runner:9020/health 2>/dev/null || \
+  echo "curl from advisor container failed (see deployments/DOCKER_NETWORK.md)"

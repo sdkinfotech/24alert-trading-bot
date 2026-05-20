@@ -11,7 +11,8 @@ Run on `srv03-cloud` unless stated otherwise.
 
 - [ ] `curl -fsS https://gateway.24alert.ru:8080/health` returns OK.
 - [ ] `curl -fsS http://127.0.0.1:18080/health` returns OK on VPS loopback.
-- [ ] `docker compose -f /opt/24alert/deployments/docker-compose.yaml -p 24alert ps` shows expected containers.
+- [ ] `bash /opt/24alert/scripts/compose.sh ps` shows expected containers.
+- [ ] `bash /opt/24alert/scripts/verify-docker-network.sh` — advisor ↔ strategy-runner HTTP 200 (см. `deployments/DOCKER_NETWORK.md`).
 - [ ] `docker logs 24alert-gateway --since 5m` has no panic/OOM/auth loop.
 - [ ] `docker logs 24alert-strategy-runner --since 5m` has no panic/OOM/order loop.
 - [ ] `docker logs 24alert-ai-scanner --since 1h` has no repeated scanner/runtime failure.
