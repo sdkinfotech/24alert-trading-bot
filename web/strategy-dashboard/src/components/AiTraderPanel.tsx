@@ -9,6 +9,8 @@ import { AiTraderActivityStream } from './AiTraderActivityStream';
 import { AiTraderCollectPanel } from './AiTraderCollectPanel';
 import { AiTraderLevelsChart } from './AiTraderLevelsChart';
 import { AiTraderStrategyBrief } from './AiTraderStrategyBrief';
+import { AiTraderAnalystPanel } from './AiTraderAnalystPanel';
+import { AiTraderExecutionLog } from './AiTraderExecutionLog';
 import { AiTraderTradingDesk } from './AiTraderTradingDesk';
 import { clearAiTraderLast, readAiTraderLast, writeAiTraderLast } from './aiTraderStorage';
 import { Badge, Button, Card, EmptyState, Stat } from './ui';
@@ -489,27 +491,31 @@ export function AiTraderPanel({ instances }: Props) {
           <AiTraderCollectPanel session={session} />
 
           {(session.phase === 'trading' || session.live_state || session.paper_state) && (
-            <AiTraderTradingDesk
-              session={session}
-              flattenLoading={loading}
-              onFlatten={
-                session.execution_mode === 'armed_live' && session.status === 'running'
-                  ? async () => {
-                      if (!session.id) return;
-                      setLoading(true);
-                      try {
-                        const data = await api.flattenAiTraderSession(session.id);
-                        applySession(data);
-                        setError(null);
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : String(e));
-                      } finally {
-                        setLoading(false);
+            <>
+              <AiTraderExecutionLog session={session} />
+              <AiTraderTradingDesk
+                session={session}
+                flattenLoading={loading}
+                onFlatten={
+                  session.execution_mode === 'armed_live' && session.status === 'running'
+                    ? async () => {
+                        if (!session.id) return;
+                        setLoading(true);
+                        try {
+                          const data = await api.flattenAiTraderSession(session.id);
+                          applySession(data);
+                          setError(null);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : String(e));
+                        } finally {
+                          setLoading(false);
+                        }
                       }
-                    }
-                  : undefined
-              }
-            />
+                    : undefined
+                }
+              />
+              <AiTraderAnalystPanel sessionId={session.id} ticker={session.ticker} />
+            </>
           )}
 
           <AiTraderActivityStream session={session} />

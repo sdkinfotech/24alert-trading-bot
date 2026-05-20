@@ -7,8 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/24alert/trading-bot/internal/tradeanalyst"
 	"github.com/24alert/trading-bot/pkg/metrics"
 )
+
+// tradeAnalystHintsLookup is wired from runner when analyst store is ready.
+var tradeAnalystHintsLookup func(ticker string) (*tradeanalyst.TradingHints, bool)
 
 const (
 	defaultPolicyEntryMinConfidence = 0.55
@@ -230,7 +234,52 @@ func effectivePolicy(s *AITraderSession) DynamicTradingPolicy {
 			base.Source = ap.Source
 		}
 	}
+	base = applyTradeAnalystHints(s.Ticker, base)
 	return clampDynamicTradingPolicy(base)
+}
+
+func applyTradeAnalystHints(ticker string, base DynamicTradingPolicy) DynamicTradingPolicy {
+	if tradeAnalystHintsLookup == nil || ticker == "" {
+		return base
+	}
+	h, ok := tradeAnalystHintsLookup(ticker)
+	if !ok || h == nil {
+		return base
+	}
+	if h.BlockNewEntry {
+		base.AllowNewEntry = false
+	}
+	if h.EntryMinConfidence > base.EntryMinConfidence {
+		base.EntryMinConfidence = h.EntryMinConfidence
+	}
+	if h.TPMultScale > 0 && h.TPMultScale != 1 {
+		base.TPMultATR *= h.TPMultScale
+	}
+	if h.SLMultScale > 0 && h.SLMultScale != 1 {
+		base.SLMultATR *= h.SLMultScale
+	}
+	if len(h.Notes) > 0 && base.Summary == "" {
+		base.Summary = h.Notes[0]
+	}
+	base.Source = "trade_analyst_hints"
+	return base
+}
+
+func tradeAnalystHourBlocked(ticker string) bool {
+	if tradeAnalystHintsLookup == nil || ticker == "" {
+		return false
+	}
+	h, ok := tradeAnalystHintsLookup(ticker)
+	if !ok || h == nil || len(h.AvoidHoursUTC) == 0 {
+		return false
+	}
+	hour := time.Now().UTC().Hour()
+	for _, ah := range h.AvoidHoursUTC {
+		if ah == hour {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeLLMPolicyIntoSession(s *AITraderSession, llm *aiTraderLLMTradingPolicy, pb *LevelPlaybook) (DynamicTradingPolicy, bool) {
@@ -455,6 +504,9 @@ func setStopsFromPolicy(s *AITraderSession, side string, entry float64, isLive b
 }
 
 func allowNewEntry(s *AITraderSession, regime string) bool {
+	if s != nil && tradeAnalystHourBlocked(s.Ticker) {
+		return false
+	}
 	pol := effectivePolicy(s)
 	if !pol.AllowNewEntry {
 		return false

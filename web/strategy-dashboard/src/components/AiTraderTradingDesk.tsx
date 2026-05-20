@@ -47,6 +47,8 @@ function isTradeEvent(e: AiTraderDecisionEvent): boolean {
     a.includes('stop') ||
     a.includes('flatten') ||
     a.includes('start_trading') ||
+    a === 'trade_entry' ||
+    a === 'trade_exit' ||
     r.includes('live') ||
     r.includes('paper') ||
     r.includes('submitted')

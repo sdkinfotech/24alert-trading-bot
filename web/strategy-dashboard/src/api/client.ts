@@ -118,6 +118,19 @@ export const api = {
     get<AiTraderBrokerSnapshot>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/broker-position`),
   flattenAiTraderSession: (sessionID: string) =>
     post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/flatten`, {}),
+  aiTraderAnalystReport: (sessionID: string) =>
+    get<import('./types').AiTraderSessionReport>(
+      `/ai-trader/analyst/sessions/${encodeURIComponent(sessionID)}/report`,
+    ),
+  aiTraderRunPostmarket: (sessionID: string) =>
+    post<import('./types').AiTraderSessionReport>(
+      `/ai-trader/analyst/sessions/${encodeURIComponent(sessionID)}/postmarket`,
+      {},
+    ),
+  aiTraderInstrumentJournal: (ticker: string) =>
+    get<import('./types').AiTraderInstrumentJournal>(
+      `/ai-trader/analyst/instruments/${encodeURIComponent(ticker)}/journal`,
+    ),
   advisorAnalyses: (sessionId: string, tf: AdvisorTimeframe, limit = 20) =>
     get<AdvisorAnalysisReport[]>(
       `/advisor/sessions/${encodeURIComponent(sessionId)}/analyses?tf=${encodeURIComponent(tf)}&limit=${limit}`,

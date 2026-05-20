@@ -82,6 +82,7 @@ type AITraderSession struct {
 	LastTradeSignal *AITraderTradeSignal  `json:"last_trade_signal,omitempty"`
 	SessionRegime   string                `json:"session_regime,omitempty"`
 	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
+	ExecutionLog    []AITraderExecutionLogEntry `json:"execution_log,omitempty"`
 
 	cancel                 context.CancelFunc     `json:"-"`
 	streamBook             *marketdata.Orderbook  `json:"-"`
@@ -373,8 +374,10 @@ func (r *Runner) StopAITraderSession(instanceID string) (*AITraderSession, bool)
 	s.StoppedAt = now
 	s.UpdatedAt = now
 	notifyAdvisorFinalize(s.ID)
+	cloned := cloneAITraderSession(s)
+	r.scheduleTradeAnalystPostMarket(cloned)
 	r.deleteAITraderSessionSnapshot(s.ID)
-	return cloneAITraderSession(s), true
+	return cloned, true
 }
 
 func (r *Runner) AITraderSessions() []*AITraderSession {
@@ -831,6 +834,8 @@ func (r *Runner) finishAITraderSession(s *AITraderSession, err error) {
 		cur.LastError = err.Error()
 	}
 	notifyAdvisorFinalize(cur.ID)
+	cloned := cloneAITraderSession(cur)
+	r.scheduleTradeAnalystPostMarket(cloned)
 	r.deleteAITraderSessionSnapshot(cur.ID)
 }
 
@@ -915,6 +920,9 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 	}
 	if s.CollectFeed != nil {
 		cp.CollectFeed = append([]AITraderCollectEvent(nil), s.CollectFeed...)
+	}
+	if len(s.ExecutionLog) > 0 {
+		cp.ExecutionLog = append([]AITraderExecutionLogEntry(nil), s.ExecutionLog...)
 	}
 	cp.lastCollectFeedAt = time.Time{}
 	cp.lastReportsReady = nil

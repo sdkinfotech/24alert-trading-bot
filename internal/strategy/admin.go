@@ -400,6 +400,48 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(res)
 	})
+	mux.HandleFunc("POST /ai-trader/analyst/sessions/{instance_id}/postmarket", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		rep, err := r.RunTradeAnalystPostMarket(instanceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rep)
+	})
+	mux.HandleFunc("GET /ai-trader/analyst/sessions/{instance_id}/report", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		r.initTradeAnalyst()
+		if r.tradeAnalyst == nil {
+			http.Error(w, "trade analyst not available", http.StatusServiceUnavailable)
+			return
+		}
+		rep, ok := r.tradeAnalyst.Store().GetReport(instanceID)
+		if !ok {
+			http.Error(w, "report not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rep)
+	})
+	mux.HandleFunc("GET /ai-trader/analyst/instruments/{ticker}/journal", func(w http.ResponseWriter, req *http.Request) {
+		ticker := req.PathValue("ticker")
+		r.initTradeAnalyst()
+		if r.tradeAnalyst == nil {
+			http.Error(w, "trade analyst not available", http.StatusServiceUnavailable)
+			return
+		}
+		reports, _ := r.tradeAnalyst.Store().ListReportsByTicker(ticker, 30)
+		rounds, _ := r.tradeAnalyst.Store().ListRoundsByTicker(ticker, 100)
+		stats, _ := r.tradeAnalyst.Store().GetInstrumentStats(ticker)
+		hints, _ := r.tradeAnalyst.Store().GetHints(ticker)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ticker": ticker, "stats": stats, "hints": hints,
+			"reports": reports, "trade_rounds": rounds,
+		})
+	})
 	registerAIChatHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))

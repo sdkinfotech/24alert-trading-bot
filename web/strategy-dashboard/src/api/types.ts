@@ -538,6 +538,85 @@ export interface AiTraderSession {
   events?: AiTraderDecisionEvent[];
   collect_feed?: AiTraderCollectEvent[];
   last_playbook_refresh_at?: string;
+  execution_log?: AiTraderExecutionLogEntry[];
+}
+
+export interface AiTraderExecutionLogEntry {
+  time: string;
+  kind: 'entry' | 'exit' | string;
+  side: string;
+  price: number;
+  quantity: number;
+  position_after: number;
+  trigger: string;
+  fill_note?: string;
+  llm_summary?: string;
+  llm_reason?: string;
+  llm_intent?: string;
+  llm_bias?: string;
+  llm_confidence?: number;
+  llm_source?: string;
+  trade_signal_reason?: string;
+  policy_summary?: string;
+  stop_loss?: number;
+  take_profit?: number;
+  realized_rub?: number;
+}
+
+export interface TradeRound {
+  id: string;
+  session_id: string;
+  ticker: string;
+  side: string;
+  entry_time: string;
+  entry_price: number;
+  exit_time?: string;
+  exit_price?: number;
+  outcome?: string;
+  entry_timing?: string;
+  trigger?: string;
+  exit_reason?: string;
+}
+
+export interface SessionReportFrequency {
+  verdict: string;
+  note?: string;
+  per_hour?: number;
+}
+
+export interface AiTraderSessionReport {
+  session_id: string;
+  ticker: string;
+  summary_ru: string;
+  generated_at: string;
+  trade_rounds?: TradeRound[];
+  win_rate?: number;
+  realized_rub?: number;
+  frequency?: SessionReportFrequency;
+  recommendations?: string[];
+}
+
+export interface InstrumentAnalystStats {
+  ticker: string;
+  sessions_analyzed: number;
+  total_rounds: number;
+  win_rate: number;
+  last_report_at?: string;
+  lessons?: string[];
+}
+
+export interface TradingHints {
+  ticker: string;
+  notes?: string[];
+  block_new_entry?: boolean;
+}
+
+export interface AiTraderInstrumentJournal {
+  ticker: string;
+  stats?: InstrumentAnalystStats | null;
+  hints?: TradingHints | null;
+  reports?: AiTraderSessionReport[];
+  trade_rounds?: TradeRound[];
 }
 
 export interface AiTraderPersistedSummary {

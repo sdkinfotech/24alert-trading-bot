@@ -13,6 +13,7 @@ import (
 	"github.com/24alert/trading-bot/internal/order"
 	"github.com/24alert/trading-bot/internal/portfolio"
 	"github.com/24alert/trading-bot/internal/risk"
+	"github.com/24alert/trading-bot/internal/tradeanalyst"
 	"github.com/24alert/trading-bot/internal/strategy/ledger"
 	"github.com/24alert/trading-bot/pkg/config"
 	"github.com/24alert/trading-bot/pkg/logging"
@@ -65,7 +66,8 @@ type Runner struct {
 	signalRefPx map[string]float64
 	lastFilled  map[string]int64 // orderID → last reported cumulative filled qty (lots)
 	stopOrders  map[string]string
-	aiTrader    *AITraderManager
+	aiTrader      *AITraderManager
+	tradeAnalyst  *tradeanalyst.Service
 
 	equityPeak        map[string]float64 // instance → peak RUB (realized+unrealized)
 	dailyReportDayUTC string             // YYYY-MM-DD
@@ -160,6 +162,7 @@ func (r *Runner) Start(ctx context.Context) error {
 	if err := r.prefetchInstruments(ctx); err != nil {
 		r.logger.Warn("prefetch instruments: some failures", "error", err)
 	}
+	r.initTradeAnalyst()
 	r.updateInstanceMetrics()
 
 	go func() {

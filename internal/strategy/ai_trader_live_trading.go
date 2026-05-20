@@ -262,6 +262,7 @@ func (r *Runner) recordLiveFill(s *AITraderSession, fill LiveFill) {
 	if st == nil {
 		return
 	}
+	prevPos := st.PositionLots
 	st.Fills = append(st.Fills, fill)
 	qty := fill.Quantity
 	if fill.Side == "sell" {
@@ -271,6 +272,7 @@ func (r *Runner) recordLiveFill(s *AITraderSession, fill LiveFill) {
 	if st.PositionLots == 0 {
 		st.PositionLots = qty
 		st.AvgPrice = fill.Price
+		r.logLiveFillExecution(s, fill, prevPos, st.PositionLots)
 		return
 	}
 	if (st.PositionLots > 0 && qty < 0) || (st.PositionLots < 0 && qty > 0) {
@@ -292,6 +294,7 @@ func (r *Runner) recordLiveFill(s *AITraderSession, fill LiveFill) {
 	} else {
 		st.AvgPrice = fill.Price
 	}
+	r.logLiveFillExecution(s, fill, prevPos, st.PositionLots)
 }
 
 func (r *Runner) checkLiveSLTP(ctx context.Context, s *AITraderSession, f *AITraderFeatures) {
@@ -358,6 +361,8 @@ func (r *Runner) closeLivePosition(ctx context.Context, s *AITraderSession, f *A
 		s.LastError = err.Error()
 		return
 	}
+	qtyClose := abs64(st.PositionLots)
+	r.logLiveExitExecution(s, side, f.Mid, qtyClose, note, "ai_trader close: "+note)
 	st.PositionLots = 0
 	st.AvgPrice = 0
 	st.StopLoss, st.TakeProfit = 0, 0

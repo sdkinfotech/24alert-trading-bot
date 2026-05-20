@@ -46,6 +46,7 @@ type aiTraderSessionSnapshot struct {
 	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
 	LastPlaybookRefreshAt string          `json:"last_playbook_refresh_at,omitempty"`
 	Depth                 int32             `json:"depth,omitempty"`
+	ExecutionLog          []AITraderExecutionLogEntry `json:"execution_log,omitempty"`
 }
 
 type AITraderPersistedSummary struct {
@@ -132,6 +133,7 @@ func snapshotFromSession(s *AITraderSession, depth int32) *aiTraderSessionSnapsh
 		MarketContext: s.MarketContext, LastDecision: s.LastDecision,
 		LastTradeSignal: s.LastTradeSignal, SessionRegime: s.SessionRegime,
 		MicroSignals: s.MicroSignals, Depth: depth,
+		ExecutionLog: append([]AITraderExecutionLogEntry(nil), s.ExecutionLog...),
 	}
 	if len(s.Events) > aiTraderMaxSessionEvents {
 		snap.Events = append([]AITraderDecisionEvent(nil), s.Events[:aiTraderMaxSessionEvents]...)
@@ -249,6 +251,7 @@ func sessionFromSnapshot(snap *aiTraderSessionSnapshot) *AITraderSession {
 		Features: snap.Features, MarketContext: snap.MarketContext, LastDecision: snap.LastDecision,
 		Events: snap.Events, CollectFeed: snap.CollectFeed, LastTradeSignal: snap.LastTradeSignal,
 		SessionRegime: snap.SessionRegime, MicroSignals: snap.MicroSignals,
+		ExecutionLog: append([]AITraderExecutionLogEntry(nil), snap.ExecutionLog...),
 		collectBuf: newAITraderCollectBuffer(), ctxState: newAITraderContextState(),
 	}
 	if snap.LastPlaybookRefreshAt != "" {

@@ -488,3 +488,35 @@ body {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   margin-bottom: 1rem;
 }
+
+.ai-exec-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ai-exec-log-item {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.ai-exec-log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-exec-log-llm {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}
+
+.ai-exec-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}

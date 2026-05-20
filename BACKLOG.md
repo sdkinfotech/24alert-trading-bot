@@ -23,6 +23,7 @@
 | TASK-024 | Secret-bearing task archive cleanup | Critical | S | Blocked | `.tasks/TASK-003/devops/DEPLOYMENT.md` may contain prod token; requires rotation/history decision. |
 | TASK-025 | AI Scanner production safeguards | Medium | M | Planned | Paper-mode/confirmation gate before auto strategy changes. |
 | TASK-026 | Durable event storage decision | Medium | L | Backlog | SQLite journal is current; DB may be needed for reporting/history. |
+| TASK-029 | AI Trader trade analyst (post-market) | High | M | In Progress | Trade journal per ticker, LLM↔fills, stats, hints → next session policy. |
 
 ## Recently Completed
 

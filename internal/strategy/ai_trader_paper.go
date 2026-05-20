@@ -291,12 +291,14 @@ func (r *Runner) recordPaperFill(s *AITraderSession, fill PaperFill) {
 	if st == nil {
 		return
 	}
+	prevPos := st.PositionLots
 	lotVal := paperLotValueRUB(s.Ticker)
 	fee := math.Abs(fill.Price*float64(fill.Quantity)) * lotVal * paperCommissionBPS() / 10000
 	fill.FeesRUB = fee
 	st.TotalFeesRUB += fee
 	st.Fills = append(st.Fills, fill)
 	closed, pnl := applyPaperFill(st, fill, lotVal)
+	r.logPaperFillExecution(s, fill, prevPos, st.PositionLots)
 	st.tradeTimestamps = append(st.tradeTimestamps, time.Now())
 	if fill.LimitPx > 0 {
 		bps := (fill.Price - fill.LimitPx) / fill.LimitPx * 10000
