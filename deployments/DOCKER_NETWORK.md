@@ -62,3 +62,27 @@ sudo bash scripts/verify-docker-network.sh
 cd /opt/24alert/deployments
 docker compose up -d   # project=deployments → другая сеть
 ```
+
+## Диск VPS (30 GB): очистка Docker
+
+Каждый `compose build` оставляет промежуточные образы (`<none>`). Без уборки `git pull` падает с `No space left on device`.
+
+**Разово:**
+
+```bash
+cd /opt/24alert
+sudo bash scripts/docker-disk-prune.sh
+```
+
+**Проверка без удаления:** `sudo bash scripts/docker-disk-prune.sh --dry-run`
+
+**Cron (раз в неделю, вс 04:30 UTC):**
+
+```bash
+cd /opt/24alert
+sudo bash scripts/install-docker-prune-cron.sh
+```
+
+Лог: `/var/log/24alert-docker-prune.log`
+
+`scripts/deploy-prod.sh` запускает prune после деплоя и ставит cron, если его ещё нет.
