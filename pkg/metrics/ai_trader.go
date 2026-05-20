@@ -69,4 +69,18 @@ var (
 		Name:      "kill_switch_active",
 		Help:      "1 when global AI Trader kill switch is on.",
 	})
+
+	AITraderPolicyUpdatesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ai_trader",
+		Name:      "policy_updates_total",
+		Help:      "Dynamic trading policy updates from LLM.",
+	})
+
+	AITraderStopAdjustmentsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ai_trader",
+		Name:      "stop_adjustments_total",
+		Help:      "Soft SL/TP adjustments from LLM trade_signal.",
+	})
 )

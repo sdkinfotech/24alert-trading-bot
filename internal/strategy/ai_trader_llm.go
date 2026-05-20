@@ -21,14 +21,15 @@ const (
 )
 
 type aiTraderLLMOutput struct {
-	Summary     string                   `json:"summary"`
-	MarketBias  string                   `json:"market_bias"`
-	Action      string                   `json:"action"`
-	Intent      string                   `json:"intent"`
-	Reason      string                   `json:"reason"`
-	NextWatch   string                   `json:"next_watch"`
-	Confidence  float64                  `json:"confidence"`
-	TradeSignal *aiTraderLLMTradeSignal  `json:"trade_signal,omitempty"`
+	Summary       string                    `json:"summary"`
+	MarketBias    string                    `json:"market_bias"`
+	Action        string                    `json:"action"`
+	Intent        string                    `json:"intent"`
+	Reason        string                    `json:"reason"`
+	NextWatch     string                    `json:"next_watch"`
+	Confidence    float64                   `json:"confidence"`
+	TradingPolicy *aiTraderLLMTradingPolicy `json:"trading_policy,omitempty"`
+	TradeSignal   *aiTraderLLMTradeSignal   `json:"trade_signal,omitempty"`
 }
 
 type aiTraderLLMTradeSignal struct {
@@ -37,6 +38,10 @@ type aiTraderLLMTradeSignal struct {
 	Confidence   float64 `json:"confidence"`
 	Reason       string  `json:"reason"`
 	RiskOverride string  `json:"risk_override"`
+	OrderAction  string  `json:"order_action"`
+	StopLoss     float64 `json:"stop_loss"`
+	TakeProfit   float64 `json:"take_profit"`
+	Quantity     int64   `json:"quantity"`
 }
 
 func aiTraderLLMInterval(s *AITraderSession) time.Duration {
@@ -84,11 +89,10 @@ func (r *Runner) shouldRunAITraderLLM(s *AITraderSession) bool {
 	case AITraderPhaseCollecting:
 		return false
 	case AITraderPhaseTrading:
-		// Slower narrative updates while executing paper limits.
 		if s.lastLLMAt.IsZero() {
 			return true
 		}
-		return time.Since(s.lastLLMAt) >= aiTraderLLMInterval(s)*2
+		return time.Since(s.lastLLMAt) >= aiTraderLLMIntervalTrading()
 	}
 	// analyzing / ready
 	if s.lastLLMAt.IsZero() {
@@ -276,6 +280,9 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 		metrics.RecordLLMRequest(metrics.LLMServiceAITrader, model, metrics.LLMResultSuccess, time.Since(attemptStart))
 		ev := mergeAITraderLLMOutput(s, f, base, out)
 		ev.LLMModel = model
+		if pol, changed := mergeLLMPolicyIntoSession(s, out.TradingPolicy, s.LevelPlaybook); out.TradingPolicy != nil {
+			r.persistAITraderPolicy(s.ID, pol, changed)
+		}
 		if sig := llmOutputToSignal(out); sig != nil {
 			r.persistAITraderSignal(s.ID, sig)
 			r.recordAITraderTick(s, "trade_signal", sig)
@@ -313,6 +320,21 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 		}
 		b.WriteString("\n")
 	}
+	pol := effectivePolicy(s)
+	b.WriteString("== Active trading policy (ты можешь обновить через trading_policy) ==\n")
+	b.WriteString(policySummaryLine(pol) + "\n")
+	if s.Phase == AITraderPhaseTrading {
+		b.WriteString("Фаза TRADING: обновляй trading_policy и trade_signal (stop_loss/take_profit) по контексту.\n")
+		if s.LiveState != nil && s.LiveState.PositionLots != 0 {
+			b.WriteString(fmt.Sprintf("Открытая LIVE позиция: %d лот @ %.4f SL=%.4f TP=%.4f\n",
+				s.LiveState.PositionLots, s.LiveState.AvgPrice, s.LiveState.StopLoss, s.LiveState.TakeProfit))
+		}
+		if s.PaperState != nil && s.PaperState.PositionLots != 0 {
+			b.WriteString(fmt.Sprintf("Открытая PAPER позиция: %d лот @ %.4f SL=%.4f TP=%.4f\n",
+				s.PaperState.PositionLots, s.PaperState.AvgPrice, s.PaperState.StopLoss, s.PaperState.TakeProfit))
+		}
+	}
+	b.WriteString("\n")
 
 	writeAITraderContextSummary(&b, f, mctx)
 
@@ -363,22 +385,37 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
   "reason": "почему так — сошлись принты, стенки, уровни, свечи",
   "next_watch": "что наблюдать дальше",
   "confidence": 0.0,
+  "trading_policy": {
+    "market_bias": "bullish|bearish|neutral|blocked",
+    "entry_min_confidence": 0.55,
+    "confluence_min_score": 2.5,
+    "sl_mult_atr": 0.5,
+    "tp_mult_atr": 1.5,
+    "allow_new_entry": true,
+    "allow_scale_in": false,
+    "tactics": ["limit_at_level"],
+    "preferred_levels": [{"price": 0.0, "kind": "support", "source": "level"}],
+    "summary": "краткий план сессии"
+  },
   "trade_signal": {
     "side": "buy|sell|none",
     "level_price": 0.0,
     "confidence": 0.0,
     "reason": "почему этот уровень",
-    "risk_override": "hold|cancel_all|flatten"
+    "risk_override": "hold|cancel_all|flatten",
+    "order_action": "place_limit|cancel_all|flatten|adjust_stops|hold",
+    "stop_loss": 0.0,
+    "take_profit": 0.0,
+    "quantity": 1
   }
 }
 
 Правила:
 - Опирайся на book_timeline, recent_prints, tape_stats, chart_bars, levels и scene_notes.
-- Если лента агрессивно бьёт в одну сторону — отрази это; если стенку сняли — отрази.
-- Сравни цену с ближайшими support/resistance из levels.
-- В фазе trading: trade_signal влияет на paper-лимитки (side+level_price при confidence>=0.55).
-- Вне trading: trade_signal.side должен быть none.
-- risk_override: cancel_all — снять заявки; flatten — закрыть позицию.
+- trading_policy: задай правила сессии (пороги входа, SL/TP множители ATR, allow_new_entry). entry_min_confidence не выше 0.55.
+- В фазе trading: trade_signal управляет лимитками и мягкими SL/TP (stop_loss/take_profit).
+- При открытой позиции: order_action adjust_stops + stop_loss/take_profit; flatten — закрыть; cancel_all — снять заявки.
+- Вне trading: trade_signal.side должен быть none; trading_policy всё равно можно обновить.
 - action остаётся hold|observe_plan|paper_plan|observe_wall|block (нарратив).
 - confidence 0..1.
 `)
@@ -454,7 +491,14 @@ func llmOutputToSignal(out *aiTraderLLMOutput) *AITraderTradeSignal {
 		Confidence:   ts.Confidence,
 		Reason:       strings.TrimSpace(ts.Reason),
 		RiskOverride: strings.TrimSpace(strings.ToLower(ts.RiskOverride)),
+		OrderAction:  strings.TrimSpace(strings.ToLower(ts.OrderAction)),
+		StopLoss:     ts.StopLoss,
+		TakeProfit:   ts.TakeProfit,
+		Quantity:     ts.Quantity,
 		ReceivedAt:   time.Now().UTC().Format(time.RFC3339),
+	}
+	if sig.OrderAction == "" && sig.RiskOverride != "" && sig.RiskOverride != "hold" {
+		sig.OrderAction = sig.RiskOverride
 	}
 	if sig.Confidence < 0 {
 		sig.Confidence = 0

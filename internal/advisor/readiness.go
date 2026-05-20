@@ -16,11 +16,16 @@ type ReadinessResponse struct {
 
 // PlaybookDraft mirrors runner LevelPlaybook for advisor → runner handoff.
 type PlaybookDraft struct {
-	Summary      string   `json:"summary,omitempty"`
-	MarketBias   string   `json:"market_bias,omitempty"`
-	Levels       []LevelDraft `json:"levels,omitempty"`
-	EntryRules   []string `json:"entry_rules,omitempty"`
-	ReadyToTrade bool     `json:"ready_to_trade,omitempty"`
+	Summary            string       `json:"summary,omitempty"`
+	MarketBias         string       `json:"market_bias,omitempty"`
+	Levels             []LevelDraft `json:"levels,omitempty"`
+	EntryRules         []string     `json:"entry_rules,omitempty"`
+	ReadyToTrade       bool         `json:"ready_to_trade,omitempty"`
+	SLMultATR          float64      `json:"sl_mult_atr,omitempty"`
+	TPMultATR          float64      `json:"tp_mult_atr,omitempty"`
+	EntryMinConfidence float64      `json:"entry_min_confidence,omitempty"`
+	ConfluenceMinScore float64      `json:"confluence_min_score,omitempty"`
+	AllowNewEntry      *bool        `json:"allow_new_entry,omitempty"`
 }
 
 type LevelDraft struct {
@@ -103,9 +108,21 @@ func playbookFromReports(ctx context.Context, svc *Service, sessionID, ticker st
 		return nil
 	}
 	d := &PlaybookDraft{
-		Summary:    latest.SummaryMD,
-		MarketBias: latest.Structured.MarketRegime,
-		EntryRules: append([]string(nil), latest.Structured.TradingIdeas...),
+		Summary:            latest.SummaryMD,
+		MarketBias:         latest.Structured.MarketRegime,
+		EntryRules:         append([]string(nil), latest.Structured.TradingIdeas...),
+		SLMultATR:          0.5,
+		TPMultATR:          1.5,
+		EntryMinConfidence: 0.55,
+		ConfluenceMinScore: 2.5,
+	}
+	allow := true
+	d.AllowNewEntry = &allow
+	if latest.Structured.Confidence >= 0.65 {
+		d.ConfluenceMinScore = 2.0
+	} else if latest.Structured.Confidence < 0.45 {
+		allow = false
+		d.AllowNewEntry = &allow
 	}
 	for _, kl := range latest.Structured.KeyLevels {
 		d.Levels = append(d.Levels, LevelDraft{Price: 0, Kind: "level", Source: kl})

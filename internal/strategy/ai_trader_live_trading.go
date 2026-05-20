@@ -78,22 +78,29 @@ func (r *Runner) startLiveTradingFromPlaybook(ctx context.Context, s *AITraderSe
 	if regime == "" {
 		regime = detectSessionRegime(mctx)
 	}
-	if regime == RegimeLowVol {
+	if !allowNewEntry(s, regime) {
 		return
 	}
 	mid := f.Mid
 	if mid <= 0 {
 		return
 	}
+	pol := effectivePolicy(s)
 	s.LiveState.WorkingOrders = nil
-	if sig != nil && sig.actionable() {
+	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
 		r.placeLiveLimit(ctx, s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
 		return
 	}
-	scored := scoreLevels(s.LevelPlaybook.Levels, f, mctx, nil)
-	minScore := 2.5
+	lvls := levelsForConfluence(s, pol)
+	scored := scoreLevels(lvls, f, mctx, nil)
+	minScore := pol.ConfluenceMinScore
 	allowBuy := regime != RegimeTrend || trendDirection(mctx) != "down"
 	allowSell := regime != RegimeTrend || trendDirection(mctx) != "up"
+	if pol.MarketBias == "bearish" {
+		allowBuy = false
+	} else if pol.MarketBias == "bullish" {
+		allowSell = false
+	}
 	if sup, ok := bestSupportLevel(scored, mid, minScore); ok && allowBuy {
 		r.placeLiveLimit(ctx, s, "buy", sup.Price, 1, sup.Source, "confluence support")
 	}
@@ -121,19 +128,20 @@ func (r *Runner) tickLiveTrading(ctx context.Context, s *AITraderSession, f *AIT
 	if err := applyLiveRiskGate(s, f); err != nil {
 		return
 	}
-	if sig != nil && strings.EqualFold(sig.RiskOverride, "cancel_all") {
+	if sig != nil && (strings.EqualFold(sig.RiskOverride, "cancel_all") || strings.EqualFold(sig.OrderAction, "cancel_all")) {
 		r.cancelAllLiveOrders(ctx, s)
 	}
-	if sig != nil && strings.EqualFold(sig.RiskOverride, "flatten") && st.PositionLots != 0 {
+	if sig != nil && (strings.EqualFold(sig.RiskOverride, "flatten") || strings.EqualFold(sig.OrderAction, "flatten")) && st.PositionLots != 0 {
 		r.closeLivePosition(ctx, s, f, "llm_flatten")
 	}
 	r.syncLiveOrderStates(ctx, s)
 	if st.PositionLots != 0 {
 		r.checkLiveSLTP(ctx, s, f)
-	} else if sig != nil && sig.actionable() {
+		applyLLMPositionManagement(s, sig, f.Mid, true)
+	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		r.syncLiveOrdersFromSignal(ctx, s, sig)
 	}
-	if st.PositionLots == 0 && len(st.WorkingOrders) == 0 {
+	if st.PositionLots == 0 && len(st.WorkingOrders) == 0 && allowNewEntry(s, regime) {
 		r.startLiveTradingFromPlaybook(ctx, s, f, mctx, sig)
 	}
 	st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -235,7 +243,7 @@ func (r *Runner) syncLiveOrderStates(ctx context.Context, s *AITraderSession) {
 				Note: "broker fill " + o.LevelRef,
 			})
 			if st.PositionLots == 0 {
-				r.setLiveStopsFromPlaybook(s, o.Side, fillPx)
+				setStopsFromPolicy(s, o.Side, fillPx, true)
 			}
 			metrics.AITraderOrdersTotal.WithLabelValues("live", o.Side, "filled").Inc()
 		case order.OrderStatusCancelled, order.OrderStatusRejected:
@@ -281,29 +289,6 @@ func (r *Runner) recordLiveFill(s *AITraderSession, fill LiveFill) {
 		st.StopLoss, st.TakeProfit = 0, 0
 	} else {
 		st.AvgPrice = fill.Price
-	}
-}
-
-func (r *Runner) setLiveStopsFromPlaybook(s *AITraderSession, side string, entry float64) {
-	pb := s.LevelPlaybook
-	mctx := s.MarketContext
-	atr := playbookATR(s, mctx)
-	slMult, tpMult := 0.5, 1.5
-	if pb != nil {
-		if pb.SLMultATR > 0 {
-			slMult = pb.SLMultATR
-		}
-		if pb.TPMultATR > 0 {
-			tpMult = pb.TPMultATR
-		}
-	}
-	switch side {
-	case "buy":
-		s.LiveState.StopLoss = entry - atr*slMult
-		s.LiveState.TakeProfit = entry + atr*tpMult
-	case "sell":
-		s.LiveState.StopLoss = entry + atr*slMult
-		s.LiveState.TakeProfit = entry - atr*tpMult
 	}
 }
 
@@ -392,7 +377,7 @@ func (r *Runner) cancelAllLiveOrders(ctx context.Context, s *AITraderSession) {
 }
 
 func (r *Runner) syncLiveOrdersFromSignal(ctx context.Context, s *AITraderSession, sig *AITraderTradeSignal) {
-	if s.LiveState == nil || !sig.actionable() {
+	if s.LiveState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		return
 	}
 	for _, o := range s.LiveState.WorkingOrders {

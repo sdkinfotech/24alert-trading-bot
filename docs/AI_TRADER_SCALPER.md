@@ -215,6 +215,23 @@ Use a hybrid model:
 - LLM/agent evaluates context, writes hypotheses, and chooses tactical intent;
 - deterministic risk and order layers decide whether anything is executable.
 
+### Dynamic trading policy (implemented)
+
+Each session exposes `active_policy` on the runner API and dashboard **Session plan (AI)** card.
+
+| Layer | Role |
+|-------|------|
+| **Safety floor** | Fixed caps: max lots, session loss, spread/stale, kill switch, `risk-svc` on live orders. LLM cannot override these. |
+| **DynamicTradingPolicy** | LLM (`trading_policy` in JSON) and advisor readiness seed: `entry_min_confidence`, `confluence_min_score`, `sl_mult_atr`, `tp_mult_atr`, `allow_new_entry`, `market_bias`, `preferred_levels`. Values are clamped (e.g. entry confidence ≤ 0.55). |
+| **Executor** | Places limits from `trade_signal` or confluence; applies soft SL/TP from policy; in trading phase LLM may send `adjust_stops` / `stop_loss` / `take_profit` on open positions. |
+
+Env:
+
+- `AI_TRADER_LLM_INTERVAL_TRADING_SEC` — LLM cadence in `trading` phase (default 45s; was 2× analyze interval).
+- Analyze phase still uses `AI_TRADER_LLM_INTERVAL_SEC` (default 90s).
+
+Metrics: `alert24_ai_trader_policy_updates_total`, `alert24_ai_trader_stop_adjustments_total`.
+
 Initial tactics:
 
 - passive entry near a persistent wall;
@@ -236,7 +253,7 @@ Initial tactics:
 - phase stepper: collecting → analyzing → ready → trading;
 - report chips 5m / 15m / 1h from `phase_progress.reports_ready`;
 - **Start trading** — disabled until `phase=ready` and `trading_ready`; green pulse when enabled;
-- level playbook S/R list; paper position/orders when `phase=trading`;
+- level playbook S/R list; **session plan (AI)** (`active_policy`); trading desk when `phase=trading`;
 - instruction textarea;
 - stop session;
 - kill switch;

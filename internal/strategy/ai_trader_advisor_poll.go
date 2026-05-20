@@ -50,11 +50,16 @@ type AdvisorReadiness struct {
 }
 
 type advisorPlaybookDTO struct {
-	Summary      string              `json:"summary,omitempty"`
-	MarketBias   string              `json:"market_bias,omitempty"`
-	Levels       []advisorLevelDTO   `json:"levels,omitempty"`
-	EntryRules   []string            `json:"entry_rules,omitempty"`
-	ReadyToTrade bool                `json:"ready_to_trade,omitempty"`
+	Summary            string            `json:"summary,omitempty"`
+	MarketBias         string            `json:"market_bias,omitempty"`
+	Levels             []advisorLevelDTO `json:"levels,omitempty"`
+	EntryRules         []string          `json:"entry_rules,omitempty"`
+	ReadyToTrade       bool              `json:"ready_to_trade,omitempty"`
+	SLMultATR          float64           `json:"sl_mult_atr,omitempty"`
+	TPMultATR          float64           `json:"tp_mult_atr,omitempty"`
+	EntryMinConfidence float64           `json:"entry_min_confidence,omitempty"`
+	ConfluenceMinScore float64           `json:"confluence_min_score,omitempty"`
+	AllowNewEntry      *bool             `json:"allow_new_entry,omitempty"`
 }
 
 type advisorLevelDTO struct {
@@ -62,6 +67,28 @@ type advisorLevelDTO struct {
 	Kind   string  `json:"kind"`
 	Source string  `json:"source"`
 	Rank   int     `json:"rank"`
+}
+
+func seedPolicyFromAdvisorDTO(s *AITraderSession, d *advisorPlaybookDTO) {
+	if s == nil || d == nil {
+		return
+	}
+	var levels []AITraderLevel
+	for _, l := range d.Levels {
+		if l.Price <= 0 {
+			continue
+		}
+		levels = append(levels, AITraderLevel{Price: l.Price, Kind: l.Kind, Source: l.Source, Rank: l.Rank})
+	}
+	p := policyFromAdvisorDraft(d.Summary, d.MarketBias, d.SLMultATR, d.TPMultATR, d.AllowNewEntry, levels)
+	if d.EntryMinConfidence > 0 {
+		p.EntryMinConfidence = d.EntryMinConfidence
+	}
+	if d.ConfluenceMinScore > 0 {
+		p.ConfluenceMinScore = d.ConfluenceMinScore
+	}
+	p = clampDynamicTradingPolicy(p)
+	s.ActivePolicy = &p
 }
 
 func playbookFromAdvisorDTO(d *advisorPlaybookDTO) *LevelPlaybook {
@@ -136,6 +163,10 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 	if playbook != nil {
 		s.LevelPlaybook = playbook
 	}
+	if s.ActivePolicy == nil && s.LevelPlaybook != nil {
+		p := policyFromPlaybook(s.LevelPlaybook)
+		s.ActivePolicy = &p
+	}
 
 	readiness, _ := fetchAdvisorReadiness(s.ID)
 	if readiness != nil {
@@ -144,6 +175,9 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 		}
 		if draft := playbookFromAdvisorDTO(readiness.PlaybookDraft); draft != nil && len(draft.Levels) > 0 {
 			s.LevelPlaybook = mergePlaybooks(s.LevelPlaybook, draft)
+		}
+		if readiness.PlaybookDraft != nil {
+			seedPolicyFromAdvisorDTO(s, readiness.PlaybookDraft)
 		}
 	}
 

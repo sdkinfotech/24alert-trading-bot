@@ -103,22 +103,29 @@ func (r *Runner) startPaperTradingFromPlaybook(s *AITraderSession, f *AITraderFe
 	if regime == "" {
 		regime = detectSessionRegime(mctx)
 	}
-	if regime == RegimeLowVol {
+	if !allowNewEntry(s, regime) {
 		return
 	}
 	mid := f.Mid
 	if mid <= 0 {
 		return
 	}
+	pol := effectivePolicy(s)
 	s.PaperState.WorkingOrders = nil
-	if sig != nil && sig.actionable() {
+	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
 		r.placePaperOrder(s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
 		return
 	}
-	scored := scoreLevels(s.LevelPlaybook.Levels, f, mctx, nil)
-	minScore := 2.5
+	lvls := levelsForConfluence(s, pol)
+	scored := scoreLevels(lvls, f, mctx, nil)
+	minScore := pol.ConfluenceMinScore
 	allowBuy := regime != RegimeTrend || trendDirection(mctx) != "down"
 	allowSell := regime != RegimeTrend || trendDirection(mctx) != "up"
+	if pol.MarketBias == "bearish" {
+		allowBuy = false
+	} else if pol.MarketBias == "bullish" {
+		allowSell = false
+	}
 	if sup, ok := bestSupportLevel(scored, mid, minScore); ok && allowBuy {
 		r.placePaperOrder(s, "buy", sup.Price, 1, sup.Source, "confluence support")
 	}
@@ -165,11 +172,10 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 		return
 	}
 
-	// Risk override from LLM
-	if sig != nil && strings.EqualFold(sig.RiskOverride, "cancel_all") {
+	if sig != nil && (strings.EqualFold(sig.RiskOverride, "cancel_all") || strings.EqualFold(sig.OrderAction, "cancel_all")) {
 		st.WorkingOrders = nil
 	}
-	if sig != nil && strings.EqualFold(sig.RiskOverride, "flatten") && st.PositionLots != 0 {
+	if sig != nil && (strings.EqualFold(sig.RiskOverride, "flatten") || strings.EqualFold(sig.OrderAction, "flatten")) && st.PositionLots != 0 {
 		r.closePaperPosition(s, f, "llm_flatten")
 	}
 
@@ -178,7 +184,8 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 
 	if st.PositionLots != 0 {
 		r.checkPaperSLTP(s, f, mctx)
-	} else if sig != nil && sig.actionable() {
+		applyLLMPositionManagement(s, sig, f.Mid, false)
+	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		r.syncPaperOrdersFromSignal(s, sig)
 	}
 
@@ -188,7 +195,7 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 }
 
 func (r *Runner) syncPaperOrdersFromSignal(s *AITraderSession, sig *AITraderTradeSignal) {
-	if s.PaperState == nil || !sig.actionable() {
+	if s.PaperState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		return
 	}
 	for _, o := range s.PaperState.WorkingOrders {
@@ -230,7 +237,7 @@ func (r *Runner) tryFillWorkingOrders(s *AITraderSession, f *AITraderFeatures, m
 		r.recordPaperFill(s, fill)
 		metrics.AITraderOrdersTotal.WithLabelValues("paper", o.Side, "filled").Inc()
 		if st.PositionLots == 0 {
-			r.setPaperStopsFromPlaybook(s, o.Side, fillPx)
+			setStopsFromPolicy(s, o.Side, fillPx, false)
 		}
 	}
 	st.WorkingOrders = remaining
@@ -306,29 +313,6 @@ func (r *Runner) recordPaperFill(s *AITraderSession, fill PaperFill) {
 		// Re-entry: place new limits after flat
 		mctx := s.MarketContext
 		r.startPaperTradingFromPlaybook(s, s.Features, mctx, s.LastTradeSignal)
-	}
-}
-
-func (r *Runner) setPaperStopsFromPlaybook(s *AITraderSession, side string, entry float64) {
-	pb := s.LevelPlaybook
-	mctx := s.MarketContext
-	atr := playbookATR(s, mctx)
-	slMult, tpMult := 0.5, 1.5
-	if pb != nil {
-		if pb.SLMultATR > 0 {
-			slMult = pb.SLMultATR
-		}
-		if pb.TPMultATR > 0 {
-			tpMult = pb.TPMultATR
-		}
-	}
-	switch side {
-	case "buy":
-		s.PaperState.StopLoss = entry - atr*slMult
-		s.PaperState.TakeProfit = entry + atr*tpMult
-	case "sell":
-		s.PaperState.StopLoss = entry + atr*slMult
-		s.PaperState.TakeProfit = entry - atr*tpMult
 	}
 }
 

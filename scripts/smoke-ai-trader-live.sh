@@ -26,7 +26,12 @@ for i in 1 2 3 4 5 6; do
 done
 
 echo "=== start-trading ==="
-curl -s -w "\nHTTP:%{http_code}\n" -X POST "$API/ai-trader/sessions/$SID/start-trading" || true
+START=$(curl -s -w "\nHTTP:%{http_code}\n" -X POST "$API/ai-trader/sessions/$SID/start-trading" || true)
+echo "$START"
+echo "$START" | python3 -c "import sys,json,re; raw=sys.stdin.read(); m=re.search(r'\{.*\}', raw, re.S); \
+d=json.loads(m.group(0)) if m else {}; ap=d.get('active_policy'); \
+print('active_policy:', 'OK' if ap and ap.get('entry_min_confidence') else 'MISSING'); \
+raise SystemExit(0 if ap else 1)" || echo "WARN: active_policy not in start-trading response (session may need LLM tick)"
 echo
 
 echo "=== kill-switch ON ==="

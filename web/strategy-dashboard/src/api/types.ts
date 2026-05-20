@@ -452,7 +452,26 @@ export interface AiTraderTradeSignal {
   confidence: number;
   reason?: string;
   risk_override?: string;
+  order_action?: string;
+  stop_loss?: number;
+  take_profit?: number;
+  quantity?: number;
   received_at?: string;
+}
+
+export interface DynamicTradingPolicy {
+  updated_at: string;
+  source?: string;
+  market_bias?: string;
+  entry_min_confidence: number;
+  confluence_min_score: number;
+  sl_mult_atr: number;
+  tp_mult_atr: number;
+  allow_scale_in: boolean;
+  allow_new_entry: boolean;
+  tactics?: string[];
+  preferred_levels?: AiTraderLevel[];
+  summary?: string;
 }
 
 export interface AiTraderPublicConfig {
@@ -501,6 +520,7 @@ export interface AiTraderSession {
   phase?: AiTraderPhase;
   phase_progress?: AiTraderPhaseProgress;
   level_playbook?: AiTraderLevelPlaybook;
+  active_policy?: DynamicTradingPolicy;
   paper_state?: PaperTradingState;
   execution_mode?: 'paper' | 'armed_live';
   live_state?: LiveTradingState;

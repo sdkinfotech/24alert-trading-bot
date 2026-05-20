@@ -66,6 +66,7 @@ type AITraderSession struct {
 	Phase         string                  `json:"phase"`
 	PhaseProgress AITraderPhaseProgress   `json:"phase_progress"`
 	LevelPlaybook *LevelPlaybook          `json:"level_playbook,omitempty"`
+	ActivePolicy  *DynamicTradingPolicy   `json:"active_policy,omitempty"`
 	PaperState      *PaperTradingState      `json:"paper_state,omitempty"`
 	ExecutionMode   string                  `json:"execution_mode,omitempty"` // paper | armed_live
 	LiveState       *LiveTradingState       `json:"live_state,omitempty"`
@@ -491,6 +492,10 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 		return nil, fmt.Errorf("trading not ready: %s", s.PhaseProgress.ReadyReason)
 	}
 	s.Phase = AITraderPhaseTrading
+	if s.ActivePolicy == nil {
+		p := policyFromPlaybook(s.LevelPlaybook)
+		s.ActivePolicy = &p
+	}
 	f := s.Features
 	mctx := s.MarketContext
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -846,6 +851,12 @@ func cloneAITraderSession(s *AITraderSession) *AITraderSession {
 		pb := *s.LevelPlaybook
 		pb.Levels = append([]AITraderLevel(nil), s.LevelPlaybook.Levels...)
 		cp.LevelPlaybook = &pb
+	}
+	if s.ActivePolicy != nil {
+		ap := *s.ActivePolicy
+		ap.PreferredLevels = append([]AITraderLevel(nil), s.ActivePolicy.PreferredLevels...)
+		ap.Tactics = append([]string(nil), s.ActivePolicy.Tactics...)
+		cp.ActivePolicy = &ap
 	}
 	if s.PaperState != nil {
 		ps := *s.PaperState

@@ -7,17 +7,25 @@ import (
 
 // AITraderTradeSignal is a structured execution hint from LLM or rules.
 type AITraderTradeSignal struct {
-	Side       string  `json:"side"` // buy | sell | none
-	LevelPrice float64 `json:"level_price"`
-	Confidence float64 `json:"confidence"`
-	Reason     string  `json:"reason,omitempty"`
-	RiskOverride string `json:"risk_override,omitempty"` // hold | cancel_all | flatten
-	ReceivedAt string  `json:"received_at,omitempty"`
+	Side         string  `json:"side"` // buy | sell | none
+	LevelPrice   float64 `json:"level_price"`
+	Confidence   float64 `json:"confidence"`
+	Reason       string  `json:"reason,omitempty"`
+	RiskOverride string  `json:"risk_override,omitempty"` // hold | cancel_all | flatten
+	OrderAction  string  `json:"order_action,omitempty"`  // place_limit | cancel_all | flatten | adjust_stops | hold
+	StopLoss     float64 `json:"stop_loss,omitempty"`
+	TakeProfit   float64 `json:"take_profit,omitempty"`
+	Quantity     int64   `json:"quantity,omitempty"`
+	ReceivedAt   string  `json:"received_at,omitempty"`
 }
 
 const aiTraderSignalMinConfidence = 0.55
 
 func (sig *AITraderTradeSignal) actionable() bool {
+	return sig.actionableWith(aiTraderSignalMinConfidence)
+}
+
+func (sig *AITraderTradeSignal) actionableWith(minConf float64) bool {
 	if sig == nil {
 		return false
 	}
@@ -28,7 +36,10 @@ func (sig *AITraderTradeSignal) actionable() bool {
 	if sig.LevelPrice <= 0 {
 		return false
 	}
-	return sig.Confidence >= aiTraderSignalMinConfidence
+	if minConf <= 0 {
+		minConf = aiTraderSignalMinConfidence
+	}
+	return sig.Confidence >= minConf
 }
 
 func normalizeTradeSide(s string) string {

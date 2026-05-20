@@ -167,6 +167,31 @@ export function AiTraderTradingDesk({ session, onFlatten, flattenLoading }: Prop
         />
       </div>
 
+      {session.active_policy && (
+        <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-sm">
+          <h4 className="text-xs font-semibold text-[var(--muted)] mb-2">{t('aiDeskSessionPlan')}</h4>
+          <p className="text-[var(--text)]">
+            {t('aiDeskPlanBias')}: <Badge tone="info">{session.active_policy.market_bias || 'neutral'}</Badge>
+            {' · '}
+            {t('aiDeskPlanEntry')}: ≥{formatNumber(session.active_policy.entry_min_confidence, lang, 2)}
+            {' · '}
+            {t('aiDeskPlanConfluence')}: ≥{formatNumber(session.active_policy.confluence_min_score, lang, 1)}
+          </p>
+          <p className="text-xs text-[var(--muted)] mt-1">
+            SL {formatNumber(session.active_policy.sl_mult_atr, lang, 2)}×ATR · TP{' '}
+            {formatNumber(session.active_policy.tp_mult_atr, lang, 2)}×ATR ·{' '}
+            {session.active_policy.allow_new_entry ? t('aiDeskPlanEntriesOn') : t('aiDeskPlanEntriesOff')}
+            {session.active_policy.source ? ` · ${session.active_policy.source}` : ''}
+            {session.active_policy.updated_at
+              ? ` · ${formatDateTime(session.active_policy.updated_at, lang)}`
+              : ''}
+          </p>
+          {session.active_policy.summary && (
+            <p className="text-xs mt-1 text-[var(--muted)]">{session.active_policy.summary}</p>
+          )}
+        </div>
+      )}
+
       {isLive && live && (live.stop_loss || live.take_profit) && (
         <p className="text-xs text-[var(--muted)] mb-3">
           SL {live.stop_loss ? formatNumber(live.stop_loss, lang, 4) : '—'} · TP{' '}
