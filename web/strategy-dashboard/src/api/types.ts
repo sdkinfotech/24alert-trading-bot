@@ -462,6 +462,20 @@ export interface AiTraderPublicConfig {
   min_report_tf: string;
 }
 
+export interface AiTraderBrokerSnapshot {
+  session_id: string;
+  account_id: string;
+  instrument_uid: string;
+  ticker?: string;
+  quantity: number;
+  average_price: number;
+  current_price: number;
+  expected_yield: number;
+  currency?: string;
+  last_broker_sync: string;
+  portfolio_error?: string;
+}
+
 export interface PaperTradingState {
   position_lots: number;
   avg_price: number;

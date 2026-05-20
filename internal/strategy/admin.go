@@ -294,6 +294,16 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(session)
 	})
+	mux.HandleFunc("POST /ai-trader/sessions/{instance_id}/flatten", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		session, err := r.FlattenAITraderSession(instanceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
 	mux.HandleFunc("POST /ai-trader/sessions/{instance_id}/start-trading", func(w http.ResponseWriter, req *http.Request) {
 		instanceID := req.PathValue("instance_id")
 		session, err := r.StartAITraderTrading(instanceID)
@@ -335,6 +345,22 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		r.SetAITraderShadowMode(body.Active)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"shadow_mode": r.AITraderShadowMode()})
+	})
+	mux.HandleFunc("GET /ai-trader/sessions/{instance_id}/broker-position", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		ctx, cancel := context.WithTimeout(req.Context(), 8*time.Second)
+		defer cancel()
+		data, ok, err := r.AITraderBrokerSnapshot(ctx, instanceID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			http.Error(w, "ai trader session not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(data)
 	})
 	mux.HandleFunc("GET /ai-trader/sessions/{instance_id}/eval", func(w http.ResponseWriter, req *http.Request) {
 		instanceID := req.PathValue("instance_id")

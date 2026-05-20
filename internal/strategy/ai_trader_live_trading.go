@@ -104,6 +104,7 @@ func (r *Runner) startLiveTradingFromPlaybook(ctx context.Context, s *AITraderSe
 }
 
 func (r *Runner) tickLiveTrading(ctx context.Context, s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, sig *AITraderTradeSignal, regime string) {
+	r.syncAITraderLiveFromBroker(ctx, s)
 	if s == nil || s.LiveState == nil || f == nil || f.Mid <= 0 {
 		return
 	}

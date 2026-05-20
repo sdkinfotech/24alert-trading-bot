@@ -11,6 +11,7 @@ import type {
   ExecutionRecord,
   StopOrder,
   AiTraderLimits,
+  AiTraderBrokerSnapshot,
   AiTraderSession,
   AdvisorAnalysisReport,
   AdvisorStrategyResponse,
@@ -109,6 +110,10 @@ export const api = {
     post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/start-trading`, {}),
   stopAiTraderSession: (instanceID: string) =>
     post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(instanceID)}/stop`, {}),
+  aiTraderBrokerPosition: (sessionID: string) =>
+    get<AiTraderBrokerSnapshot>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/broker-position`),
+  flattenAiTraderSession: (sessionID: string) =>
+    post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/flatten`, {}),
   advisorAnalyses: (sessionId: string, tf: AdvisorTimeframe, limit = 20) =>
     get<AdvisorAnalysisReport[]>(
       `/advisor/sessions/${encodeURIComponent(sessionId)}/analyses?tf=${encodeURIComponent(tf)}&limit=${limit}`,

@@ -9,6 +9,7 @@ import { AiTraderActivityStream } from './AiTraderActivityStream';
 import { AiTraderCollectPanel } from './AiTraderCollectPanel';
 import { AiTraderLevelsChart } from './AiTraderLevelsChart';
 import { AiTraderStrategyBrief } from './AiTraderStrategyBrief';
+import { AiTraderTradingDesk } from './AiTraderTradingDesk';
 import { clearAiTraderLast, readAiTraderLast, writeAiTraderLast } from './aiTraderStorage';
 import { Badge, Button, Card, EmptyState, Stat } from './ui';
 
@@ -90,20 +91,6 @@ export function AiTraderPanel({ instances }: Props) {
       if (inst.account_id) ids.add(inst.account_id);
     }
     return [...ids].sort();
-  }, [instances]);
-
-  const strategyPicks = useMemo(() => {
-    const seen = new Set<string>();
-    const out: SelectedInstrument[] = [];
-    for (const inst of instances) {
-      (inst.instruments ?? []).forEach((uid, index) => {
-        if (!uid || seen.has(uid)) return;
-        seen.add(uid);
-        const ticker = (inst.tickers ?? '').split(',')[index]?.trim() || inst.tickers || uid.slice(0, 8);
-        out.push({ uid, ticker, name: inst.id, kind: 'strategy' });
-      });
-    }
-    return out;
   }, [instances]);
 
   useEffect(() => {
@@ -341,7 +328,7 @@ export function AiTraderPanel({ instances }: Props) {
             </div>
 
             {!sessionRunning && (
-              <div className="mb-3 flex flex-wrap gap-2">
+              <div className="mb-3 flex flex-wrap gap-2 items-center">
                 <button
                   type="button"
                   onClick={() => setInstrument(BRENT_MINI)}
@@ -353,20 +340,7 @@ export function AiTraderPanel({ instances }: Props) {
                 >
                   {t('brentMiniPreset')}
                 </button>
-                {strategyPicks.map((pick) => (
-                  <button
-                    key={pick.uid}
-                    type="button"
-                    onClick={() => setInstrument(pick)}
-                    className={`rounded-full border px-2.5 py-1 text-xs font-mono transition ${
-                      instrument?.uid === pick.uid
-                        ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--accent)]'
-                        : 'border-[var(--border)] text-[var(--muted)] hover:border-[var(--accent)]'
-                    }`}
-                  >
-                    {pick.ticker}
-                  </button>
-                ))}
+                <span className="text-xs text-[var(--muted)]">{t('classicStrategiesOff')}</span>
               </div>
             )}
 
@@ -464,41 +438,28 @@ export function AiTraderPanel({ instances }: Props) {
           <AiTraderLevelsChart session={session} />
           <AiTraderCollectPanel session={session} />
 
-          {session.live_state && session.execution_mode === 'armed_live' && session.phase === 'trading' && (
-            <Card title={t('livePosition')} subtitle={t('liveOrders')}>
-              <p className="text-sm">
-                pos={session.live_state.position_lots} @ {formatNumber(session.live_state.avg_price, lang, 4)}
-                {' '}| realized {formatNumber(session.live_state.realized_rub, lang, 2)} RUB
-              </p>
-              {session.live_state.working_orders && session.live_state.working_orders.length > 0 && (
-                <ul className="mt-2 text-xs font-mono space-y-1">
-                  {session.live_state.working_orders.map((o) => (
-                    <li key={o.id}>
-                      {o.status} {o.side} {o.quantity}@{formatNumber(o.price, lang, 4)}
-                      {o.broker_order_id ? ` id=${o.broker_order_id.slice(0, 8)}` : ''} ({o.level_ref})
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          )}
-
-          {session.paper_state && session.execution_mode !== 'armed_live' && session.phase === 'trading' && (
-            <Card title={t('paperPosition')} subtitle={t('paperOrders')}>
-              <p className="text-sm">
-                pos={session.paper_state.position_lots} @ {formatNumber(session.paper_state.avg_price, lang, 4)}
-                {' '}| realized {formatNumber(session.paper_state.realized_rub, lang, 2)} RUB
-              </p>
-              {session.paper_state.working_orders && session.paper_state.working_orders.length > 0 && (
-                <ul className="mt-2 text-xs font-mono space-y-1">
-                  {session.paper_state.working_orders.map((o) => (
-                    <li key={o.id}>
-                      {o.status} {o.side} {o.quantity}@{formatNumber(o.price, lang, 4)} ({o.level_ref})
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+          {(session.phase === 'trading' || session.live_state || session.paper_state) && (
+            <AiTraderTradingDesk
+              session={session}
+              flattenLoading={loading}
+              onFlatten={
+                session.execution_mode === 'armed_live' && session.status === 'running'
+                  ? async () => {
+                      if (!session.id) return;
+                      setLoading(true);
+                      try {
+                        const data = await api.flattenAiTraderSession(session.id);
+                        applySession(data);
+                        setError(null);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                      } finally {
+                        setLoading(false);
+                      }
+                    }
+                  : undefined
+              }
+            />
           )}
 
           <AiTraderActivityStream session={session} />

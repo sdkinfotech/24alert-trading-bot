@@ -184,10 +184,19 @@ body {
 }
 
 /* AI Trader — thought stream UI */
-.ai-trader-session-stats {
+.ai-trader-session-stats,
+.ai-trader-desk-stats {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.ai-trader-desk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .ai-trader-thought-stream {
