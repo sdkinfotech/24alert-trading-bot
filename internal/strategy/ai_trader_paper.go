@@ -111,7 +111,9 @@ func (r *Runner) startPaperTradingFromPlaybook(s *AITraderSession, f *AITraderFe
 		return
 	}
 	pol := effectivePolicy(s)
-	s.PaperState.WorkingOrders = nil
+	if len(s.PaperState.WorkingOrders) > 0 {
+		s.PaperState.WorkingOrders = nil
+	}
 	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
 		r.placePaperOrder(s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
 		return
@@ -185,7 +187,7 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 	if st.PositionLots != 0 {
 		r.checkPaperSLTP(s, f, mctx)
 		applyLLMPositionManagement(s, sig, f.Mid, false)
-	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
+	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) && !s.reconnectPaused {
 		r.syncPaperOrdersFromSignal(s, sig)
 	}
 
@@ -196,6 +198,9 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 
 func (r *Runner) syncPaperOrdersFromSignal(s *AITraderSession, sig *AITraderTradeSignal) {
 	if s.PaperState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
+		return
+	}
+	if r.replacePaperOrderIfNeeded(s, sig) {
 		return
 	}
 	for _, o := range s.PaperState.WorkingOrders {

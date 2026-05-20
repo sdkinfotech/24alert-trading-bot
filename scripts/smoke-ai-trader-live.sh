@@ -43,6 +43,21 @@ echo "=== kill-switch OFF ==="
 curl -sf -X POST "$API/ai-trader/kill-switch" -H 'Content-Type: application/json' -d '{"active":false}'
 echo
 
+echo "=== poll trading (playbook_refreshed) ==="
+for i in 1 2 3 4 5 6 7 8; do
+  ST=$(curl -sf "$API/ai-trader/sessions/$SID" 2>/dev/null || echo '{}')
+  echo "$ST" | python3 -c "import sys,json; d=json.load(sys.stdin); ev=[e for e in (d.get('events') or []) if e.get('action')=='playbook_refreshed']; print(f'poll {sys.argv[1]}: phase={d.get(\"phase\")} refresh_events={len(ev)} last_refresh={d.get(\"last_playbook_refresh_at\")}')" "$i" 2>/dev/null || echo "poll $i: skip"
+  if echo "$ST" | python3 -c "import sys,json; d=json.load(sys.stdin); ev=[e for e in (d.get('events') or []) if e.get('action')=='playbook_refreshed']; raise SystemExit(0 if ev else 1)" 2>/dev/null; then
+    echo "playbook_refreshed OK"
+    break
+  fi
+  sleep 15
+done
+
+echo "=== GET persisted sessions ==="
+curl -sf "$API/ai-trader/sessions/persisted" | head -c 400 || echo "persisted: none yet"
+echo
+
 echo "=== stop session ==="
 curl -sf -X POST "$API/ai-trader/sessions/$SID/stop" | head -c 300
 echo

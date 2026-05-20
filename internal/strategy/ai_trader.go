@@ -83,12 +83,17 @@ type AITraderSession struct {
 	SessionRegime   string                `json:"session_regime,omitempty"`
 	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
 
-	cancel            context.CancelFunc     `json:"-"`
-	streamBook        *marketdata.Orderbook  `json:"-"`
-	streamBookAt      time.Time              `json:"-"`
-	ctxState          *aiTraderContextState  `json:"-"`
-	collectBuf        *aiTraderCollectBuffer `json:"-"`
-	lastLLMAt         time.Time              `json:"-"`
+	cancel                 context.CancelFunc     `json:"-"`
+	streamBook             *marketdata.Orderbook  `json:"-"`
+	streamBookAt           time.Time              `json:"-"`
+	ctxState               *aiTraderContextState  `json:"-"`
+	collectBuf             *aiTraderCollectBuffer `json:"-"`
+	lastPlaybookRefreshAt   time.Time              `json:"-"`
+	LastPlaybookRefreshAt   string                 `json:"last_playbook_refresh_at,omitempty"`
+	reconnectPaused         bool                   `json:"-"`
+	lastSessionPersistAt    time.Time              `json:"-"`
+	cancelReplaceTimestamps []time.Time            `json:"-"`
+	lastLLMAt               time.Time              `json:"-"`
 	lastCollectFeedAt time.Time              `json:"-"`
 	lastReportsReady  []string               `json:"-"`
 	wasTradingReady   bool                   `json:"-"`
@@ -366,6 +371,7 @@ func (r *Runner) StopAITraderSession(instanceID string) (*AITraderSession, bool)
 	s.StoppedAt = now
 	s.UpdatedAt = now
 	notifyAdvisorFinalize(s.ID)
+	r.deleteAITraderSessionSnapshot(s.ID)
 	return cloneAITraderSession(s), true
 }
 
@@ -453,6 +459,9 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	updateRegimeMetrics(s.ID, s.SessionRegime)
 	s.MicroSignals = r.detectMicrostructure(s, features, mctx)
 	r.tickAITraderPhase(s, features)
+	if s.Phase == AITraderPhaseTrading {
+		r.refreshPlaybookWhileTrading(s, features)
+	}
 	sig := s.LastTradeSignal
 	if s.Phase == AITraderPhaseTrading {
 		if s.isArmedLive() {
@@ -468,6 +477,31 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	} else {
 		r.refreshAITraderFeaturesOnly(s, features)
 		r.attachAITraderMarketContext(s)
+	}
+	r.maybePersistAITraderSession(s, depth)
+}
+
+func (r *Runner) maybePersistAITraderSession(s *AITraderSession, depth int32) {
+	if s == nil || s.Status != "running" {
+		return
+	}
+	interval := 30 * time.Second
+	if s.Phase == AITraderPhaseTrading {
+		if !s.lastSessionPersistAt.IsZero() && time.Since(s.lastSessionPersistAt) < interval {
+			return
+		}
+	} else if !s.lastSessionPersistAt.IsZero() && time.Since(s.lastSessionPersistAt) < 60*time.Second {
+		return
+	}
+	var cur *AITraderSession
+	r.aiTrader.mu.Lock()
+	cur = r.aiTrader.findLocked(s.ID)
+	if cur != nil {
+		cur.lastSessionPersistAt = time.Now()
+	}
+	r.aiTrader.mu.Unlock()
+	if cur != nil {
+		r.persistAITraderSessionSnapshot(cur, depth)
 	}
 }
 
@@ -492,6 +526,7 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 		return nil, fmt.Errorf("trading not ready: %s", s.PhaseProgress.ReadyReason)
 	}
 	s.Phase = AITraderPhaseTrading
+	s.reconnectPaused = false
 	if s.ActivePolicy == nil {
 		p := policyFromPlaybook(s.LevelPlaybook)
 		s.ActivePolicy = &p
@@ -533,6 +568,7 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 	s.UpdatedAt = now
 	r.aiTrader.mu.Unlock()
 	r.appendAITraderEvent(ev)
+	r.persistAITraderSessionSnapshot(s, 50)
 	out, ok := r.AITraderSession(sessionID)
 	if !ok {
 		return nil, fmt.Errorf("ai trader session not found after start trading")
@@ -793,6 +829,7 @@ func (r *Runner) finishAITraderSession(s *AITraderSession, err error) {
 		cur.LastError = err.Error()
 	}
 	notifyAdvisorFinalize(cur.ID)
+	r.deleteAITraderSessionSnapshot(cur.ID)
 }
 
 func aiTraderSessionKey(accountID, uid string) string {

@@ -77,6 +77,20 @@ var (
 		Help:      "Dynamic trading policy updates from LLM.",
 	})
 
+	AITraderPlaybookRefreshTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ai_trader",
+		Name:      "playbook_refresh_total",
+		Help:      "Playbook refresh cycles during trading phase.",
+	})
+
+	AITraderCancelReplaceTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: "ai_trader",
+		Name:      "cancel_replace_total",
+		Help:      "Cancel/replace limit order actions.",
+	}, []string{"mode", "reason"})
+
 	AITraderStopAdjustmentsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: namespace,
 		Subsystem: "ai_trader",

@@ -403,7 +403,7 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
     "confidence": 0.0,
     "reason": "почему этот уровень",
     "risk_override": "hold|cancel_all|flatten",
-    "order_action": "place_limit|cancel_all|flatten|adjust_stops|hold",
+    "order_action": "place_limit|replace_limit|cancel_all|flatten|adjust_stops|hold",
     "stop_loss": 0.0,
     "take_profit": 0.0,
     "quantity": 1
@@ -415,6 +415,7 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 - trading_policy: задай правила сессии (пороги входа, SL/TP множители ATR, allow_new_entry). entry_min_confidence не выше 0.55.
 - В фазе trading: trade_signal управляет лимитками и мягкими SL/TP (stop_loss/take_profit).
 - При открытой позиции: order_action adjust_stops + stop_loss/take_profit; flatten — закрыть; cancel_all — снять заявки.
+- Без позиции, если mid ушёл от лимитки: order_action replace_limit (side + новый level_price), не дублируй заявки.
 - Вне trading: trade_signal.side должен быть none; trading_policy всё равно можно обновить.
 - action остаётся hold|observe_plan|paper_plan|observe_wall|block (нарратив).
 - confidence 0..1.

@@ -12,7 +12,7 @@ type AITraderTradeSignal struct {
 	Confidence   float64 `json:"confidence"`
 	Reason       string  `json:"reason,omitempty"`
 	RiskOverride string  `json:"risk_override,omitempty"` // hold | cancel_all | flatten
-	OrderAction  string  `json:"order_action,omitempty"`  // place_limit | cancel_all | flatten | adjust_stops | hold
+	OrderAction  string  `json:"order_action,omitempty"`  // place_limit | replace_limit | cancel_all | flatten | adjust_stops | hold
 	StopLoss     float64 `json:"stop_loss,omitempty"`
 	TakeProfit   float64 `json:"take_profit,omitempty"`
 	Quantity     int64   `json:"quantity,omitempty"`

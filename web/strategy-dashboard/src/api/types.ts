@@ -535,6 +535,17 @@ export interface AiTraderSession {
   last_decision?: AiTraderDecisionEvent;
   events?: AiTraderDecisionEvent[];
   collect_feed?: AiTraderCollectEvent[];
+  last_playbook_refresh_at?: string;
+}
+
+export interface AiTraderPersistedSummary {
+  id: string;
+  ticker?: string;
+  phase?: string;
+  status: string;
+  updated_at: string;
+  account_id: string;
+  instrument_uid: string;
 }
 
 export type AdvisorTimeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | 'strategy';

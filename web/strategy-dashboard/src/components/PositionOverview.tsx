@@ -61,12 +61,18 @@ export function PositionOverview({ instance, indicator, ledger, portfolio, stopO
   const brokerPositions = portfolio?.positions ?? [];
   const instancePositions = brokerPositions.filter((p) => p.in_instance);
   const foreignPositions = brokerPositions.filter((p) => !p.in_instance);
+  const classicEnabled = instance?.enabled_in_config !== false;
   const strategyPos = indicator?.position ?? 0;
   const strategyFlatButBrokerOpen = strategyPos === 0 && instancePositions.length > 0;
-  const mismatches = instancePositions.filter((p) => hasQtyMismatch(p, ledger));
-  const unprotectedPositions = instancePositions.filter((p) => (
-    p.quantity !== 0 && !stopOrders.some((s) => s.instrument_uid === p.instrument_uid)
-  ));
+  const mismatches = classicEnabled ? instancePositions.filter((p) => hasQtyMismatch(p, ledger)) : [];
+  const unprotectedPositions = classicEnabled
+    ? instancePositions.filter(
+        (p) => p.quantity !== 0 && !stopOrders.some((s) => s.instrument_uid === p.instrument_uid),
+      )
+    : [];
+  const showClassicDanger =
+    classicEnabled && (strategyFlatButBrokerOpen || mismatches.length > 0 || unprotectedPositions.length > 0);
+  const showAiTraderHint = !classicEnabled && brokerPositions.some((p) => Math.abs(p.quantity) > 1e-6);
 
   return (
     <Card>
@@ -91,11 +97,24 @@ export function PositionOverview({ instance, indicator, ledger, portfolio, stopO
         </div>
       )}
 
-      {(strategyFlatButBrokerOpen || mismatches.length > 0 || unprotectedPositions.length > 0) && (
+      {showAiTraderHint && (
+        <div className="mb-3 rounded-lg border border-[var(--info)] bg-[var(--info-soft)] p-3 text-sm text-[var(--info)]">
+          {t('classicOffBrokerPositionHint')}
+        </div>
+      )}
+
+      {showClassicDanger && (
         <div className="mb-3 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] p-3 text-sm text-[var(--danger)]">
-          Опасное состояние: источники позиции расходятся. Для боевого контура это не норма после startup sync.
-          Новые торговые решения нельзя считать безопасными, пока broker truth, runner ledger и strategy state не совпадают.
-          {unprotectedPositions.length > 0 ? ` Protective stop missing: ${unprotectedPositions.map((p) => p.ticker || p.instrument_uid.slice(0, 8)).join(', ')}.` : ''}
+          {t('positionSourcesMismatch')}
+          {unprotectedPositions.length > 0
+            ? ` ${t('protectiveStopMissing')}: ${unprotectedPositions.map((p) => p.ticker || p.instrument_uid.slice(0, 8)).join(', ')}.`
+            : ''}
+        </div>
+      )}
+
+      {instance && !classicEnabled && (
+        <div className="mb-3">
+          <Badge tone="neutral">{t('classicStrategyDisabled')}</Badge>
         </div>
       )}
 

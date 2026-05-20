@@ -35,6 +35,27 @@ sudo bash scripts/reconcile-docker-network.sh
 sudo bash scripts/verify-docker-network.sh
 ```
 
+## Ошибка Conflict: container name already in use
+
+При деплое через CI или `compose up` может появиться:
+
+```text
+Error: container name "/24alert-strategy-runner" is already in use
+```
+
+Причина: старый контейнер с тем же `container_name` остался от другого compose project.
+
+**Исправление на srv03:**
+
+```bash
+sudo docker rm -f 24alert-strategy-runner 24alert-advisor-svc
+cd /opt/24alert
+sudo bash scripts/compose.sh up -d
+sudo bash scripts/verify-docker-network.sh
+```
+
+`scripts/deploy-prod.sh` (GitHub Actions) выполняет `docker rm -f` для этих имён перед `compose up`.
+
 ## Неправильно (не использовать)
 
 ```bash

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { AiTraderPublicConfig, AiTraderSession, Instance } from '../api/types';
+import type { AiTraderPersistedSummary, AiTraderPublicConfig, AiTraderSession, Instance } from '../api/types';
 import { useI18n } from '../i18n';
 import { EM_DASH, formatNumber } from '../format';
 import { InstrumentSearchPicker, type SelectedInstrument } from './InstrumentSearchPicker';
@@ -79,6 +79,7 @@ export function AiTraderPanel({ instances }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resumeCandidate, setResumeCandidate] = useState<AiTraderSession | null>(null);
+  const [persistedCandidate, setPersistedCandidate] = useState<AiTraderPersistedSummary | null>(null);
   const [armedLive, setArmedLive] = useState(false);
   const [traderConfig, setTraderConfig] = useState<AiTraderPublicConfig | null>(null);
   const [killSwitch, setKillSwitch] = useState(false);
@@ -182,12 +183,43 @@ export function AiTraderPanel({ instances }: Props) {
           applySession(pick);
         } else if (running.length > 0 && !session) {
           setResumeCandidate(running[0]);
+        } else if (!pick && running.length === 0) {
+          const persisted = await api.aiTraderPersistedSessions();
+          if (persisted.length > 0) {
+            const match =
+              (saved?.session_id && persisted.find((p) => p.id === saved.session_id)) ||
+              (saved?.account_id &&
+                persisted.find(
+                  (p) => p.account_id === saved.account_id && p.instrument_uid === saved.instrument_uid,
+                )) ||
+              persisted[0];
+            setPersistedCandidate(match);
+          }
         }
       } catch {
         /* ignore */
       }
     })();
   }, [applySession, session]);
+
+  async function resumePersisted(reconnectOnly: boolean) {
+    if (!persistedCandidate) return;
+    setLoading(true);
+    try {
+      const data = await api.resumeAiTraderSession(persistedCandidate.id, {
+        reconnect_only: reconnectOnly,
+        resume_trading: !reconnectOnly,
+      });
+      applySession(data);
+      setPersistedCandidate(null);
+      setResumeCandidate(null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     const initial = window.setTimeout(() => void load(), 0);
@@ -284,6 +316,22 @@ export function AiTraderPanel({ instances }: Props) {
           <Button variant="primary" onClick={() => applySession(resumeCandidate)}>
             {t('resumeSessionAction')}
           </Button>
+        </div>
+      )}
+
+      {persistedCandidate && !sessionRunning && !resumeCandidate && (
+        <div className="ai-trader-resume-banner border-amber-500/40 bg-amber-500/10">
+          <span className="text-sm">
+            {t('persistedSessionBanner')}: <strong>{persistedCandidate.ticker}</strong> — {phaseLabel(persistedCandidate.phase, t)}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" disabled={loading} onClick={() => void resumePersisted(false)}>
+              {t('persistedResumeTrading')}
+            </Button>
+            <Button variant="secondary" disabled={loading} onClick={() => void resumePersisted(true)}>
+              {t('persistedReconnectOnly')}
+            </Button>
+          </div>
         </div>
       )}
 

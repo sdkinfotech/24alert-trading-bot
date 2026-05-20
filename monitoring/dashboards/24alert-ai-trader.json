@@ -102,6 +102,37 @@
           "legendFormat": "{{ kind }}"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "Policy & Playbook",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Policy updates",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(alert24_ai_trader_policy_updates_total[5m])" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Playbook refresh (trading)",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "rate(alert24_ai_trader_playbook_refresh_total[5m])" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cancel/replace limits",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(alert24_ai_trader_cancel_replace_total[5m])",
+          "legendFormat": "{{ mode }} {{ reason }}"
+        }
+      ]
     }
   ]
 }

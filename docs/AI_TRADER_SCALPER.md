@@ -19,9 +19,21 @@ Phased UX (no separate observe/paper buttons):
 | `collecting` | Poll order book + prints; ring buffers ≥60s; **no micro-LLM** |
 | `analyzing` | Micro-LLM on buffered window; advisor rollups 5m/15m/1h |
 | `ready` | `trading_ready` + `level_playbook`; UI enables **Start trading** |
-| `trading` | Virtual limit orders at playbook levels (paper engine v1) |
+| `trading` | Limit orders at playbook levels; live refresh of walls/POC; LLM policy ~45s |
 
-`armed_live` (real broker orders) remains a future slice behind OrderControl.
+`armed_live` uses real broker limits when `AI_TRADER_ARMED_LIVE=true` and `confirm_live`.
+
+### What updates during `trading`
+
+| Component | Interval | Notes |
+|-----------|----------|-------|
+| Order book + tape | ~2s | `observeAITraderOnce` |
+| Level playbook merge | 60s (env `AI_TRADER_PLAYBOOK_REFRESH_SEC`) | `playbook_refreshed` event; advisor 5m draft lite merge |
+| LLM `trading_policy` + `trade_signal` | ~45s (`AI_TRADER_LLM_INTERVAL_TRADING_SEC`) | `replace_limit`, `adjust_stops`, `flatten` |
+| Session snapshot SQLite | 30s | `data/ai_trader_sessions.db`; resume via `POST .../resume` |
+| Working limit replace | On signal | Rate limit `max_cancel_replace_per_minute` |
+
+Classic strategy instances should stay `enabled: false` when AI Trader owns the instrument.
 
 The target live trader watches order books, public prints, last price, strategy
 state, broker position, technical context, and adjacent instruments. It can

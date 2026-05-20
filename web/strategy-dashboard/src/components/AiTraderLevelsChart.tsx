@@ -43,6 +43,16 @@ export function AiTraderLevelsChart({ session }: Props) {
     0;
 
   const enriched = useMemo(() => enrichLevels(rawLevels, refPrice), [rawLevels, refPrice]);
+  const preferredPrices = useMemo(() => {
+    const set = new Set<number>();
+    for (const lv of session.active_policy?.preferred_levels ?? []) {
+      if (lv.price > 0) set.add(lv.price);
+    }
+    return set;
+  }, [session.active_policy?.preferred_levels]);
+  const refreshLabel = session.last_playbook_refresh_at
+    ? new Date(session.last_playbook_refresh_at).toLocaleTimeString('ru-RU')
+    : null;
 
   const layout = useMemo(() => {
     const recent = bars.slice(-45);
@@ -99,7 +109,14 @@ export function AiTraderLevelsChart({ session }: Props) {
   const barW = Math.max(3, layout.plotW / Math.max(layout.recent.length, 1) - 1.5);
 
   return (
-    <Card title={t('levelsChartTitle')} subtitle={t('levelsChartZoomNote')}>
+    <Card
+      title={t('levelsChartTitle')}
+      subtitle={
+        refreshLabel
+          ? `${t('levelsChartZoomNote')} · ${t('playbookRefreshedAt')} ${refreshLabel}`
+          : t('levelsChartZoomNote')
+      }
+    >
       <div className="ai-trader-levels-wrap">
         <svg
           className="ai-trader-levels-chart"
@@ -132,6 +149,7 @@ export function AiTraderLevelsChart({ session }: Props) {
 
           {layout.visible.map((lv) => {
             const yy = layout.y(lv.price);
+            const preferred = preferredPrices.has(lv.price);
             return (
               <g key={`${lv.kind}-${lv.price}-${lv.source}`}>
                 <line
@@ -139,10 +157,10 @@ export function AiTraderLevelsChart({ session }: Props) {
                   y1={yy}
                   x2={PAD_LEFT + layout.plotW}
                   y2={yy}
-                  stroke={levelStroke(lv)}
-                  strokeWidth={lv.source.startsWith('daily') ? 1.5 : 1}
-                  strokeDasharray={levelDash(lv.source)}
-                  opacity={0.9}
+                  stroke={preferred ? 'var(--accent)' : levelStroke(lv)}
+                  strokeWidth={preferred ? 2.5 : lv.source.startsWith('daily') ? 1.5 : 1}
+                  strokeDasharray={preferred ? undefined : levelDash(lv.source)}
+                  opacity={preferred ? 1 : 0.9}
                 />
                 <text
                   x={PAD_LEFT + layout.plotW + 4}

@@ -260,6 +260,34 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(r.AITraderSessions())
 	})
+	mux.HandleFunc("GET /ai-trader/sessions/persisted", func(w http.ResponseWriter, _ *http.Request) {
+		list, err := r.listPersistedAITraderSessions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if list == nil {
+			list = []AITraderPersistedSummary{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(list)
+	})
+	mux.HandleFunc("POST /ai-trader/sessions/{instance_id}/resume", func(w http.ResponseWriter, req *http.Request) {
+		instanceID := req.PathValue("instance_id")
+		var body struct {
+			ReconnectOnly  bool `json:"reconnect_only"`
+			ResumeTrading  bool `json:"resume_trading"`
+		}
+		_ = json.NewDecoder(req.Body).Decode(&body)
+		reconnectOnly := body.ReconnectOnly && !body.ResumeTrading
+		session, err := r.ResumeAITraderSession(parent, instanceID, reconnectOnly)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(session)
+	})
 	mux.HandleFunc("POST /ai-trader/sessions", func(w http.ResponseWriter, req *http.Request) {
 		var in AITraderSessionRequest
 		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {

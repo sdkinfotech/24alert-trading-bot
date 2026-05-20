@@ -13,6 +13,7 @@ import type {
   AiTraderLimits,
   AiTraderBrokerSnapshot,
   AiTraderSession,
+  AiTraderPersistedSummary,
   AdvisorAnalysisReport,
   AdvisorStrategyResponse,
   AdvisorTimeframe,
@@ -89,6 +90,9 @@ export const api = {
     return get<CatalogInstrument[]>(`/instruments/catalog?${params.toString()}`);
   },
   aiTraderSessions: () => get<AiTraderSession[]>('/ai-trader/sessions'),
+  aiTraderPersistedSessions: () => get<AiTraderPersistedSummary[]>('/ai-trader/sessions/persisted'),
+  resumeAiTraderSession: (sessionID: string, body: { reconnect_only?: boolean; resume_trading?: boolean }) =>
+    post<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(sessionID)}/resume`, body),
   aiTraderSession: (instanceID: string) =>
     get<AiTraderSession>(`/ai-trader/sessions/${encodeURIComponent(instanceID)}`),
   aiTraderConfig: () => get<import('./types').AiTraderPublicConfig>('/ai-trader/config'),

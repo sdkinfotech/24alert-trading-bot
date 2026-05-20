@@ -86,7 +86,9 @@ func (r *Runner) startLiveTradingFromPlaybook(ctx context.Context, s *AITraderSe
 		return
 	}
 	pol := effectivePolicy(s)
-	s.LiveState.WorkingOrders = nil
+	if len(s.LiveState.WorkingOrders) > 0 {
+		r.cancelAllLiveOrders(ctx, s)
+	}
 	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
 		r.placeLiveLimit(ctx, s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
 		return
@@ -138,10 +140,10 @@ func (r *Runner) tickLiveTrading(ctx context.Context, s *AITraderSession, f *AIT
 	if st.PositionLots != 0 {
 		r.checkLiveSLTP(ctx, s, f)
 		applyLLMPositionManagement(s, sig, f.Mid, true)
-	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
+	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) && !s.reconnectPaused {
 		r.syncLiveOrdersFromSignal(ctx, s, sig)
 	}
-	if st.PositionLots == 0 && len(st.WorkingOrders) == 0 && allowNewEntry(s, regime) {
+	if !s.reconnectPaused && st.PositionLots == 0 && len(st.WorkingOrders) == 0 && allowNewEntry(s, regime) {
 		r.startLiveTradingFromPlaybook(ctx, s, f, mctx, sig)
 	}
 	st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -363,21 +365,26 @@ func (r *Runner) closeLivePosition(ctx context.Context, s *AITraderSession, f *A
 }
 
 func (r *Runner) cancelAllLiveOrders(ctx context.Context, s *AITraderSession) {
-	if s == nil || s.LiveState == nil || r.orderSvc == nil {
+	if s == nil || s.LiveState == nil {
 		return
 	}
-	for _, o := range s.LiveState.WorkingOrders {
-		if o.BrokerOrderID == "" || o.Status != "working" {
-			continue
+	if r.orderSvc != nil {
+		for _, o := range s.LiveState.WorkingOrders {
+			if o.BrokerOrderID == "" || o.Status != "working" {
+				continue
+			}
+			_, _ = r.orderSvc.CancelOrder(ctx, s.AccountID, o.BrokerOrderID)
+			metrics.AITraderOrdersTotal.WithLabelValues("live", o.Side, "cancelled").Inc()
 		}
-		_, _ = r.orderSvc.CancelOrder(ctx, s.AccountID, o.BrokerOrderID)
-		metrics.AITraderOrdersTotal.WithLabelValues("live", o.Side, "cancelled").Inc()
 	}
 	s.LiveState.WorkingOrders = nil
 }
 
 func (r *Runner) syncLiveOrdersFromSignal(ctx context.Context, s *AITraderSession, sig *AITraderTradeSignal) {
 	if s.LiveState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
+		return
+	}
+	if r.replaceLiveOrderIfNeeded(ctx, s, sig) {
 		return
 	}
 	for _, o := range s.LiveState.WorkingOrders {
