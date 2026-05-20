@@ -23,6 +23,7 @@ type AITraderPhaseProgress struct {
 	MinCollectSec  int                 `json:"min_collect_sec"`
 	ReportsReady   []string            `json:"reports_ready,omitempty"`
 	TradingReady   bool                `json:"trading_ready"`
+	StrategyReady  bool                `json:"strategy_ready"`
 	ReadyReason    string              `json:"ready_reason,omitempty"`
 	BufferStats    AITraderBufferStats `json:"buffer_stats,omitempty"`
 }

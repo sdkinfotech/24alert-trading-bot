@@ -41,9 +41,10 @@ type aiTraderSessionSnapshot struct {
 	LastDecision  *AITraderDecisionEvent  `json:"last_decision,omitempty"`
 	Events        []AITraderDecisionEvent `json:"events,omitempty"`
 	CollectFeed   []AITraderCollectEvent  `json:"collect_feed,omitempty"`
-	LastTradeSignal *AITraderTradeSignal  `json:"last_trade_signal,omitempty"`
-	SessionRegime   string                `json:"session_regime,omitempty"`
-	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
+	LastTradeSignal   *AITraderTradeSignal        `json:"last_trade_signal,omitempty"`
+	SessionRegime     string                      `json:"session_regime,omitempty"`
+	MicroSignals      []AITraderMicroSignal       `json:"micro_signals,omitempty"`
+	SessionStrategy   *AITraderSessionStrategy    `json:"session_strategy,omitempty"`
 	LastPlaybookRefreshAt string          `json:"last_playbook_refresh_at,omitempty"`
 	Depth                 int32             `json:"depth,omitempty"`
 	ExecutionLog          []AITraderExecutionLogEntry `json:"execution_log,omitempty"`
@@ -132,7 +133,7 @@ func snapshotFromSession(s *AITraderSession, depth int32) *aiTraderSessionSnapsh
 		UpdatedAt: s.UpdatedAt, StoppedAt: s.StoppedAt, Features: s.Features,
 		MarketContext: s.MarketContext, LastDecision: s.LastDecision,
 		LastTradeSignal: s.LastTradeSignal, SessionRegime: s.SessionRegime,
-		MicroSignals: s.MicroSignals, Depth: depth,
+		MicroSignals: s.MicroSignals, SessionStrategy: s.SessionStrategy, Depth: depth,
 		ExecutionLog: append([]AITraderExecutionLogEntry(nil), s.ExecutionLog...),
 	}
 	if len(s.Events) > aiTraderMaxSessionEvents {
@@ -251,6 +252,7 @@ func sessionFromSnapshot(snap *aiTraderSessionSnapshot) *AITraderSession {
 		Features: snap.Features, MarketContext: snap.MarketContext, LastDecision: snap.LastDecision,
 		Events: snap.Events, CollectFeed: snap.CollectFeed, LastTradeSignal: snap.LastTradeSignal,
 		SessionRegime: snap.SessionRegime, MicroSignals: snap.MicroSignals,
+		SessionStrategy: snap.SessionStrategy,
 		ExecutionLog: append([]AITraderExecutionLogEntry(nil), snap.ExecutionLog...),
 		collectBuf: newAITraderCollectBuffer(), ctxState: newAITraderContextState(),
 	}

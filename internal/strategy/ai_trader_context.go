@@ -33,6 +33,9 @@ type AITraderMarketContext struct {
 	RecentPrints []AITraderPrint           `json:"recent_prints,omitempty"`
 	TapeStats    AITraderTapeStats         `json:"tape_stats"`
 	BookTimeline []AITraderBookDigest      `json:"book_timeline,omitempty"`
+	DOMEvents    []AITraderDOMEvent        `json:"dom_events,omitempty"`
+	Correlation  *AITraderCorrelationContext `json:"correlation,omitempty"`
+	ChartBars5m  []AITraderCandleBar       `json:"chart_bars_5m,omitempty"`
 	SceneNotes   []string                  `json:"scene_notes,omitempty"`
 	UpdatedAt    string                    `json:"updated_at"`
 }
@@ -128,6 +131,13 @@ type aiTraderContextState struct {
 	sceneNotes   []string
 	lastBidWall  string
 	lastAskWall  string
+	domPrevBids  domLevelMap
+	domPrevAsks  domLevelMap
+	domEvents    []AITraderDOMEvent
+	chartBars5m  []AITraderCandleBar
+	corrUID      string
+	corrTicker   string
+	corrBars5m   []AITraderCandleBar
 	micro        *aiTraderMicroState
 }
 
@@ -141,6 +151,7 @@ func (r *Runner) initAITraderContext(ctx context.Context, s *AITraderSession) {
 	}
 	r.warmupAITraderContext(ctx, s)
 	go r.runAITraderMarketFeeds(ctx, s)
+	r.initAITraderCorrelation(ctx, s)
 	if aiTraderStreamBookEnabled() {
 		depth := int32(20)
 		go r.runAITraderOrderbookStream(ctx, s, depth)
@@ -297,6 +308,25 @@ func (r *Runner) runAITraderMarketFeeds(ctx context.Context, s *AITraderSession)
 				}
 			}()
 		}
+		ch5, cleanup5, err5 := r.candleHub.Subscribe(ctx, s.InstrumentID, pb.SubscriptionInterval_SUBSCRIPTION_INTERVAL_FIVE_MINUTES)
+		if err5 != nil {
+			r.logger.Warn("ai trader 5m candles sub", "error", err5)
+		} else {
+			go func() {
+				defer cleanup5()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case c, ok := <-ch5:
+						if !ok {
+							return
+						}
+						s.ctxState.appendChartBar5m(strategyCandleToBar(c))
+					}
+				}
+			}()
+		}
 	}
 }
 
@@ -397,7 +427,7 @@ func (st *aiTraderContextState) setDOMBook(book *marketdata.Orderbook, ticker st
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.tickSize = tick
-	st.domBook = &AITraderDOMBook{
+	dom := &AITraderDOMBook{
 		ObservedAt: book.Time.UTC().Format(time.RFC3339),
 		TickSize:   tick,
 		BestBid:    bestBid,
@@ -405,6 +435,8 @@ func (st *aiTraderContextState) setDOMBook(book *marketdata.Orderbook, ticker st
 		Bids:       bids,
 		Asks:       asks,
 	}
+	st.trackDOMChangesLocked(dom, book.Time)
+	st.domBook = dom
 }
 
 func inferTickSize(book *marketdata.Orderbook, ticker string) float64 {
@@ -572,6 +604,16 @@ func (st *aiTraderContextState) snapshot() AITraderMarketContext {
 		cp.Asks = append([]AITraderBookLevel(nil), st.domBook.Asks...)
 		out.DOMBook = &cp
 	}
+	if len(st.domEvents) > 0 {
+		start := 0
+		if len(st.domEvents) > 12 {
+			start = len(st.domEvents) - 12
+		}
+		out.DOMEvents = append([]AITraderDOMEvent(nil), st.domEvents[start:]...)
+	}
+	if len(st.chartBars5m) > 0 {
+		out.ChartBars5m = append([]AITraderCandleBar(nil), st.chartBars5m...)
+	}
 	return out
 }
 
@@ -649,5 +691,14 @@ func (r *Runner) attachAITraderMarketContext(s *AITraderSession) {
 		return
 	}
 	snap := r.snapshotAITraderContext(s)
+	if snap != nil && s.ctxState != nil {
+		mid := 0.0
+		if s.Features != nil {
+			mid = s.Features.Mid
+		}
+		if corr := s.ctxState.correlationSnapshot(mid); corr != nil {
+			snap.Correlation = corr
+		}
+	}
 	s.MarketContext = snap
 }

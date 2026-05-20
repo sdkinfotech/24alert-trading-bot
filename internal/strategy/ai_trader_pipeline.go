@@ -83,8 +83,8 @@ func (r *Runner) onTradingReadyLocked(s *AITraderSession) {
 	if summary == "" {
 		summary = fmt.Sprintf("Level intraday: %d уровней, bias %s", len(pb.Levels), pb.MarketBias)
 	}
-	s.appendCollectFeed("playbook", "Playbook готов — можно начать paper-торговлю", summary)
+	s.appendCollectFeed("playbook", "Playbook готов — ожидаем session_strategy", summary)
 	r.appendAITraderPipelineEventLocked(s, "playbook_ready",
-		"Стратегия level intraday сформирована",
+		"Уровни готовы; следующий шаг — стратегия сессии (LLM)",
 		summary)
 }

@@ -106,33 +106,19 @@ func (r *Runner) startPaperTradingFromPlaybook(s *AITraderSession, f *AITraderFe
 	if !allowNewEntry(s, regime) {
 		return
 	}
-	mid := f.Mid
-	if mid <= 0 {
+	if f.Mid <= 0 {
 		return
 	}
-	pol := effectivePolicy(s)
 	if len(s.PaperState.WorkingOrders) > 0 {
 		s.PaperState.WorkingOrders = nil
 	}
-	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
-		r.placePaperOrder(s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
+	if r.tryStructuralPlaybookEntry(nil, s, f, mctx, false) {
+		s.PaperState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		return
 	}
-	lvls := levelsForConfluence(s, pol)
-	scored := scoreLevels(lvls, f, mctx, nil)
-	minScore := pol.ConfluenceMinScore
-	allowBuy := regime != RegimeTrend || trendDirection(mctx) != "down"
-	allowSell := regime != RegimeTrend || trendDirection(mctx) != "up"
-	if pol.MarketBias == "bearish" {
-		allowBuy = false
-	} else if pol.MarketBias == "bullish" {
-		allowSell = false
-	}
-	if sup, ok := bestSupportLevel(scored, mid, minScore); ok && allowBuy {
-		r.placePaperOrder(s, "buy", sup.Price, 1, sup.Source, "confluence support")
-	}
-	if res, ok := bestResistanceLevel(scored, mid, minScore); ok && allowSell {
-		r.placePaperOrder(s, "sell", res.Price, 1, res.Source, "confluence resistance")
+	if r.tryValidatedLLMEntry(nil, s, f, mctx, sig, false) {
+		s.PaperState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		return
 	}
 	s.PaperState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 }
@@ -187,8 +173,10 @@ func (r *Runner) tickPaperTrading(s *AITraderSession, f *AITraderFeatures, mctx 
 	if st.PositionLots != 0 {
 		r.checkPaperSLTP(s, f, mctx)
 		applyLLMPositionManagement(s, sig, f.Mid, false)
-	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) && !s.reconnectPaused {
-		r.syncPaperOrdersFromSignal(s, sig)
+	} else if sig != nil && !s.reconnectPaused && s.sessionStrategyAllowsEntry() {
+		if entrySignalAllowed(sig, tradeableLevelsForSession(s, effectivePolicy(s), f.Mid), f, mctx) {
+			r.syncPaperOrdersFromSignal(s, sig)
+		}
 	}
 
 	r.tryFillWorkingOrders(s, f, mctx)
@@ -200,15 +188,35 @@ func (r *Runner) syncPaperOrdersFromSignal(s *AITraderSession, sig *AITraderTrad
 	if s.PaperState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		return
 	}
-	if r.replacePaperOrderIfNeeded(s, sig) {
+	if !s.sessionStrategyAllowsEntry() || !s.sessionStrategyAllowsSide(sig.Side) {
+		return
+	}
+	if reason := microstructureBlocksEntry(s, sig.Side); reason != "" {
+		return
+	}
+	f := s.Features
+	if f == nil || f.Mid <= 0 {
+		return
+	}
+	tradeable := tradeableLevelsForSession(s, effectivePolicy(s), f.Mid)
+	if !entrySignalAllowed(sig, tradeable, f, s.MarketContext) {
+		return
+	}
+	px, src, ok := snapSignalToTradeableLevel(sig, tradeable, f)
+	if !ok {
+		return
+	}
+	sigSnap := *sig
+	sigSnap.LevelPrice = px
+	if r.replacePaperOrderIfNeeded(s, &sigSnap) {
 		return
 	}
 	for _, o := range s.PaperState.WorkingOrders {
-		if o.Side == sig.Side && math.Abs(o.Price-sig.LevelPrice) < tickEpsilon(sig.LevelPrice) {
+		if o.Side == sigSnap.Side && math.Abs(o.Price-px) < tickEpsilon(px) {
 			return
 		}
 	}
-	r.placePaperOrder(s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
+	r.placePaperOrder(s, sigSnap.Side, px, 1, src, "llm@"+src+": "+sig.Reason)
 }
 
 func (r *Runner) tryFillWorkingOrders(s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext) {

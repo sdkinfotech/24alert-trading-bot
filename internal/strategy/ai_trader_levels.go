@@ -65,20 +65,19 @@ func (r *Runner) buildLevelPlaybook(s *AITraderSession, f *AITraderFeatures) *Le
 		SLMultATR:  0.5,
 		TPMultATR:  1.5,
 		MarketBias: "neutral",
-		EntryRules: []string{
-			"лимитка у поддержки при отскоке в ленте (дельта покупателей)",
-			"лимитка у сопротивления при отказе и росте sell-принтов",
-			"не входить при широком спреде или stale feed",
-		},
+		EntryRules: playbookEntryRulesChartFirst(),
 		RiskNotes: []string{
 			"paper-only: виртуальные лимитки, без брокера",
 			"макс 1 лот, 2 активные заявки",
 		},
 	}
 	if f != nil && !f.Stale {
-		pb.Summary = fmt.Sprintf("%s: %d уровней, mid %.4f, spread %.1f bps",
-			s.Ticker, len(levels), f.Mid, f.SpreadBPS)
+		tradeable := selectTradeableLevels(levels, f.Mid, s.Ticker)
+		pb.Levels = tradeable
+		pb.Summary = fmt.Sprintf("%s: %d торговых уровней (из %d), mid %.4f, spread %.1f bps",
+			s.Ticker, len(tradeable), len(levels), f.Mid, f.SpreadBPS)
 	} else {
+		pb.Levels = selectTradeableLevels(levels, 0, s.Ticker)
 		pb.Summary = fmt.Sprintf("%s: уровни загружены, ожидаем свежий стакан", s.Ticker)
 	}
 	return pb

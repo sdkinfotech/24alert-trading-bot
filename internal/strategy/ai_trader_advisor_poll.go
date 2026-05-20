@@ -188,8 +188,10 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 	if !hasMinReport && rulesFallback {
 		hasMinReport = true
 	}
-	if collectOK && hasMinReport && levelsOK && (advisorReady || rulesFallback) {
+	strategyOK := s.SessionStrategy != nil && sessionStrategyActive(s.SessionStrategy)
+	if collectOK && hasMinReport && levelsOK && (advisorReady || rulesFallback) && strategyOK {
 		s.PhaseProgress.TradingReady = true
+		s.PhaseProgress.StrategyReady = true
 		reason := "уровни и отчёт " + minTF + " готовы"
 		if readiness != nil && readiness.ReadyReason != "" {
 			reason = readiness.ReadyReason
@@ -209,6 +211,8 @@ func (r *Runner) evaluateTradingReadinessLocked(s *AITraderSession, f *AITraderF
 		s.PhaseProgress.ReadyReason = "ожидаем отчёт advisor " + minTF
 	case !levelsOK:
 		s.PhaseProgress.ReadyReason = "строим уровни S/R"
+	case s.SessionStrategy == nil || !sessionStrategyActive(s.SessionStrategy):
+		s.PhaseProgress.ReadyReason = "формируем стратегию сессии (участники, уровни, тактика)"
 	default:
 		s.PhaseProgress.ReadyReason = "агент оценивает микроструктуру и стакан"
 	}

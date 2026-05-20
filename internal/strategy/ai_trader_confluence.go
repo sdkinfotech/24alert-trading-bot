@@ -31,15 +31,17 @@ func scoreOneLevel(lv AITraderLevel, f *AITraderFeatures, mctx *AITraderMarketCo
 	src := lv.Source
 	switch {
 	case strings.Contains(src, "daily"):
-		sc += 2.0
+		sc += 3.5
 	case strings.Contains(src, "hourly"):
-		sc += 1.5
-	}
-	if strings.Contains(src, "wall") || strings.Contains(src, "dom") {
-		sc += 1.2
+		sc += 2.8
+	case strings.Contains(src, "advisor"):
+		sc += 2.5
 	}
 	if strings.Contains(src, "footprint") || strings.Contains(src, "poc") {
-		sc += 1.0
+		sc += 2.0
+	}
+	if isBookWallSource(src) {
+		sc += 0.1
 	}
 	if poc > 0 && math.Abs(lv.Price-poc) < tickEpsilon(lv.Price) {
 		sc += 1.5

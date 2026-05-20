@@ -301,7 +301,16 @@ func (r *Runner) callAITraderLLM(ctx context.Context, apiKey string, s *AITrader
 
 func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AITraderMarketContext, base AITraderDecisionEvent) []chatMessage {
 	var b strings.Builder
-	b.WriteString("Ты — AI Trader 24alert, intraday level strategy (стакан + лента + дневные S/R).\n")
+	b.WriteString("Ты — AI Trader 24alert. Роль: аналитик микроструктуры и уровней, не «комментатор сделок».\n")
+	b.WriteString("Сначала гипотеза (кто в ленте, MM/спуф/абсорбция), потом стратегия. Стены стакана — контекст, не вход.\n")
+	if s.SessionStrategy != nil && sessionStrategyActive(s.SessionStrategy) {
+		b.WriteString("\n== Активная стратегия сессии ==\n")
+		b.WriteString(s.SessionStrategy.Hypothesis + "\n")
+		b.WriteString("tactics=" + s.SessionStrategy.Tactics + " allow_long=" + fmt.Sprintf("%v", s.SessionStrategy.AllowLong) + " allow_short=" + fmt.Sprintf("%v", s.SessionStrategy.AllowShort) + "\n")
+		for _, rule := range s.SessionStrategy.Rules {
+			b.WriteString("- " + rule + "\n")
+		}
+	}
 	b.WriteString(fmt.Sprintf("Фаза: %s. strategy_kind=%s. Брокерские заявки ЗАПРЕЩЕНЫ до фазы trading.\n", s.Phase, s.StrategyKind))
 	b.WriteString("Инструкция оператора: " + strings.TrimSpace(s.Instruction) + "\n")
 	b.WriteString(fmt.Sprintf("Инструмент: %s (%s), счёт %s\n", s.Ticker, s.InstrumentID, s.AccountID))
@@ -313,10 +322,21 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 		b.WriteString("\n")
 	}
 	if s.LevelPlaybook != nil {
-		b.WriteString("== Level playbook ==\n")
+		b.WriteString("== Торговые уровни (только эти для trade_signal.level_price) ==\n")
 		b.WriteString(s.LevelPlaybook.Summary + "\n")
-		for _, lv := range s.LevelPlaybook.Levels {
-			b.WriteString(fmt.Sprintf("- %s %.4f (%s)\n", lv.Kind, lv.Price, lv.Source))
+		levels := s.LevelPlaybook.Levels
+		if f != nil && f.Mid > 0 {
+			levels = selectTradeableLevels(levels, f.Mid, s.Ticker)
+		}
+		for _, lv := range levels {
+			dist := ""
+			if f != nil && f.Mid > 0 {
+				dist = fmt.Sprintf(" | %.0f bps от mid", distanceBPS(f.Mid, lv.Price))
+			}
+			b.WriteString(fmt.Sprintf("- %s %.4f (%s)%s\n", lv.Kind, lv.Price, lv.Source, dist))
+		}
+		if len(levels) == 0 {
+			b.WriteString("- нет уровней в зоне торговли; allow_new_entry=false, trade_signal.side=none\n")
 		}
 		b.WriteString("\n")
 	}
@@ -325,13 +345,17 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 	b.WriteString(policySummaryLine(pol) + "\n")
 	if s.Phase == AITraderPhaseTrading {
 		b.WriteString("Фаза TRADING: обновляй trading_policy и trade_signal (stop_loss/take_profit) по контексту.\n")
+		mid := 0.0
+		if f != nil {
+			mid = f.Mid
+		}
 		if s.LiveState != nil && s.LiveState.PositionLots != 0 {
-			b.WriteString(fmt.Sprintf("Открытая LIVE позиция: %d лот @ %.4f SL=%.4f TP=%.4f\n",
-				s.LiveState.PositionLots, s.LiveState.AvgPrice, s.LiveState.StopLoss, s.LiveState.TakeProfit))
+			b.WriteString("Открытая LIVE позиция: " + formatPositionForLLM(
+				s.LiveState.PositionLots, s.LiveState.AvgPrice, mid, s.LiveState.StopLoss, s.LiveState.TakeProfit) + "\n")
 		}
 		if s.PaperState != nil && s.PaperState.PositionLots != 0 {
-			b.WriteString(fmt.Sprintf("Открытая PAPER позиция: %d лот @ %.4f SL=%.4f TP=%.4f\n",
-				s.PaperState.PositionLots, s.PaperState.AvgPrice, s.PaperState.StopLoss, s.PaperState.TakeProfit))
+			b.WriteString("Открытая PAPER позиция: " + formatPositionForLLM(
+				s.PaperState.PositionLots, s.PaperState.AvgPrice, mid, s.PaperState.StopLoss, s.PaperState.TakeProfit) + "\n")
 		}
 	}
 	b.WriteString("\n")
@@ -411,14 +435,15 @@ func buildAITraderLLMMessages(s *AITraderSession, f *AITraderFeatures, mctx *AIT
 }
 
 Правила:
-- Опирайся на book_timeline, recent_prints, tape_stats, chart_bars, levels и scene_notes.
-- trading_policy: задай правила сессии (пороги входа, SL/TP множители ATR, allow_new_entry). entry_min_confidence не выше 0.55.
-- В фазе trading: trade_signal управляет лимитками и мягкими SL/TP (stop_loss/take_profit).
-- При открытой позиции: order_action adjust_stops + stop_loss/take_profit; flatten — закрыть; cancel_all — снять заявки.
-- Без позиции, если mid ушёл от лимитки: order_action replace_limit (side + новый level_price), не дублируй заявки.
-- Вне trading: trade_signal.side должен быть none; trading_policy всё равно можно обновить.
-- action остаётся hold|observe_plan|paper_plan|observe_wall|block (нарратив).
-- confidence 0..1.
+- Приоритет: chart_bars (тренд/структура) → торговые уровни daily/hourly/POC → tape_stats как подтверждение.
+- book_timeline bid/ask wall: НЕ используй как level_price для входа; только в summary/reason.
+- trade_signal.level_price: ТОЛЬКО цена из списка «Торговые уровни» (в пунктах, около mid). Иначе side=none.
+- buy только у support ниже mid; sell (шорт) только у resistance выше mid и при явном медвежьем контексте.
+- stop_loss/take_profit: в пунктах (как mid, ~100-110 для BMM6), не в рублях брокера.
+- trading_policy.confluence_min_score ≥ 3.0; allow_new_entry=false если нет торговых уровней в зоне.
+- При открытой позиции: flatten только при реальном убытке/развороте (сверяй mid и entry в пунктах); иначе adjust_stops.
+- Вне trading: trade_signal.side=none.
+- confidence 0..1. Краткий reason (2-3 предложения), без воды.
 `)
 
 	sys := b.String()
@@ -459,9 +484,11 @@ func mergeAITraderLLMOutput(s *AITraderSession, f *AITraderFeatures, base AITrad
 	if conf > 1 {
 		conf = 1
 	}
-	note := "Real broker orders disabled."
-	if s.Mode == AITraderModePaper {
-		note = "Paper mode: analysis only, no broker orders."
+	note := "Chart-first: entries only at structural levels; book walls are context."
+	if s.isArmedLive() {
+		note = "Live armed: entries only at structural levels (daily/hourly/POC); walls are not entry targets."
+	} else if s.Mode == AITraderModePaper || s.ExecutionMode == ExecutionModePaper {
+		note = "Paper: same structural entry rules as live."
 	}
 	return AITraderDecisionEvent{
 		Time:           time.Now().UTC().Format(time.RFC3339),
@@ -521,6 +548,16 @@ func (r *Runner) persistAITraderSignal(sessionID string, sig *AITraderTradeSigna
 		return
 	}
 	cur.LastTradeSignal = sig
+}
+
+func barDir(bar AITraderCandleBar) string {
+	if bar.Close > bar.Open {
+		return "▲"
+	}
+	if bar.Close < bar.Open {
+		return "▼"
+	}
+	return "—"
 }
 
 func sanitizeAITraderLLMAction(action string, s *AITraderSession) string {
@@ -620,6 +657,32 @@ func writeAITraderContextSummary(b *strings.Builder, f *AITraderFeatures, mctx *
 		}
 	}
 
+	if len(mctx.DOMEvents) > 0 {
+		b.WriteString("\n== DOM: изменения лимиток ==\n")
+		start := len(mctx.DOMEvents) - 8
+		if start < 0 {
+			start = 0
+		}
+		for _, e := range mctx.DOMEvents[start:] {
+			fmt.Fprintf(b, "[%s] %s %s %.4f %d→%d %s\n", e.Time, e.Side, e.Kind, e.Price, e.PrevQty, e.NewQty, e.Note)
+		}
+	}
+	if mctx.Correlation != nil {
+		c := mctx.Correlation
+		b.WriteString("\n== Коррелятор (lead) ==\n")
+		fmt.Fprintf(b, "%s mid=%.4f chg=%.1f bps spread_vs_session=%.1f bps\n",
+			c.LeadTicker, c.LeadMid, c.LeadChangeBPS, c.SpreadBPS)
+	}
+	if len(mctx.ChartBars5m) > 0 {
+		b.WriteString("\n== График 5m ==\n")
+		start := len(mctx.ChartBars5m) - 6
+		if start < 0 {
+			start = 0
+		}
+		for _, bar := range mctx.ChartBars5m[start:] {
+			fmt.Fprintf(b, "%s C=%.4f %s\n", bar.Time, bar.Close, barDir(bar))
+		}
+	}
 	if len(mctx.SceneNotes) > 0 {
 		b.WriteString("\n== Заметки сцены ==\n")
 		max := 5

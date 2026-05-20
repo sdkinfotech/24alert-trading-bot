@@ -16,7 +16,7 @@ var tradeAnalystHintsLookup func(ticker string) (*tradeanalyst.TradingHints, boo
 
 const (
 	defaultPolicyEntryMinConfidence = 0.55
-	defaultPolicyConfluenceMinScore = 2.5
+	defaultPolicyConfluenceMinScore = 3.0
 	defaultPolicySLMultATR          = 0.5
 	defaultPolicyTPMultATR          = 1.5
 )
@@ -91,6 +91,7 @@ func policyFromPlaybook(pb *LevelPlaybook) DynamicTradingPolicy {
 	if len(pb.Levels) > 0 {
 		p.PreferredLevels = append([]AITraderLevel(nil), pb.Levels...)
 	}
+	// Playbook levels are already tradeable-filtered in buildLevelPlaybook.
 	return clampDynamicTradingPolicy(p)
 }
 
@@ -505,6 +506,9 @@ func setStopsFromPolicy(s *AITraderSession, side string, entry float64, isLive b
 
 func allowNewEntry(s *AITraderSession, regime string) bool {
 	if s != nil && tradeAnalystHourBlocked(s.Ticker) {
+		return false
+	}
+	if s != nil && s.Phase == AITraderPhaseTrading && !s.sessionStrategyAllowsEntry() {
 		return false
 	}
 	pol := effectivePolicy(s)

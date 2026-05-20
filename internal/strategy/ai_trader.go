@@ -81,8 +81,9 @@ type AITraderSession struct {
 	CollectFeed   []AITraderCollectEvent  `json:"collect_feed,omitempty"`
 	LastTradeSignal *AITraderTradeSignal  `json:"last_trade_signal,omitempty"`
 	SessionRegime   string                `json:"session_regime,omitempty"`
-	MicroSignals    []AITraderMicroSignal `json:"micro_signals,omitempty"`
-	ExecutionLog    []AITraderExecutionLogEntry `json:"execution_log,omitempty"`
+	MicroSignals      []AITraderMicroSignal       `json:"micro_signals,omitempty"`
+	SessionStrategy   *AITraderSessionStrategy    `json:"session_strategy,omitempty"`
+	ExecutionLog      []AITraderExecutionLogEntry `json:"execution_log,omitempty"`
 
 	cancel                 context.CancelFunc     `json:"-"`
 	streamBook             *marketdata.Orderbook  `json:"-"`
@@ -95,6 +96,7 @@ type AITraderSession struct {
 	lastSessionPersistAt    time.Time              `json:"-"`
 	cancelReplaceTimestamps []time.Time            `json:"-"`
 	lastLLMAt               time.Time              `json:"-"`
+	lastStrategyAt          *time.Time             `json:"-"`
 	lastCollectFeedAt time.Time              `json:"-"`
 	lastReportsReady  []string               `json:"-"`
 	wasTradingReady   bool                   `json:"-"`
@@ -467,14 +469,6 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	if s.Phase == AITraderPhaseTrading {
 		r.refreshPlaybookWhileTrading(s, features)
 	}
-	sig := s.LastTradeSignal
-	if s.Phase == AITraderPhaseTrading {
-		if s.isArmedLive() {
-			r.tickLiveTrading(ctx, s, features, mctx, sig, s.SessionRegime)
-		} else {
-			r.tickPaperTrading(s, features, mctx, sig, s.SessionRegime)
-		}
-	}
 	decision, journal := r.decideAITraderWithBrain(ctx, s, features)
 	if journal {
 		r.updateAITraderState(s, features, decision)
@@ -482,6 +476,29 @@ func (r *Runner) observeAITraderOnce(ctx context.Context, s *AITraderSession, de
 	} else {
 		r.refreshAITraderFeaturesOnly(s, features)
 		r.attachAITraderMarketContext(s)
+	}
+	if s.Phase == AITraderPhaseAnalyzing || s.Phase == AITraderPhaseReady {
+		r.maybeFormSessionStrategy(ctx, s, features, mctx)
+	}
+	r.aiTrader.mu.Lock()
+	cur := r.aiTrader.findLocked(s.ID)
+	var sig *AITraderTradeSignal
+	if cur != nil {
+		sig = cur.LastTradeSignal
+		if cur.SessionStrategy != nil {
+			s.SessionStrategy = cur.SessionStrategy
+		}
+	}
+	r.aiTrader.mu.Unlock()
+	if s.Phase == AITraderPhaseTrading {
+		if s.isArmedLive() {
+			r.tickLiveTrading(ctx, s, features, mctx, sig, s.SessionRegime)
+		} else {
+			r.tickPaperTrading(s, features, mctx, sig, s.SessionRegime)
+		}
+		if journal {
+			r.maybeFormSessionStrategy(ctx, s, features, mctx)
+		}
 	}
 	r.maybePersistAITraderSession(s, depth)
 }
@@ -529,6 +546,10 @@ func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error
 	if !s.PhaseProgress.TradingReady {
 		r.aiTrader.mu.Unlock()
 		return nil, fmt.Errorf("trading not ready: %s", s.PhaseProgress.ReadyReason)
+	}
+	if s.SessionStrategy == nil || !sessionStrategyActive(s.SessionStrategy) {
+		r.aiTrader.mu.Unlock()
+		return nil, fmt.Errorf("session strategy not ready: дождитесь формирования плана (session_strategy)")
 	}
 	s.Phase = AITraderPhaseTrading
 	s.reconnectPaused = false

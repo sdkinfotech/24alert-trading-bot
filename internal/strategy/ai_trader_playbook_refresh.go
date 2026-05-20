@@ -55,9 +55,14 @@ func (r *Runner) refreshPlaybookWhileTrading(s *AITraderSession, f *AITraderFeat
 		cur.LevelPlaybook = newPB
 	}
 	r.refreshAdvisorPlaybookLiteLocked(cur)
-	if cur.ActivePolicy != nil && len(cur.ActivePolicy.PreferredLevels) == 0 {
-		p := policyFromPlaybook(cur.LevelPlaybook)
-		cur.ActivePolicy.PreferredLevels = p.PreferredLevels
+	if cur.LevelPlaybook != nil && f.Mid > 0 {
+		cur.LevelPlaybook.Levels = selectTradeableLevels(cur.LevelPlaybook.Levels, f.Mid, cur.Ticker)
+	}
+	if cur.ActivePolicy != nil {
+		cur.ActivePolicy.PreferredLevels = nil
+		if cur.LevelPlaybook != nil {
+			cur.ActivePolicy.PreferredLevels = append([]AITraderLevel(nil), cur.LevelPlaybook.Levels...)
+		}
 	}
 	cur.lastPlaybookRefreshAt = time.Now().UTC()
 	cur.LastPlaybookRefreshAt = cur.lastPlaybookRefreshAt.Format(time.RFC3339)

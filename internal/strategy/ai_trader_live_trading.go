@@ -78,36 +78,19 @@ func (r *Runner) startLiveTradingFromPlaybook(ctx context.Context, s *AITraderSe
 	if regime == "" {
 		regime = detectSessionRegime(mctx)
 	}
-	if !allowNewEntry(s, regime) {
+	if !allowNewEntry(s, regime) || f.Mid <= 0 {
 		return
 	}
-	mid := f.Mid
-	if mid <= 0 {
-		return
-	}
-	pol := effectivePolicy(s)
 	if len(s.LiveState.WorkingOrders) > 0 {
 		r.cancelAllLiveOrders(ctx, s)
 	}
-	if sig != nil && sig.actionableWith(pol.EntryMinConfidence) {
-		r.placeLiveLimit(ctx, s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
+	if r.tryStructuralPlaybookEntry(ctx, s, f, mctx, true) {
+		s.LiveState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		return
 	}
-	lvls := levelsForConfluence(s, pol)
-	scored := scoreLevels(lvls, f, mctx, nil)
-	minScore := pol.ConfluenceMinScore
-	allowBuy := regime != RegimeTrend || trendDirection(mctx) != "down"
-	allowSell := regime != RegimeTrend || trendDirection(mctx) != "up"
-	if pol.MarketBias == "bearish" {
-		allowBuy = false
-	} else if pol.MarketBias == "bullish" {
-		allowSell = false
-	}
-	if sup, ok := bestSupportLevel(scored, mid, minScore); ok && allowBuy {
-		r.placeLiveLimit(ctx, s, "buy", sup.Price, 1, sup.Source, "confluence support")
-	}
-	if res, ok := bestResistanceLevel(scored, mid, minScore); ok && allowSell {
-		r.placeLiveLimit(ctx, s, "sell", res.Price, 1, res.Source, "confluence resistance")
+	if r.tryValidatedLLMEntry(ctx, s, f, mctx, sig, true) {
+		s.LiveState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		return
 	}
 	s.LiveState.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 }
@@ -140,8 +123,10 @@ func (r *Runner) tickLiveTrading(ctx context.Context, s *AITraderSession, f *AIT
 	if st.PositionLots != 0 {
 		r.checkLiveSLTP(ctx, s, f)
 		applyLLMPositionManagement(s, sig, f.Mid, true)
-	} else if sig != nil && sig.actionableWith(effectivePolicy(s).EntryMinConfidence) && !s.reconnectPaused {
-		r.syncLiveOrdersFromSignal(ctx, s, sig)
+	} else if sig != nil && !s.reconnectPaused && s.sessionStrategyAllowsEntry() {
+		if entrySignalAllowed(sig, tradeableLevelsForSession(s, effectivePolicy(s), f.Mid), f, mctx) {
+			r.syncLiveOrdersFromSignal(ctx, s, sig)
+		}
 	}
 	if !s.reconnectPaused && st.PositionLots == 0 && len(st.WorkingOrders) == 0 && allowNewEntry(s, regime) {
 		r.startLiveTradingFromPlaybook(ctx, s, f, mctx, sig)
@@ -238,6 +223,9 @@ func (r *Runner) syncLiveOrderStates(ctx context.Context, s *AITraderSession) {
 			fillPx := o.Price
 			if mv := resp.GetExecutedOrderPrice(); mv != nil {
 				fillPx = float64(mv.GetUnits()) + float64(mv.GetNano())/1e9
+			}
+			if s.Features != nil && s.Features.Mid > 0 {
+				fillPx = normalizeQuotationPrice(fillPx, s.Features.Mid)
 			}
 			r.recordLiveFill(s, LiveFill{
 				Time: time.Now().UTC().Format(time.RFC3339), Side: o.Side,
@@ -389,15 +377,35 @@ func (r *Runner) syncLiveOrdersFromSignal(ctx context.Context, s *AITraderSessio
 	if s.LiveState == nil || !sig.actionableWith(effectivePolicy(s).EntryMinConfidence) {
 		return
 	}
-	if r.replaceLiveOrderIfNeeded(ctx, s, sig) {
+	f := s.Features
+	if f == nil || f.Mid <= 0 {
+		return
+	}
+	if !s.sessionStrategyAllowsEntry() || !s.sessionStrategyAllowsSide(sig.Side) {
+		return
+	}
+	if reason := microstructureBlocksEntry(s, sig.Side); reason != "" {
+		return
+	}
+	tradeable := tradeableLevelsForSession(s, effectivePolicy(s), f.Mid)
+	if !entrySignalAllowed(sig, tradeable, f, nil) {
+		return
+	}
+	px, src, ok := snapSignalToTradeableLevel(sig, tradeable, f)
+	if !ok {
+		return
+	}
+	sigSnap := *sig
+	sigSnap.LevelPrice = px
+	if r.replaceLiveOrderIfNeeded(ctx, s, &sigSnap) {
 		return
 	}
 	for _, o := range s.LiveState.WorkingOrders {
-		if o.Side == sig.Side && math.Abs(o.Price-sig.LevelPrice) < tickEpsilon(sig.LevelPrice) {
+		if o.Side == sig.Side && math.Abs(o.Price-px) < tickEpsilon(px) {
 			return
 		}
 	}
-	r.placeLiveLimit(ctx, s, sig.Side, sig.LevelPrice, 1, "llm_signal", sig.Reason)
+	r.placeLiveLimit(ctx, s, sig.Side, px, 1, src, "llm@"+src+": "+sig.Reason)
 }
 
 // quotationToFloat for pb.Quotation is in candlehub.go (same package).

@@ -380,8 +380,35 @@ export interface AiTraderPhaseProgress {
   min_collect_sec: number;
   reports_ready?: string[];
   trading_ready: boolean;
+  strategy_ready?: boolean;
   ready_reason?: string;
   buffer_stats?: AiTraderBufferStats;
+}
+
+export interface AiTraderSessionStrategy {
+  status?: string;
+  formed_at?: string;
+  updated_at?: string;
+  source?: string;
+  hypothesis?: string;
+  participants?: string;
+  regime?: string;
+  tactics?: string;
+  key_levels?: AiTraderLevel[];
+  rules?: string[];
+  allow_long?: boolean;
+  allow_short?: boolean;
+  allow_new_entry?: boolean;
+  revision_note?: string;
+}
+
+export interface AiTraderMicroSignal {
+  kind?: string;
+  side?: string;
+  price?: number;
+  strength?: number;
+  detail?: string;
+  observed_at?: string;
 }
 
 export interface AiTraderLevelPlaybook {
@@ -528,6 +555,8 @@ export interface AiTraderSession {
   live_state?: LiveTradingState;
   last_trade_signal?: AiTraderTradeSignal;
   session_regime?: string;
+  session_strategy?: AiTraderSessionStrategy;
+  micro_signals?: AiTraderMicroSignal[];
   started_at: string;
   updated_at: string;
   stopped_at?: string;

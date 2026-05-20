@@ -3,6 +3,7 @@ package strategy
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/24alert/trading-bot/pkg/metrics"
@@ -116,10 +117,90 @@ func (r *Runner) detectMicrostructure(s *AITraderSession, f *AITraderFeatures, m
 			metrics.AITraderMicroSignalsTotal.WithLabelValues("sweep").Inc()
 		}
 	}
+	out = append(out, detectIcebergSignals(mctx, f)...)
+	out = append(out, detectMMFlicker(st, f)...)
+
 	st.lastMid = f.Mid
 
-	if len(out) > 6 {
-		out = out[len(out)-6:]
+	if len(out) > 10 {
+		out = out[len(out)-10:]
+	}
+	return out
+}
+
+// detectIcebergSignals: repeated small prints at same price while visible book qty is low.
+func detectIcebergSignals(mctx *AITraderMarketContext, f *AITraderFeatures) []AITraderMicroSignal {
+	if mctx == nil || f == nil || len(mctx.RecentPrints) < 4 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	byPrice := map[float64]struct {
+		buy, sell, n int64
+	}{}
+	eps := tickEpsilon(f.Mid)
+	for _, p := range mctx.RecentPrints {
+		if math.Abs(p.Price-f.Mid)/f.Mid > 0.002 {
+			continue
+		}
+		b := byPrice[p.Price]
+		b.n++
+		if strings.Contains(strings.ToLower(p.Direction), "buy") {
+			b.buy += p.Quantity
+		} else {
+			b.sell += p.Quantity
+		}
+		byPrice[p.Price] = b
+	}
+	var out []AITraderMicroSignal
+	for px, agg := range byPrice {
+		if agg.n < 3 {
+			continue
+		}
+		visible := int64(0)
+		if math.Abs(px-f.LargestAskWall.Price) <= eps {
+			visible = f.LargestAskWall.Quantity
+		}
+		if math.Abs(px-f.LargestBidWall.Price) <= eps {
+			visible = f.LargestBidWall.Quantity
+		}
+		if visible > 0 && agg.buy+agg.sell > visible*2 {
+			side := "sell"
+			if agg.buy > agg.sell {
+				side = "buy"
+			}
+			out = append(out, AITraderMicroSignal{
+				Kind: "iceberg", Side: side, Price: px, Strength: 0.75,
+				Detail: fmt.Sprintf("hidden %s: prints %d vol %d vs visible %d", side, agg.n, agg.buy+agg.sell, visible),
+				ObservedAt: now,
+			})
+			metrics.AITraderMicroSignalsTotal.WithLabelValues("iceberg").Inc()
+		}
+	}
+	return out
+}
+
+func detectMMFlicker(st *aiTraderMicroState, f *AITraderFeatures) []AITraderMicroSignal {
+	if st == nil || f == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	var out []AITraderMicroSignal
+	for _, w := range []AITraderWall{f.LargestBidWall, f.LargestAskWall} {
+		if w.Quantity <= 0 {
+			continue
+		}
+		key := w.Side + ":" + formatPriceKey(w.Price)
+		prev, ok := st.lastWalls[key]
+		if !ok {
+			continue
+		}
+		if prev.quantity > 80 && w.Quantity < prev.quantity/3 && now.Sub(prev.seenAt) < 8*time.Second {
+			out = append(out, AITraderMicroSignal{
+				Kind: "mm_flicker", Side: w.Side, Price: w.Price, Strength: 0.6,
+				Detail: "MM wall flicker / quote pull",
+				ObservedAt: now.Format(time.RFC3339),
+			})
+		}
 	}
 	return out
 }

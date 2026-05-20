@@ -305,7 +305,10 @@ export function AiTraderPanel({ instances }: Props) {
   const f = session?.features;
   const sessionRunning = session?.status === 'running';
   const canStartTrading = Boolean(
-    sessionRunning && session.phase === 'ready' && session.phase_progress?.trading_ready,
+    sessionRunning &&
+      session.phase === 'ready' &&
+      session.phase_progress?.trading_ready &&
+      session.phase_progress?.strategy_ready,
   );
 
   const reportChips = ['5m', '15m', '1h'];
