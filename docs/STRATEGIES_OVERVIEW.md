@@ -10,11 +10,16 @@
 
 | ID | Стратегия | Фьючерс | Интервал | Назначение |
 |----|-----------|---------|----------|------------|
-| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | SMA `4/9` + trailing `0.5%` + broker-side stop after fill |
-| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | SMA `5/17` + trailing `0.5%` + broker-side stop after fill |
-| `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | SMA `4/9` + trailing `0.5%` + broker-side stop after fill |
+| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | **ИИС** `2001673385` — disabled; только AI Trader |
+| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | **Автоследование** `2239786114` — disabled |
+| `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | **Автоследование** `2239786114` — SMA `4/9` |
 
-Все текущие инстансы используют счёт `2001673385` и `quantity=1`.
+Разделение счетов (`config.yaml`: `ai_trader_account_id` / `classic_account_id`):
+
+- **ИИС** `2001673385` — только AI Trader (BMM6 armed_live из вкладки AI Trader).
+- **Автоследование** `2239786114` — классические SMA-инстансы; не включать classic на ИИС.
+
+`quantity=1` на всех инстансах.
 
 ## Общая цепочка исполнения
 

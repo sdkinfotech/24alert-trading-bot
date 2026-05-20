@@ -262,8 +262,10 @@ func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessio
 			ticker = r.InstanceTickers(inst)
 		}
 	}
-	if accountID == "" {
-		return nil, fmt.Errorf("account_id is required")
+	var err error
+	accountID, err = r.resolveAITraderAccountID(accountID)
+	if err != nil {
+		return nil, err
 	}
 	if uid == "" {
 		return nil, fmt.Errorf("instrument_uid is required")

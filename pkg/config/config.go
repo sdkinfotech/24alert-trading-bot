@@ -99,6 +99,10 @@ type StrategiesRunnerConfig struct {
 	Watchdog            WatchdogRunnerConfig      `mapstructure:"watchdog"`
 	Notifications       NotificationsRunnerConfig `mapstructure:"notifications"`
 	Instances           []StrategyInstanceConfig  `mapstructure:"instances"`
+	// AITraderAccountID is the only account AI Trader sessions may use (ИИС).
+	AITraderAccountID string `mapstructure:"ai_trader_account_id"`
+	// ClassicAccountID is the account for enabled classic strategy instances (Автоследование).
+	ClassicAccountID string `mapstructure:"classic_account_id"`
 }
 
 // TradingScheduleConfig defines when the runner is allowed to submit orders.

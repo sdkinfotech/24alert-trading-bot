@@ -88,11 +88,12 @@ export function AiTraderPanel({ instances }: Props) {
 
   const accounts = useMemo(() => {
     const ids = new Set<string>();
+    if (traderConfig?.default_account_id) ids.add(traderConfig.default_account_id);
     for (const inst of instances) {
       if (inst.account_id) ids.add(inst.account_id);
     }
     return [...ids].sort();
-  }, [instances]);
+  }, [instances, traderConfig?.default_account_id]);
 
   useEffect(() => {
     if (!accountID && accounts.length > 0) {
@@ -111,6 +112,7 @@ export function AiTraderPanel({ instances }: Props) {
       .then((c) => {
         setTraderConfig(c);
         setKillSwitch(c.kill_switch);
+        if (c.default_account_id) setAccountID(c.default_account_id);
       })
       .catch(() => setTraderConfig(null));
   }, []);

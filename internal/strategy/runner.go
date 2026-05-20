@@ -300,6 +300,9 @@ func (r *Runner) startInstance(ctx context.Context, inst config.StrategyInstance
 	if err := validateInstanceSafety(inst); err != nil {
 		return err
 	}
+	if err := r.validateClassicInstanceAccount(inst); err != nil {
+		return err
+	}
 	st, err := r.buildStrategy(inst)
 	if err != nil {
 		return err

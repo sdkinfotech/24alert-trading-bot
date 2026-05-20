@@ -479,6 +479,8 @@ export interface AiTraderPublicConfig {
   stream_book: boolean;
   kill_switch: boolean;
   min_report_tf: string;
+  default_account_id?: string;
+  classic_account_id?: string;
 }
 
 export interface AiTraderBrokerSnapshot {
