@@ -84,7 +84,7 @@ func mergeSourceLabel(a, b string) string {
 	return a + "; " + b
 }
 
-// capAssistantLevels keeps strongest levels near current price for operator UI.
+// capAssistantLevels keeps a mix of near-price and far structural levels (not only one tight band).
 func capAssistantLevels(levels []AssistantLevel, refPrice float64, max int) []AssistantLevel {
 	if max <= 0 || len(levels) <= max {
 		return levels
@@ -92,31 +92,67 @@ func capAssistantLevels(levels []AssistantLevel, refPrice float64, max int) []As
 	if refPrice <= 0 {
 		refPrice = levels[0].Price
 	}
-	maxDist := 0.12 // ignore structural levels >12% away unless very strong daily
-	scored := make([]AssistantLevel, 0, len(levels))
+	nearBand := 0.025 // 2.5% — intraday mirrors/POC
+	var near, far []AssistantLevel
 	for _, l := range levels {
 		dist := math.Abs(l.Price-refPrice) / refPrice
-		if dist > maxDist && !strings.HasPrefix(l.Source, "daily") && l.Strength < 5 {
-			continue
+		if dist <= nearBand || strings.HasPrefix(l.Source, "volume_poc") {
+			near = append(near, l)
+		} else if strings.HasPrefix(l.Source, "daily") || l.Strength >= 4 {
+			far = append(far, l)
 		}
-		scored = append(scored, l)
 	}
-	if len(scored) == 0 {
-		scored = levels
+	sortByStrengthDist := func(a []AssistantLevel) {
+		sort.Slice(a, func(i, j int) bool {
+			if a[i].Strength != a[j].Strength {
+				return a[i].Strength > a[j].Strength
+			}
+			return math.Abs(a[i].Price-refPrice) < math.Abs(a[j].Price-refPrice)
+		})
 	}
-	sort.Slice(scored, func(i, j int) bool {
-		if scored[i].Strength != scored[j].Strength {
-			return scored[i].Strength > scored[j].Strength
+	sortByStrengthDist(near)
+	sortByStrengthDist(far)
+	nearCap := max / 2
+	if nearCap < 3 {
+		nearCap = 3
+	}
+	farCap := max - nearCap
+	if farCap < 2 {
+		farCap = 2
+		nearCap = max - farCap
+	}
+	out := append(takeAssistantLevels(near, nearCap), takeAssistantLevels(far, farCap)...)
+	if len(out) < max {
+		rest := append([]AssistantLevel(nil), levels...)
+		sortByStrengthDist(rest)
+		seen := map[string]bool{}
+		for _, l := range out {
+			seen[fmt.Sprintf("%.4f", l.Price)] = true
 		}
-		di := math.Abs(scored[i].Price - refPrice)
-		dj := math.Abs(scored[j].Price - refPrice)
-		return di < dj
-	})
-	if len(scored) > max {
-		scored = scored[:max]
+		for _, l := range rest {
+			k := fmt.Sprintf("%.4f", l.Price)
+			if seen[k] {
+				continue
+			}
+			out = append(out, l)
+			seen[k] = true
+			if len(out) >= max {
+				break
+			}
+		}
 	}
-	sort.Slice(scored, func(i, j int) bool { return scored[i].Price > scored[j].Price })
-	return scored
+	sort.Slice(out, func(i, j int) bool { return out[i].Price > out[j].Price })
+	return out
+}
+
+func takeAssistantLevels(in []AssistantLevel, n int) []AssistantLevel {
+	if n <= 0 || len(in) == 0 {
+		return nil
+	}
+	if len(in) <= n {
+		return append([]AssistantLevel(nil), in...)
+	}
+	return append([]AssistantLevel(nil), in[:n]...)
 }
 
 // chartRefPrice is the anchor for distance filters; must match the chart's candle series.
@@ -147,8 +183,8 @@ func filterLevelsForChart(levels []AssistantLevel, tf string, ref float64) []Ass
 	for _, l := range levels {
 		switch tf {
 		case "1d":
-			// Year chart: only structural daily highs/lows (no intraday mirrors/POC).
-			if strings.HasPrefix(l.Source, "daily") {
+			// Year chart: multi-day structure only (no mirrors / 5m POC).
+			if strings.HasPrefix(l.Source, "daily") || strings.HasPrefix(l.Source, "volume_poc_1d") {
 				pool = append(pool, l)
 			}
 		case "1h":

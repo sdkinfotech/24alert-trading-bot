@@ -11,12 +11,18 @@ import (
 
 func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
 	// Structural: year/quarter on daily; intraday focus on last ~5 sessions on 1h.
+	ref := refPrice(cs)
 	dailyLv := levelsFromAITrader(trimDailyLevels(computeDailyLevels(cs.Daily1y, 365), assistantDailyHighsLows))
+	quarterLv := levelsFromAITrader(nearestDailyRangeLevels(cs.Daily90d, 90, ref))
 	hourlyLv := levelsFromAITrader(trimHourlyLevels(computeHourlyLevels(cs.Hourly1m, 5*16), assistantHourlyHighsLows))
+	poc1d := pocLevel(cs.Daily90d, "1d")
 	poc5m := pocLevel(cs.FiveMin7d, "5m")
 	poc1h := pocLevel(cs.Hourly1m, "1h")
 
-	merged := mergeAssistantLevels(dailyLv, hourlyLv)
+	merged := mergeAssistantLevels(dailyLv, quarterLv, hourlyLv)
+	if poc1d != nil {
+		merged = append(merged, *poc1d)
+	}
 	if poc5m != nil {
 		merged = append(merged, *poc5m)
 	}
@@ -24,10 +30,6 @@ func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
 		merged = append(merged, *poc1h)
 	}
 
-	ref := lastClose(cs.FiveMin7d)
-	if ref <= 0 {
-		ref = lastClose(cs.Hourly1m)
-	}
 	mirrors := detectMirrorLevels(cs.Hourly1m, cs.Daily90d, ref)
 	merged = mergeAssistantLevels(merged, mirrors)
 	merged = clusterAssistantLevels(merged, ref)
@@ -66,6 +68,56 @@ func trimDailyLevels(rows []AITraderLevel, n int) []AITraderLevel {
 
 func trimHourlyLevels(rows []AITraderLevel, n int) []AITraderLevel {
 	return trimDailyLevels(rows, n)
+}
+
+// refPrice is last trade proxy for clustering and caps (5m preferred).
+func refPrice(cs assistantCandleSet) float64 {
+	if r := lastClose(cs.FiveMin7d); r > 0 {
+		return r
+	}
+	if r := lastClose(cs.Hourly1m); r > 0 {
+		return r
+	}
+	return lastClose(cs.Daily1y)
+}
+
+// nearestDailyRangeLevels picks the closest daily high above ref and low below ref (90d window).
+func nearestDailyRangeLevels(daily []marketdata.Candle, days int, ref float64) []AITraderLevel {
+	if ref <= 0 || len(daily) == 0 {
+		return nil
+	}
+	start := 0
+	if len(daily) > days {
+		start = len(daily) - days
+	}
+	var bestHigh, bestLow *AITraderLevel
+	highDist, lowDist := math.MaxFloat64, math.MaxFloat64
+	for i := start; i < len(daily); i++ {
+		c := daily[i]
+		date := c.Time.UTC().Format("2006-01-02")
+		if c.High >= ref {
+			d := c.High - ref
+			if d < highDist {
+				highDist = d
+				bestHigh = &AITraderLevel{Price: c.High, Kind: "resistance", Source: "daily90_high " + date, Rank: 1}
+			}
+		}
+		if c.Low <= ref {
+			d := ref - c.Low
+			if d < lowDist {
+				lowDist = d
+				bestLow = &AITraderLevel{Price: c.Low, Kind: "support", Source: "daily90_low " + date, Rank: 1}
+			}
+		}
+	}
+	var out []AITraderLevel
+	if bestHigh != nil {
+		out = append(out, *bestHigh)
+	}
+	if bestLow != nil {
+		out = append(out, *bestLow)
+	}
+	return out
 }
 
 func levelsFromAITrader(rows []AITraderLevel) []AssistantLevel {
