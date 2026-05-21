@@ -119,14 +119,36 @@ func capAssistantLevels(levels []AssistantLevel, refPrice float64, max int) []As
 	return scored
 }
 
+// chartRefPrice is the anchor for distance filters; must match the chart's candle series.
+func chartRefPrice(cs assistantCandleSet, tf string) float64 {
+	switch tf {
+	case "1d":
+		if r := lastClose(cs.Daily1y); r > 0 {
+			return r
+		}
+		return lastClose(cs.Daily90d)
+	case "1h":
+		if r := lastClose(cs.Hourly1m); r > 0 {
+			return r
+		}
+		return lastClose(cs.Hourly1w)
+	default:
+		if r := lastClose(cs.FiveMin7d); r > 0 {
+			return r
+		}
+		return lastClose(cs.Hourly1m)
+	}
+}
+
 func filterLevelsForChart(levels []AssistantLevel, tf string, ref float64) []AssistantLevel {
-	maxDist := map[string]float64{"1d": 0.20, "1h": 0.06, "5m": 0.018}[tf]
-	maxN := map[string]int{"1d": 10, "1h": 10, "5m": 8}[tf]
+	maxDist := map[string]float64{"1h": 0.06, "5m": 0.018}[tf]
+	maxN := map[string]int{"1d": 6, "1h": 10, "5m": 8}[tf]
 	var pool []AssistantLevel
 	for _, l := range levels {
 		switch tf {
 		case "1d":
-			if strings.HasPrefix(l.Source, "daily") || (l.Kind == "mirror" && chartDistance(l.Price, ref) <= maxDist) {
+			// Year chart: only structural daily highs/lows (no intraday mirrors/POC).
+			if strings.HasPrefix(l.Source, "daily") {
 				pool = append(pool, l)
 			}
 		case "1h":

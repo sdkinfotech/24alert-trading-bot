@@ -231,28 +231,24 @@ func candleReactionBPS(c marketdata.Candle, kind string) float64 {
 }
 
 func buildAssistantCharts(cs assistantCandleSet, levels []AssistantLevel) map[string]AssistantChartPayload {
-	ref := lastClose(cs.FiveMin7d)
-	if ref <= 0 {
-		ref = lastClose(cs.Hourly1m)
-	}
 	return map[string]AssistantChartPayload{
 		"1d": {
 			Timeframe: "1d",
 			Horizon:   "year",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Daily1y, 400)),
-			Levels:    filterLevelsForChart(levels, "1d", ref),
+			Levels:    filterLevelsForChart(levels, "1d", chartRefPrice(cs, "1d")),
 		},
 		"1h": {
 			Timeframe: "1h",
 			Horizon:   "month",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Hourly1m, 600)),
-			Levels:    filterLevelsForChart(levels, "1h", ref),
+			Levels:    filterLevelsForChart(levels, "1h", chartRefPrice(cs, "1h")),
 		},
 		"5m": {
 			Timeframe: "5m",
 			Horizon:   "week",
 			Candles:   candlesToAssistantBars(cs.FiveMin7d),
-			Levels:    filterLevelsForChart(levels, "5m", ref),
+			Levels:    filterLevelsForChart(levels, "5m", chartRefPrice(cs, "5m")),
 		},
 	}
 }
