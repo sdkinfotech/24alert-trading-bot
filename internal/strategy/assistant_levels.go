@@ -10,13 +10,13 @@ import (
 )
 
 func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
-	dailyLv := levelsFromAITrader(computeDailyLevels(cs.Daily1y, 365))
-	hourlyMonth := levelsFromAITrader(computeHourlyLevels(cs.Hourly1m, 22*16))
-	hourlyWeek := levelsFromAITrader(computeHourlyLevels(cs.Hourly1w, 7*16))
+	// Structural: year/quarter on daily; intraday focus on last ~5 sessions on 1h.
+	dailyLv := levelsFromAITrader(trimDailyLevels(computeDailyLevels(cs.Daily1y, 365), assistantDailyHighsLows))
+	hourlyLv := levelsFromAITrader(trimHourlyLevels(computeHourlyLevels(cs.Hourly1m, 5*16), assistantHourlyHighsLows))
 	poc5m := pocLevel(cs.FiveMin7d, "5m")
 	poc1h := pocLevel(cs.Hourly1m, "1h")
 
-	merged := mergeAssistantLevels(dailyLv, hourlyMonth, hourlyWeek)
+	merged := mergeAssistantLevels(dailyLv, hourlyLv)
 	if poc5m != nil {
 		merged = append(merged, *poc5m)
 	}
@@ -30,10 +30,10 @@ func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
 	}
 	mirrors := detectMirrorLevels(cs.Hourly1m, cs.Daily90d, ref)
 	merged = mergeAssistantLevels(merged, mirrors)
+	merged = clusterAssistantLevels(merged, ref)
 
 	for i := range merged {
 		enrichLevelVolumeStats(&merged[i], cs)
-		merged[i].ID = fmt.Sprintf("L%d", i+1)
 	}
 	sort.Slice(merged, func(i, j int) bool {
 		if merged[i].Strength != merged[j].Strength {
@@ -41,10 +41,31 @@ func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
 		}
 		return merged[i].Price > merged[j].Price
 	})
-	for i := range merged {
-		merged[i].ID = fmt.Sprintf("L%d", i+1)
+	merged = capAssistantLevels(merged, ref, assistantMaxLevelsTotal)
+	return assignLevelIDs(merged)
+}
+
+// trimDailyLevels keeps top N highs and N lows from computeDailyLevels output.
+func trimDailyLevels(rows []AITraderLevel, n int) []AITraderLevel {
+	var highs, lows []AITraderLevel
+	for _, l := range rows {
+		if l.Kind == "resistance" {
+			highs = append(highs, l)
+		} else {
+			lows = append(lows, l)
+		}
 	}
-	return merged
+	if len(highs) > n {
+		highs = highs[:n]
+	}
+	if len(lows) > n {
+		lows = lows[:n]
+	}
+	return append(highs, lows...)
+}
+
+func trimHourlyLevels(rows []AITraderLevel, n int) []AITraderLevel {
+	return trimDailyLevels(rows, n)
 }
 
 func levelsFromAITrader(rows []AITraderLevel) []AssistantLevel {
@@ -210,37 +231,28 @@ func candleReactionBPS(c marketdata.Candle, kind string) float64 {
 }
 
 func buildAssistantCharts(cs assistantCandleSet, levels []AssistantLevel) map[string]AssistantChartPayload {
-	filter := func(tf string) []AssistantLevel {
-		var out []AssistantLevel
-		for _, l := range levels {
-			if tf == "1d" && (strings.HasPrefix(l.Source, "daily") || l.Kind == "mirror") {
-				out = append(out, l)
-			} else if tf == "1h" && (strings.HasPrefix(l.Source, "hourly") || strings.HasPrefix(l.Source, "volume_poc_1h") || l.Kind == "mirror") {
-				out = append(out, l)
-			} else if tf == "5m" {
-				out = append(out, l)
-			}
-		}
-		return out
+	ref := lastClose(cs.FiveMin7d)
+	if ref <= 0 {
+		ref = lastClose(cs.Hourly1m)
 	}
 	return map[string]AssistantChartPayload{
 		"1d": {
 			Timeframe: "1d",
 			Horizon:   "year",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Daily1y, 400)),
-			Levels:    filter("1d"),
+			Levels:    filterLevelsForChart(levels, "1d", ref),
 		},
 		"1h": {
 			Timeframe: "1h",
 			Horizon:   "month",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Hourly1m, 600)),
-			Levels:    filter("1h"),
+			Levels:    filterLevelsForChart(levels, "1h", ref),
 		},
 		"5m": {
 			Timeframe: "5m",
 			Horizon:   "week",
 			Candles:   candlesToAssistantBars(cs.FiveMin7d),
-			Levels:    filter("5m"),
+			Levels:    filterLevelsForChart(levels, "5m", ref),
 		},
 	}
 }

@@ -29,6 +29,9 @@ func TestBuildAssistantLevelsAndMirrors(t *testing.T) {
 	if len(levels) == 0 {
 		t.Fatal("expected levels")
 	}
+	if len(levels) > assistantMaxLevelsTotal {
+		t.Fatalf("expected at most %d levels, got %d", assistantMaxLevelsTotal, len(levels))
+	}
 	hasMirror := false
 	for _, l := range levels {
 		if l.Kind == "mirror" {

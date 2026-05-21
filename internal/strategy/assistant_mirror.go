@@ -3,42 +3,61 @@ package strategy
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/24alert/trading-bot/internal/marketdata"
 )
 
-// detectMirrorLevels finds prices that acted as both support and resistance after a break.
+// detectMirrorLevels finds clustered swing zones where price flipped support↔resistance.
+// Rules: wing≥5 on 1h, cluster nearby swings, require S≥2 and R≥2, max assistantMaxMirrorLevels.
 func detectMirrorLevels(hourly, daily []marketdata.Candle, refPrice float64) []AssistantLevel {
-	swings := collectSwingLevels(hourly, 3)
-	if len(swings) == 0 {
-		swings = collectSwingLevels(daily, 2)
-	}
-	tol := refPrice * 0.002
-	if tol <= 0 {
-		tol = 0.001
-	}
 	candles := hourly
-	if len(candles) < 10 {
+	if len(candles) < 24 {
 		candles = daily
 	}
-	var out []AssistantLevel
-	for _, price := range swings {
-		support, resist := countReactions(candles, price, tol)
-		if support >= 1 && resist >= 1 {
-			kind := "mirror"
-			role := "mirror"
-			strength := 3 + support + resist
-			if strength > 5 {
-				strength = 5
-			}
-			out = append(out, AssistantLevel{
-				Price:    price,
-				Kind:     kind,
-				Source:   fmt.Sprintf("mirror S%d/R%d", support, resist),
-				Strength: strength,
-				Role:     role,
-			})
+	swings := collectSwingLevels(candles, assistantSwingWingBars)
+	if len(swings) == 0 {
+		return nil
+	}
+	clusterTol := refPrice * clusterTolerancePct(refPrice)
+	clustered := mergeNearLevels(swings, clusterTol)
+	touchTol := refPrice * 0.0015
+	if touchTol <= 0 {
+		touchTol = 0.001
+	}
+
+	type cand struct {
+		price            float64
+		support, resist int
+	}
+	var candidates []cand
+	for _, price := range clustered {
+		s, r := countReactions(candles, price, touchTol)
+		if s >= 2 && r >= 2 && s+r >= 5 {
+			candidates = append(candidates, cand{price: price, support: s, resist: r})
 		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		si := candidates[i].support + candidates[i].resist
+		sj := candidates[j].support + candidates[j].resist
+		return si > sj
+	})
+	if len(candidates) > assistantMaxMirrorLevels {
+		candidates = candidates[:assistantMaxMirrorLevels]
+	}
+	out := make([]AssistantLevel, 0, len(candidates))
+	for _, c := range candidates {
+		strength := 3 + (c.support+c.resist)/4
+		if strength > 5 {
+			strength = 5
+		}
+		out = append(out, AssistantLevel{
+			Price:    c.price,
+			Kind:     "mirror",
+			Source:   fmt.Sprintf("mirror S%d/R%d", c.support, c.resist),
+			Strength: strength,
+			Role:     "mirror",
+		})
 	}
 	return out
 }

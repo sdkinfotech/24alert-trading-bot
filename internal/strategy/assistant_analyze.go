@@ -76,7 +76,6 @@ func (r *Runner) runAssistantAnalysisJob(parent context.Context, id string, pick
 	update(35, "running", "")
 
 	levels := buildAssistantLevels(cs)
-	charts := buildAssistantCharts(cs, levels)
 	update(55, "running", "")
 
 	lastPx := lastClose(cs.FiveMin7d)
@@ -100,11 +99,7 @@ func (r *Runner) runAssistantAnalysisJob(parent context.Context, id string, pick
 
 	llmOut, model, fallback, _ := r.runAssistantLLM(ctx, facts)
 	levels = mergeLLMIntoLevels(levels, llmOut)
-	for k := range charts {
-		ch := charts[k]
-		ch.Levels = filterChartLevels(levels, k)
-		charts[k] = ch
-	}
+	charts := buildAssistantCharts(cs, levels)
 
 	now := time.Now().UTC()
 	r.assistant.update(id, func(a *AssistantAnalysis) {
@@ -121,27 +116,6 @@ func (r *Runner) runAssistantAnalysisJob(parent context.Context, id string, pick
 			a.LLMModel = assistantModel()
 		}
 	})
-}
-
-func filterChartLevels(all []AssistantLevel, tf string) []AssistantLevel {
-	var out []AssistantLevel
-	for _, l := range all {
-		switch tf {
-		case "1d":
-			if strings.HasPrefix(l.Source, "daily") || l.Kind == "mirror" {
-				out = append(out, l)
-			}
-		case "1h":
-			if strings.HasPrefix(l.Source, "hourly") || strings.HasPrefix(l.Source, "volume_poc_1h") || l.Kind == "mirror" {
-				out = append(out, l)
-			}
-		case "5m":
-			out = append(out, l)
-		default:
-			out = append(out, l)
-		}
-	}
-	return out
 }
 
 func (r *Runner) getAssistantAnalysis(id string) (*AssistantAnalysis, bool) {
