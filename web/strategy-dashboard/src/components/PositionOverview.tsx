@@ -6,6 +6,7 @@ import type {
   PortfolioSnapshot,
   StopOrder,
 } from '../api/types';
+import { formatMoney, formatNumber } from '../format';
 import { useI18n } from '../i18n';
 import { Badge, Card, LabelWithHelp } from './ui';
 
@@ -15,16 +16,6 @@ interface Props {
   ledger: LedgerData | null;
   portfolio: PortfolioSnapshot | null;
   stopOrders?: StopOrder[];
-}
-
-function fmtNum(v: number, digits = 2): string {
-  return Number.isFinite(v) ? v.toFixed(digits) : '0.00';
-}
-
-function fmtMoney(v: number, currency = 'RUB'): string {
-  const sign = v > 0 ? '+' : '';
-  const suffix = currency.toUpperCase() === 'RUB' ? '₽' : currency.toUpperCase();
-  return `${sign}${fmtNum(v)} ${suffix}`;
 }
 
 function strategyPositionLabel(pos?: number): string {
@@ -57,7 +48,7 @@ function brokerSyncTime(portfolio: PortfolioSnapshot | null): string {
 }
 
 export function PositionOverview({ instance, indicator, ledger, portfolio, stopOrders = [] }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const brokerPositions = portfolio?.positions ?? [];
   const instancePositions = brokerPositions.filter((p) => p.in_instance);
   const foreignPositions = brokerPositions.filter((p) => !p.in_instance);
@@ -145,7 +136,7 @@ export function PositionOverview({ instance, indicator, ledger, portfolio, stopO
             {stopOrders.length} broker stops
           </div>
           <div className={portfolio && portfolio.expected_yield >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
-            {t('expectedYield')}: {portfolio ? fmtMoney(portfolio.expected_yield) : '—'}
+            {t('expectedYield')}: {portfolio ? formatMoney(portfolio.expected_yield, lang, 'RUB') : '—'}
           </div>
         </div>
       </div>
@@ -181,16 +172,16 @@ export function PositionOverview({ instance, indicator, ledger, portfolio, stopO
                     <div className="font-mono text-gray-200">{p.ticker || p.instrument_uid.slice(0, 8)}</div>
                     <div className="text-[10px] text-gray-600">{p.instrument_uid}</div>
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono text-blue-300">{fmtNum(p.quantity, 4)}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{fmtMoney(p.average_price, currency)}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{fmtMoney(p.current_price, currency)}</td>
+                  <td className="py-2 pr-3 text-right font-mono text-blue-300">{formatNumber(p.quantity, lang, 4)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{formatMoney(p.average_price, lang, currency)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{formatMoney(p.current_price, lang, currency)}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${p.expected_yield >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {fmtMoney(p.expected_yield, currency)}
+                    {formatMoney(p.expected_yield, lang, currency)}
                   </td>
                   <td className={`py-2 pr-3 text-right font-mono ${qtyMismatch ? 'text-amber-300' : 'text-gray-300'}`}>
-                    {fmtNum(ledgerQuantity(ledger, p.instrument_uid), 4)}
+                    {formatNumber(ledgerQuantity(ledger, p.instrument_uid), lang, 4)}
                   </td>
-                  <td className="py-2 pr-3 text-right font-mono">{fmtMoney(ledgerAvg(ledger, p.instrument_uid), currency)}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{formatMoney(ledgerAvg(ledger, p.instrument_uid), lang, currency)}</td>
                   <td className="py-2 text-left">
                     {qtyMismatch ? (
                       <Badge tone="warning">ledger mismatch</Badge>
