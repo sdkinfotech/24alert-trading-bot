@@ -10,6 +10,53 @@ export interface Instance {
   running: boolean;
 }
 
+export interface TradingWindowStatus {
+  active: boolean;
+  next_change_at?: string;
+  label?: string;
+  window?: string;
+  timezone?: string;
+}
+
+export interface WatchdogLimitsSnapshot {
+  enabled: boolean;
+  max_daily_loss_rub?: number;
+  max_drawdown_pct?: number;
+}
+
+export interface InstanceStatus {
+  instance_id: string;
+  running: boolean;
+  enabled_in_config: boolean;
+  type?: string;
+  tickers?: string;
+  trading_window: TradingWindowStatus;
+  timeframe?: string;
+  last_closed_candle_at?: string;
+  next_candle_close_at?: string;
+  indicator_available: boolean;
+  feed_stale_hint: boolean;
+  broker_position_qty: number;
+  ledger_mismatch: boolean;
+  protective_stops: number;
+  open_position: boolean;
+  daily_pnl_rub: number;
+  watchdog_limits: WatchdogLimitsSnapshot;
+}
+
+export interface FlattenResult {
+  status: string;
+  orders_submitted: number;
+  instance_id: string;
+}
+
+export interface ReloadConfigResult {
+  status: string;
+  added?: string[];
+  removed?: string[];
+  changed?: string[];
+}
+
 export interface PnlData {
   instance_id: string;
   realized_rub: number;

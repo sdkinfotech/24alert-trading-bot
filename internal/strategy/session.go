@@ -133,6 +133,30 @@ func (ts *TradingSchedule) NextSessionOpen(t time.Time) time.Time {
 	return next.Add(ts.sessions[0].start)
 }
 
+// NextScheduleChange returns the next time the trading-window state flips (session open or close).
+// active is true when t is inside a configured weekday session; label is the current or next session name.
+func (ts *TradingSchedule) NextScheduleChange(t time.Time) (next time.Time, active bool, label string) {
+	if ts == nil || len(ts.sessions) == 0 {
+		return t, false, ""
+	}
+	lt := t.In(ts.tz)
+	if ts.IsMainSession(t) {
+		active = true
+		offset := time.Duration(lt.Hour())*time.Hour +
+			time.Duration(lt.Minute())*time.Minute +
+			time.Duration(lt.Second())*time.Second
+		today := time.Date(lt.Year(), lt.Month(), lt.Day(), 0, 0, 0, 0, ts.tz)
+		for _, w := range ts.sessions {
+			if offset >= w.start && offset < w.end {
+				label = w.name
+				return today.Add(w.end), true, label
+			}
+		}
+	}
+	label = ts.sessions[0].name
+	return ts.NextSessionOpen(t), false, label
+}
+
 func (ts *TradingSchedule) WindowString() string {
 	parts := make([]string, 0, len(ts.sessions))
 	for _, w := range ts.sessions {

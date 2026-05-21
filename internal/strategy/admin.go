@@ -3,6 +3,7 @@ package strategy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -68,6 +69,34 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		id := req.PathValue("id")
 		r.StopInstance(id)
 		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /instances/{id}/flatten", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
+		defer cancel()
+		res, err := r.FlattenInstance(ctx, id)
+		if err != nil {
+			code := http.StatusBadRequest
+			if errors.Is(err, errFlattenNotRunning) || errors.Is(err, errFlattenNoPosition) {
+				code = http.StatusConflict
+			}
+			http.Error(w, err.Error(), code)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(res)
+	})
+	mux.HandleFunc("GET /instances/{id}/status", func(w http.ResponseWriter, req *http.Request) {
+		id := req.PathValue("id")
+		ctx, cancel := context.WithTimeout(req.Context(), 8*time.Second)
+		defer cancel()
+		st, err := r.InstanceOperationalStatus(ctx, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(st)
 	})
 	mux.HandleFunc("POST /config/reload", func(w http.ResponseWriter, _ *http.Request) {
 		added, removed, changed, err := r.ReloadConfig(parent)

@@ -476,26 +476,28 @@ func (r *Runner) maybePauseOnLoss(ctx context.Context, instanceID string) {
 	}
 }
 
-func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string) {
+func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string) int {
+	eventType := flattenEventType(reason)
 	if r.portfolioSvc == nil || r.orderSvc == nil {
 		r.logger.Error("watchdog flatten unavailable: missing services", "instance", instanceID)
-		return
+		return 0
 	}
 	inst, ok := r.byID[instanceID]
 	if !ok {
 		r.logger.Error("watchdog flatten unknown instance", "instance", instanceID)
-		return
+		return 0
 	}
 	r.mu.Lock()
 	rt := r.instances[instanceID]
 	r.mu.Unlock()
 	if rt == nil {
-		return
+		return 0
 	}
+	submitted := 0
 	positions, err := r.portfolioSvc.GetPositions(ctx, inst.AccountID)
 	if err != nil {
 		r.logger.Error("watchdog flatten: get broker positions failed", "instance", instanceID, "error", err)
-		return
+		return 0
 	}
 	allowed := make(map[string]struct{}, len(inst.Instruments))
 	for _, uid := range inst.Instruments {
@@ -538,7 +540,7 @@ func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string)
 		if err != nil {
 			r.logger.Error("watchdog flatten: close order failed", "instance", instanceID, "instrument", p.InstrumentUID, "error", err)
 			_ = r.journal.RecordEvent(ctx, journal.EventRecord{
-				Type:          "watchdog_flatten",
+				Type:          eventType,
 				InstanceID:    instanceID,
 				InstrumentUID: p.InstrumentUID,
 				Direction:     dir,
@@ -551,6 +553,7 @@ func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string)
 			})
 			continue
 		}
+		submitted++
 		oid := resp.GetOrderId()
 		r.mu.Lock()
 		r.orderOwners[oid] = instanceID
@@ -566,7 +569,7 @@ func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string)
 			RefPrice:      ref,
 		})
 		_ = r.journal.RecordEvent(ctx, journal.EventRecord{
-			Type:          "watchdog_flatten",
+			Type:          eventType,
 			InstanceID:    instanceID,
 			InstrumentUID: p.InstrumentUID,
 			Direction:     dir,
@@ -589,6 +592,7 @@ func (r *Runner) flattenInstance(ctx context.Context, instanceID, reason string)
 		}
 		r.pollOrderStateAfterSubmit(ctx, rt, oid)
 	}
+	return submitted
 }
 
 // StuckOrderMinutesOrDefault returns configured stuck-order window.

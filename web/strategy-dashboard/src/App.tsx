@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { api } from './api/client';
 import type {
   Instance,
+  InstanceStatus,
   PnlData,
   LedgerData,
   PortfolioSnapshot,
@@ -12,6 +13,7 @@ import type {
   ExecutionRecord,
   StopOrder,
 } from './api/types';
+import { BotControlBar } from './components/BotControlBar';
 import { IndicatorChart } from './components/IndicatorChart';
 import { EventLog } from './components/EventLog';
 import { StatsPanel } from './components/StatsPanel';
@@ -73,6 +75,7 @@ function DashboardApp() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [executions, setExecutions] = useState<ExecutionRecord[]>([]);
   const [stopOrders, setStopOrders] = useState<StopOrder[]>([]);
+  const [instanceStatus, setInstanceStatus] = useState<InstanceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [aiTraderArchived, setAiTraderArchived] = useState(true);
@@ -94,7 +97,7 @@ function DashboardApp() {
   const loadData = useCallback(async () => {
     if (!selected) return;
     try {
-      const [ind, p, l, pf, ev, d, ord, exe, stops] = await Promise.allSettled([
+      const [ind, p, l, pf, ev, d, ord, exe, stops, st] = await Promise.allSettled([
         api.indicator(selected),
         api.pnl(selected),
         api.ledger(selected),
@@ -104,6 +107,7 @@ function DashboardApp() {
         api.orders(selected, 1000),
         api.executions(selected, 1000),
         api.stopOrders(selected),
+        api.instanceStatus(selected),
       ]);
       if (ind.status === 'fulfilled') setIndicator(ind.value);
       if (p.status === 'fulfilled') setPnl(p.value);
@@ -114,6 +118,8 @@ function DashboardApp() {
       if (ord.status === 'fulfilled') setOrders(ord.value ?? []);
       if (exe.status === 'fulfilled') setExecutions(exe.value ?? []);
       if (stops.status === 'fulfilled') setStopOrders(stops.value ?? []);
+      if (st.status === 'fulfilled') setInstanceStatus(st.value);
+      else setInstanceStatus(null);
       setLastUpdate(new Date());
       setError(null);
     } catch (e: unknown) {
@@ -139,6 +145,11 @@ function DashboardApp() {
     setTab(t);
     applyTabToURL(t);
   }, []);
+
+  const refreshAll = useCallback(() => {
+    void loadInstances();
+    void loadData();
+  }, [loadInstances, loadData]);
 
   useEffect(() => {
     if (aiTraderArchived && tab === 'ai-trader') {
@@ -236,6 +247,14 @@ function DashboardApp() {
 
       {tab === 'overview' && (
         <>
+          <BotControlBar
+            instance={current}
+            status={instanceStatus}
+            portfolio={portfolio}
+            recentEvents={events}
+            onAction={refreshAll}
+            onGoHistory={() => selectTab('history')}
+          />
           <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Stat label={t('totalPnl')} value={formatMoney(pnl?.total_rub, lang)} tone={(pnl?.total_rub ?? 0) < 0 ? 'danger' : 'success'} sub={<LabelWithHelp label={pnl?.source ?? t('source')} help={t('expectedYieldHelp')} />} />
             <Stat label={t('expectedYield')} help={t('expectedYieldHelp')} value={formatMoney(portfolio?.expected_yield, lang)} tone={(portfolio?.expected_yield ?? 0) < 0 ? 'danger' : 'success'} />

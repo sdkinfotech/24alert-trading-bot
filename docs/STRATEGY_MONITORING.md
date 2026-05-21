@@ -46,8 +46,9 @@ ssh adm-srv03-cloud@176.123.160.234
 - **Trade Event Log** — хронологическая лента событий (signals → signal cancelled → orders → executions) с цветовой кодировкой и фильтрами по типу. `Signal cancelled` означает, что стратегия сформировала торговую идею, но runner остановил её до заявки: например, weekend/session guard, risk rejection или ошибка отправки.
 - **Stats Panel** — Total/Realized/Unrealized PnL, runner ledger, broker truth, дневная статистика.
 - **Instance Selector** — выбор инстанса, статус (running/stopped).
+- **Управление ботом** (вкладка «Обзор») — старт/стоп инстанса, аварийное закрытие позиции (flatten), статус торговой сессии MOEX, ETA следующей свечи, PnL, риск-бейджи (mismatch, нет protective stop, stale feed), параметры из config, hot-reload config (секция «Для админа»).
 
-Автообновление каждые 30 секунд.
+Автообновление ~5 с на активной вкладке (~30 с в фоне).
 
 ### Доступ
 
@@ -74,6 +75,11 @@ npm run dev
 | `GET /instances/{id}/portfolio` | Broker-side portfolio snapshot: активные позиции по счёту, отметка `in_instance`, expected yield, sync time |
 | `GET /instances/{id}/signals?limit=N` | История сигналов из журнала |
 | `GET /instances/{id}/events?limit=N` | Объединённый таймлайн (signals + signal_cancelled + orders + executions) |
+| `GET /instances/{id}/status` | Операторский статус: сессия, свечи, позиция, mismatch, watchdog limits |
+| `POST /instances/{id}/start` | Запуск инстанса из config |
+| `POST /instances/{id}/stop` | Остановка инстанса |
+| `POST /instances/{id}/flatten` | Market-закрытие позиций инстанса (journal: `manual_flatten`) |
+| `POST /config/reload` | Hot-reload `config.yaml` (added/removed/changed instances) |
 
 Важно: при startup runner до подписки на новые свечи синхронизирует broker positions в runner ledger и strategy state. `/portfolio` остаётся главным внешним источником истины, а расхождение `/portfolio`, `/ledger` и `strategy state` после startup sync считается опасным состоянием, а не нормой.
 
@@ -261,6 +267,28 @@ curl -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/stop
 
 # Запуск (инстанс должен быть в конфиге)
 curl -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/start
+```
+
+### Операторский статус
+
+```bash
+curl -s http://127.0.0.1:9020/instances/fut-gas-mini-sma/status | jq
+```
+
+Поля: `trading_window` (в сессии / вне), `next_candle_close_at`, `ledger_mismatch`, `open_position`, `daily_pnl_rub`, `watchdog_limits`.
+
+### Аварийное закрытие позиции (flatten)
+
+```bash
+curl -s -X POST http://127.0.0.1:9020/instances/fut-gas-mini-sma/flatten | jq
+```
+
+Ответ: `{"status":"ok","orders_submitted":1,"instance_id":"..."}`. Событие в журнале: `manual_flatten`. Инстанс после flatten **не** останавливается автоматически.
+
+### Hot-reload config
+
+```bash
+curl -s -X POST http://127.0.0.1:9020/config/reload | jq
 ```
 
 ## Prometheus метрики

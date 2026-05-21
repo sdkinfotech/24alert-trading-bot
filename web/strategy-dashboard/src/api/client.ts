@@ -1,5 +1,8 @@
 import type {
   Instance,
+  InstanceStatus,
+  FlattenResult,
+  ReloadConfigResult,
   PnlData,
   LedgerData,
   PortfolioSnapshot,
@@ -38,6 +41,24 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return parseResponse<T>(res);
 }
 
+async function postNoContent(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    try {
+      const parsed = JSON.parse(raw) as { error?: string; message?: string };
+      throw new Error(parsed.error || parsed.message || `${res.status} ${res.statusText}`);
+    } catch (e) {
+      if (e instanceof Error && e.message !== 'Unexpected token') throw e;
+      throw new Error(raw || `${res.status} ${res.statusText}`);
+    }
+  }
+}
+
 async function parseResponse<T>(res: Response): Promise<T> {
   const contentType = res.headers.get('content-type') ?? '';
   const raw = await res.text();
@@ -63,6 +84,13 @@ async function parseResponse<T>(res: Response): Promise<T> {
 
 export const api = {
   instances: () => get<Instance[]>('/instances'),
+  startInstance: (id: string) => postNoContent(`/instances/${encodeURIComponent(id)}/start`),
+  stopInstance: (id: string) => postNoContent(`/instances/${encodeURIComponent(id)}/stop`),
+  flattenInstance: (id: string) =>
+    post<FlattenResult>(`/instances/${encodeURIComponent(id)}/flatten`, {}),
+  instanceStatus: (id: string) =>
+    get<InstanceStatus>(`/instances/${encodeURIComponent(id)}/status`),
+  reloadConfig: () => post<ReloadConfigResult>('/config/reload', {}),
   pnl: (id: string) => get<PnlData>(`/instances/${id}/pnl`),
   ledger: (id: string) => get<LedgerData>(`/instances/${id}/ledger`),
   portfolio: (id: string) => get<PortfolioSnapshot>(`/instances/${id}/portfolio`),
