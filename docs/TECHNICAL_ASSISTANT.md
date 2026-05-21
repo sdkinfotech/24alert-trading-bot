@@ -4,7 +4,9 @@ Read-only анализ инструмента по тикеру: много-TF �
 
 ## Dashboard
 
-Вкладка **«Ассистент»** (`http://127.0.0.1:9020/dashboard/#assistant`):
+Вкладка **«Ассистент»** (`http://127.0.0.1:9020/dashboard/#assistant` или `https://gateway.24alert.ru:8080/dashboard/#assistant`):
+
+**Nginx:** на `gateway.24alert.ru` нужен `location /assistant` → `:9020` (см. `deployments/nginx-assistant-location.snippet`, скрипт `deployments/patch-nginx-assistant.sh`). Без этого UI покажет `404 Not Found nginx`.
 
 1. Выберите тикер (каталог MOEX).
 2. **Анализировать** — async job 30–90 с.
