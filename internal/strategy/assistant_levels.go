@@ -9,33 +9,46 @@ import (
 	"github.com/24alert/trading-bot/internal/marketdata"
 )
 
+// buildAssistantLevels builds zones top-down: daily → hourly → mirrors/5m POC.
 func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
-	// Structural: year/quarter on daily; intraday focus on last ~5 sessions on 1h.
 	ref := refPrice(cs)
-	dailyLv := levelsFromAITrader(trimDailyLevels(computeDailyLevels(cs.Daily1y, 365), assistantDailyHighsLows))
-	quarterLv := levelsFromAITrader(nearestDailyRangeLevels(cs.Daily90d, 90, ref))
-	hourlyLv := levelsFromAITrader(trimHourlyLevels(computeHourlyLevels(cs.Hourly1m, 5*16), assistantHourlyHighsLows))
-	poc1d := pocLevel(cs.Daily90d, "1d")
-	poc5m := pocLevel(cs.FiveMin7d, "5m")
-	poc1h := pocLevel(cs.Hourly1m, "1h")
+	zoneTol := ref * clusterTolerancePct(ref)
 
-	merged := mergeAssistantLevels(dailyLv, quarterLv, hourlyLv)
-	if poc1d != nil {
-		merged = append(merged, *poc1d)
+	// --- Tier 0: daily structure (year + quarter swings + bracket + POC) ---
+	dailyRows := trimDailyLevels(computeDailyLevels(cs.Daily1y, 365), assistantDailyHighsLows)
+	dailyRows = append(dailyRows, dailySwingLevels(cs.Daily90d, 90, assistantDailySwingWing, assistantDailySwingMax)...)
+	dailyRows = append(dailyRows, nearestDailyRangeLevels(cs.Daily90d, 90, ref)...)
+	daily := levelsFromAITrader(dailyRows)
+	if poc := pocLevel(cs.Daily90d, "1d"); poc != nil {
+		daily = mergeAssistantLevels(daily, []AssistantLevel{*poc})
 	}
-	if poc5m != nil {
-		merged = append(merged, *poc5m)
-	}
-	if poc1h != nil {
-		merged = append(merged, *poc1h)
-	}
+	daily = clusterAssistantLevels(daily, ref)
 
+	// --- Tier 1: hourly (skip if already inside daily zone) ---
+	hourlyRows := trimHourlyLevels(computeHourlyLevels(cs.Hourly1m, 5*16), assistantHourlyHighsLows)
+	hourly := levelsFromAITrader(hourlyRows)
+	if poc := pocLevel(cs.Hourly1m, "1h"); poc != nil {
+		hourly = mergeAssistantLevels(hourly, []AssistantLevel{*poc})
+	}
+	hourly = rejectLevelsNearZones(hourly, daily, zoneTol)
+
+	merged := mergeAssistantLevels(daily, hourly)
+	merged = clusterAssistantLevels(merged, ref)
+
+	// --- Tier 2: mirrors + 5m POC (only new zones) ---
 	mirrors := detectMirrorLevels(cs.Hourly1m, cs.Daily90d, ref)
-	merged = mergeAssistantLevels(merged, mirrors)
+	mirrors = rejectLevelsNearZones(mirrors, merged, zoneTol*0.85)
+	var intraday []AssistantLevel
+	if poc := pocLevel(cs.FiveMin7d, "5m"); poc != nil {
+		intraday = append(intraday, *poc)
+	}
+	intraday = rejectLevelsNearZones(intraday, merged, zoneTol*0.85)
+	merged = mergeAssistantLevels(merged, mirrors, intraday)
 	merged = clusterAssistantLevels(merged, ref)
 
 	for i := range merged {
 		enrichLevelVolumeStats(&merged[i], cs)
+		merged[i].Strength = strengthFromLevel(merged[i])
 	}
 	sort.Slice(merged, func(i, j int) bool {
 		if merged[i].Strength != merged[j].Strength {
@@ -47,7 +60,6 @@ func buildAssistantLevels(cs assistantCandleSet) []AssistantLevel {
 	return assignLevelIDs(merged)
 }
 
-// trimDailyLevels keeps top N highs and N lows from computeDailyLevels output.
 func trimDailyLevels(rows []AITraderLevel, n int) []AITraderLevel {
 	var highs, lows []AITraderLevel
 	for _, l := range rows {
@@ -70,7 +82,7 @@ func trimHourlyLevels(rows []AITraderLevel, n int) []AITraderLevel {
 	return trimDailyLevels(rows, n)
 }
 
-// refPrice is last trade proxy for clustering and caps (5m preferred).
+// refPrice — единая опорная цена для отчёта, кластеров и фильтра всех графиков.
 func refPrice(cs assistantCandleSet) float64 {
 	if r := lastClose(cs.FiveMin7d); r > 0 {
 		return r
@@ -81,7 +93,6 @@ func refPrice(cs assistantCandleSet) float64 {
 	return lastClose(cs.Daily1y)
 }
 
-// nearestDailyRangeLevels picks the closest daily high above ref and low below ref (90d window).
 func nearestDailyRangeLevels(daily []marketdata.Candle, days int, ref float64) []AITraderLevel {
 	if ref <= 0 || len(daily) == 0 {
 		return nil
@@ -96,15 +107,13 @@ func nearestDailyRangeLevels(daily []marketdata.Candle, days int, ref float64) [
 		c := daily[i]
 		date := c.Time.UTC().Format("2006-01-02")
 		if c.High >= ref {
-			d := c.High - ref
-			if d < highDist {
+			if d := c.High - ref; d < highDist {
 				highDist = d
 				bestHigh = &AITraderLevel{Price: c.High, Kind: "resistance", Source: "daily90_high " + date, Rank: 1}
 			}
 		}
 		if c.Low <= ref {
-			d := ref - c.Low
-			if d < lowDist {
+			if d := ref - c.Low; d < lowDist {
 				lowDist = d
 				bestLow = &AITraderLevel{Price: c.Low, Kind: "support", Source: "daily90_low " + date, Rank: 1}
 			}
@@ -116,6 +125,45 @@ func nearestDailyRangeLevels(daily []marketdata.Candle, days int, ref float64) [
 	}
 	if bestLow != nil {
 		out = append(out, *bestLow)
+	}
+	return out
+}
+
+// dailySwingLevels adds significant D1 swings (not only absolute year extremes).
+func dailySwingLevels(daily []marketdata.Candle, days, wing, maxN int) []AITraderLevel {
+	if len(daily) < wing*2+3 {
+		return nil
+	}
+	start := 0
+	if len(daily) > days {
+		start = len(daily) - days
+	}
+	slice := daily[start:]
+	ref := lastClose(slice)
+	swings := collectSwingLevels(slice, wing)
+	if len(swings) == 0 {
+		return nil
+	}
+	tol := ref * clusterTolerancePct(ref)
+	clustered := mergeNearLevels(swings, tol)
+	sort.Slice(clustered, func(i, j int) bool {
+		return math.Abs(clustered[i]-ref) > math.Abs(clustered[j]-ref)
+	})
+	if len(clustered) > maxN {
+		clustered = clustered[:maxN]
+	}
+	out := make([]AITraderLevel, 0, len(clustered))
+	for rank, price := range clustered {
+		kind := "resistance"
+		if price < ref {
+			kind = "support"
+		}
+		out = append(out, AITraderLevel{
+			Price:  price,
+			Kind:   kind,
+			Source: fmt.Sprintf("daily_swing_%s rank%d", kind, rank+1),
+			Rank:   rank + 1,
+		})
 	}
 	return out
 }
@@ -172,9 +220,6 @@ func pocLevel(candles []marketdata.Candle, tf string) *AssistantLevel {
 		lo, hi float64
 		vol    int64
 	}
-	if len(candles) == 0 {
-		return nil
-	}
 	minP, maxP := candles[0].Low, candles[0].High
 	for _, c := range candles {
 		if c.Low < minP {
@@ -225,24 +270,34 @@ func pocLevel(candles []marketdata.Candle, tf string) *AssistantLevel {
 	}
 }
 
+func candlesForLevelSource(source string, cs assistantCandleSet) []marketdata.Candle {
+	switch {
+	case isDailyStructuralSource(source):
+		if len(cs.Daily90d) > 0 {
+			return cs.Daily90d
+		}
+		return cs.Daily1y
+	case strings.HasPrefix(source, "hourly"), strings.HasPrefix(source, "mirror"), strings.HasPrefix(source, "volume_poc_1h"):
+		return cs.Hourly1m
+	case strings.HasPrefix(source, "volume_poc_5m"):
+		return cs.FiveMin7d
+	default:
+		return cs.Hourly1m
+	}
+}
+
 func enrichLevelVolumeStats(l *AssistantLevel, cs assistantCandleSet) {
 	if l == nil {
 		return
 	}
-	tol := levelTolerance(l.Price, cs)
-	candles := cs.Hourly1m
-	if len(candles) == 0 {
-		candles = cs.FiveMin7d
-	}
-	var vol int64
-	var touches int
+	candles := candlesForLevelSource(l.Source, cs)
+	tol := levelTolerance(l.Price)
+	touches, vol := countTouchesDeduped(candles, l.Price, tol)
 	var reactions []float64
 	for _, c := range candles {
 		if !candleTouchesLevel(c, l.Price, tol) {
 			continue
 		}
-		touches++
-		vol += c.Volume
 		reactions = append(reactions, candleReactionBPS(c, l.Kind))
 	}
 	l.Touches = touches
@@ -254,15 +309,46 @@ func enrichLevelVolumeStats(l *AssistantLevel, cs assistantCandleSet) {
 		}
 		l.AvgReactionBPS = sum / float64(len(reactions))
 	}
-	l.VolumeNote = fmt.Sprintf("касаний %d, объём в зоне %d, средняя реакция %.0f bps", touches, vol, l.AvgReactionBPS)
+	tf := levelSourceTF(l.Source)
+	l.VolumeNote = fmt.Sprintf("%s: касаний %d, объём в зоне %d, реакция %.0f bps", tf, touches, vol, l.AvgReactionBPS)
 }
 
-func levelTolerance(price float64, cs assistantCandleSet) float64 {
+func levelSourceTF(source string) string {
+	switch {
+	case isDailyStructuralSource(source):
+		return "1d"
+	case strings.HasPrefix(source, "hourly"), strings.HasPrefix(source, "mirror"), strings.HasPrefix(source, "volume_poc_1h"):
+		return "1h"
+	case strings.HasPrefix(source, "volume_poc_5m"):
+		return "5m"
+	default:
+		return "1h"
+	}
+}
+
+func levelTolerance(price float64) float64 {
 	if price <= 0 {
 		return 0.001
 	}
-	// ~0.15% or min tick proxy
 	return math.Max(price*0.0015, 0.0001)
+}
+
+// countTouchesDeduped counts entries into the zone (not every bar inside the zone).
+func countTouchesDeduped(candles []marketdata.Candle, price, tol float64) (touches int, vol int64) {
+	inZone := false
+	for _, c := range candles {
+		touch := candleTouchesLevel(c, price, tol)
+		if touch {
+			vol += c.Volume
+			if !inZone {
+				touches++
+				inZone = true
+			}
+			continue
+		}
+		inZone = false
+	}
+	return touches, vol
 }
 
 func candleTouchesLevel(c marketdata.Candle, level, tol float64) bool {
@@ -272,6 +358,9 @@ func candleTouchesLevel(c marketdata.Candle, level, tol float64) bool {
 }
 
 func candleReactionBPS(c marketdata.Candle, kind string) float64 {
+	if c.Open <= 0 {
+		return 0
+	}
 	body := (c.Close - c.Open) / c.Open * 10000
 	if strings.Contains(kind, "support") && body > 0 {
 		return body
@@ -283,24 +372,25 @@ func candleReactionBPS(c marketdata.Candle, kind string) float64 {
 }
 
 func buildAssistantCharts(cs assistantCandleSet, levels []AssistantLevel) map[string]AssistantChartPayload {
+	ref := refPrice(cs)
 	return map[string]AssistantChartPayload{
 		"1d": {
 			Timeframe: "1d",
 			Horizon:   "year",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Daily1y, 400)),
-			Levels:    filterLevelsForChart(levels, "1d", chartRefPrice(cs, "1d")),
+			Levels:    filterLevelsForChart(levels, "1d", ref),
 		},
 		"1h": {
 			Timeframe: "1h",
 			Horizon:   "month",
 			Candles:   candlesToAssistantBars(tailCandles(cs.Hourly1m, 600)),
-			Levels:    filterLevelsForChart(levels, "1h", chartRefPrice(cs, "1h")),
+			Levels:    filterLevelsForChart(levels, "1h", ref),
 		},
 		"5m": {
 			Timeframe: "5m",
 			Horizon:   "week",
 			Candles:   candlesToAssistantBars(cs.FiveMin7d),
-			Levels:    filterLevelsForChart(levels, "5m", chartRefPrice(cs, "5m")),
+			Levels:    filterLevelsForChart(levels, "5m", ref),
 		},
 	}
 }

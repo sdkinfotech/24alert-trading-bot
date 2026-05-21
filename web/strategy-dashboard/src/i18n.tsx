@@ -14,7 +14,9 @@ const ru: Dict = {
   guide: 'Справка',
   assistant: 'Ассистент',
   assistantTitle: 'Технический ассистент',
-  assistantSubtitle: 'Анализ уровней по истории (год → час). Без автоторговли.',
+  assistantSubtitle: 'Авто-зоны по истории (D1→1h→5m). Не торговый сигнал, без автоторговли.',
+  assistantDisclaimer:
+    'Уровни считаются математически по свечам; касания — на том TF, откуда взят уровень. Проверяйте вручную перед сделкой.',
   assistantAnalyze: 'Анализировать',
   assistantRunning: 'Анализ…',
   assistantFallback: 'Шаблон (LLM недоступен)',
@@ -333,7 +335,9 @@ const en: Dict = {
   guide: 'Guide',
   assistant: 'Assistant',
   assistantTitle: 'Technical assistant',
-  assistantSubtitle: 'Level analysis from history (year → hour). No auto-trading.',
+  assistantSubtitle: 'Auto zones from history (D1→1h→5m). Not a trade signal; no auto-trading.',
+  assistantDisclaimer:
+    'Levels are computed from candles; touches use each level’s source timeframe. Verify manually before trading.',
   assistantAnalyze: 'Analyze',
   assistantRunning: 'Analyzing…',
   assistantFallback: 'Template (LLM unavailable)',

@@ -78,7 +78,7 @@ func (r *Runner) runAssistantAnalysisJob(parent context.Context, id string, pick
 	levels := buildAssistantLevels(cs)
 	update(55, "running", "")
 
-	lastPx := lastClose(cs.FiveMin7d)
+	lastPx := refPrice(cs)
 	facts := AssistantFacts{
 		Ticker:        pick.Ticker,
 		InstrumentUID: pick.UID,
@@ -93,7 +93,7 @@ func (r *Runner) runAssistantAnalysisJob(parent context.Context, id string, pick
 		Levels:        levels,
 		RecentTrend1h: recentTrendLabel(cs.Hourly1w, 40),
 		RecentTrend1d: recentTrendLabel(cs.Daily90d, 20),
-		VolumeSummary: fmt.Sprintf("POC и касания посчитаны по 1h/5m; последняя цена %.4f", lastPx),
+		VolumeSummary: fmt.Sprintf("Опорная цена %.4f (последний 5m/1h); касания на TF источника уровня; зоны авто, не сигнал к сделке.", lastPx),
 	}
 	update(70, "running", "")
 

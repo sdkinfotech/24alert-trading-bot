@@ -87,6 +87,7 @@ export function AssistantPanel() {
             {loading ? t('assistantRunning') : t('assistantAnalyze')}
           </Button>
         </div>
+        <p className="mt-3 text-xs text-[var(--muted)]">{t('assistantDisclaimer')}</p>
         {error && (
           <p className="mt-3 text-sm text-[var(--danger)]">{error}</p>
         )}

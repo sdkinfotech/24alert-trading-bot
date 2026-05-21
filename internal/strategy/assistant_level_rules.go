@@ -9,26 +9,25 @@ import (
 
 // Level build limits (see docs/TECHNICAL_ASSISTANT.md).
 const (
-	assistantMaxLevelsTotal   = 18
-	assistantMaxMirrorLevels  = 5
-	assistantDailyHighsLows   = 2 // per side from daily horizon
-	assistantHourlyHighsLows  = 2 // per side from ~5 trading days on 1h
-	assistantSwingWingBars    = 5 // hourly swing sensitivity (higher = fewer pivots)
+	assistantMaxLevelsTotal  = 18
+	assistantMaxMirrorLevels = 5
+	assistantDailyHighsLows  = 2
+	assistantHourlyHighsLows = 2
+	assistantDailySwingWing  = 3
+	assistantDailySwingMax   = 4
+	assistantSwingWingBars   = 5
 )
 
-// clusterTolerancePct returns merge distance as fraction of reference price.
 func clusterTolerancePct(refPrice float64) float64 {
 	if refPrice <= 0 {
 		return 0.002
 	}
-	// Shares ~0.25%; low-priced futures slightly wider.
 	if refPrice < 50 {
 		return 0.004
 	}
 	return 0.0025
 }
 
-// clusterAssistantLevels merges levels closer than clusterTolerance into one zone.
 func clusterAssistantLevels(levels []AssistantLevel, refPrice float64) []AssistantLevel {
 	if len(levels) == 0 {
 		return nil
@@ -84,7 +83,30 @@ func mergeSourceLabel(a, b string) string {
 	return a + "; " + b
 }
 
-// capAssistantLevels keeps a mix of near-price and far structural levels (not only one tight band).
+// rejectLevelsNearZones drops intraday candidates already covered by higher-TF zones.
+func rejectLevelsNearZones(candidates, zones []AssistantLevel, tol float64) []AssistantLevel {
+	if len(candidates) == 0 {
+		return nil
+	}
+	var out []AssistantLevel
+	for _, c := range candidates {
+		if levelNearAnyZone(c.Price, zones, tol) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func levelNearAnyZone(price float64, zones []AssistantLevel, tol float64) bool {
+	for _, z := range zones {
+		if math.Abs(z.Price-price) <= tol {
+			return true
+		}
+	}
+	return false
+}
+
 func capAssistantLevels(levels []AssistantLevel, refPrice float64, max int) []AssistantLevel {
 	if max <= 0 || len(levels) <= max {
 		return levels
@@ -92,11 +114,11 @@ func capAssistantLevels(levels []AssistantLevel, refPrice float64, max int) []As
 	if refPrice <= 0 {
 		refPrice = levels[0].Price
 	}
-	nearBand := 0.025 // 2.5% — intraday mirrors/POC
+	nearBand := 0.025
 	var near, far []AssistantLevel
 	for _, l := range levels {
 		dist := math.Abs(l.Price-refPrice) / refPrice
-		if dist <= nearBand || strings.HasPrefix(l.Source, "volume_poc") {
+		if dist <= nearBand || strings.HasPrefix(l.Source, "volume_poc") || l.Kind == "mirror" {
 			near = append(near, l)
 		} else if strings.HasPrefix(l.Source, "daily") || l.Strength >= 4 {
 			far = append(far, l)
@@ -155,41 +177,25 @@ func takeAssistantLevels(in []AssistantLevel, n int) []AssistantLevel {
 	return append([]AssistantLevel(nil), in[:n]...)
 }
 
-// chartRefPrice is the anchor for distance filters; must match the chart's candle series.
-func chartRefPrice(cs assistantCandleSet, tf string) float64 {
-	switch tf {
-	case "1d":
-		if r := lastClose(cs.Daily1y); r > 0 {
-			return r
-		}
-		return lastClose(cs.Daily90d)
-	case "1h":
-		if r := lastClose(cs.Hourly1m); r > 0 {
-			return r
-		}
-		return lastClose(cs.Hourly1w)
-	default:
-		if r := lastClose(cs.FiveMin7d); r > 0 {
-			return r
-		}
-		return lastClose(cs.Hourly1m)
-	}
-}
-
 func filterLevelsForChart(levels []AssistantLevel, tf string, ref float64) []AssistantLevel {
-	maxDist := map[string]float64{"1h": 0.06, "5m": 0.018}[tf]
-	maxN := map[string]int{"1d": 6, "1h": 10, "5m": 8}[tf]
+	maxDist := map[string]float64{"1h": 0.08, "5m": 0.02}[tf]
+	maxN := map[string]int{"1d": 8, "1h": 10, "5m": 8}[tf]
 	var pool []AssistantLevel
 	for _, l := range levels {
 		switch tf {
 		case "1d":
-			// Year chart: multi-day structure only (no mirrors / 5m POC).
-			if strings.HasPrefix(l.Source, "daily") || strings.HasPrefix(l.Source, "volume_poc_1d") {
+			if isDailyStructuralSource(l.Source) {
 				pool = append(pool, l)
 			}
 		case "1h":
 			if strings.HasPrefix(l.Source, "hourly") || strings.HasPrefix(l.Source, "volume_poc_1h") ||
-				(l.Kind == "mirror" && chartDistance(l.Price, ref) <= maxDist) {
+				strings.HasPrefix(l.Source, "mirror") {
+				if chartDistance(l.Price, ref) <= maxDist {
+					pool = append(pool, l)
+				}
+			}
+			// Show nearest daily bracket on 1h for context.
+			if isDailyStructuralSource(l.Source) && chartDistance(l.Price, ref) <= 0.12 {
 				pool = append(pool, l)
 			}
 		case "5m":
@@ -200,7 +206,26 @@ func filterLevelsForChart(levels []AssistantLevel, tf string, ref float64) []Ass
 			pool = append(pool, l)
 		}
 	}
+	pool = dedupeLevelsByPrice(pool)
 	return capAssistantLevels(pool, ref, maxN)
+}
+
+func isDailyStructuralSource(source string) bool {
+	return strings.HasPrefix(source, "daily") || strings.HasPrefix(source, "volume_poc_1d")
+}
+
+func dedupeLevelsByPrice(levels []AssistantLevel) []AssistantLevel {
+	seen := map[string]bool{}
+	var out []AssistantLevel
+	for _, l := range levels {
+		k := fmt.Sprintf("%.4f", l.Price)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, l)
+	}
+	return out
 }
 
 func chartDistance(price, ref float64) float64 {
@@ -210,10 +235,36 @@ func chartDistance(price, ref float64) float64 {
 	return math.Abs(price-ref) / ref
 }
 
-// assignLevelIDs sets L1..Ln after sort by strength.
 func assignLevelIDs(levels []AssistantLevel) []AssistantLevel {
 	for i := range levels {
 		levels[i].ID = fmt.Sprintf("L%d", i+1)
 	}
 	return levels
+}
+
+func strengthFromLevel(l AssistantLevel) int {
+	s := 2
+	switch {
+	case isDailyStructuralSource(l.Source):
+		s = 4
+	case strings.HasPrefix(l.Source, "hourly"):
+		s = 3
+	case l.Kind == "mirror":
+		s = 3
+	case strings.HasPrefix(l.Source, "volume_poc"):
+		s = 4
+	}
+	if l.Touches >= 3 {
+		s++
+	}
+	if l.Touches >= 10 {
+		s++
+	}
+	if s > 5 {
+		return 5
+	}
+	if s < 1 {
+		return 1
+	}
+	return s
 }
