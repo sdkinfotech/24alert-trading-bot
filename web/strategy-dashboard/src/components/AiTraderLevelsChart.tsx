@@ -1,104 +1,364 @@
-import { useMemo } from 'react';
-import type { AiTraderCandleBar, AiTraderSession } from '../api/types';
-import { useI18n } from '../i18n';
-import { formatNumber } from '../format';
-import { Badge, Card } from './ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  barPriceRange,
+  CandlestickSeries,
+  ColorType,
+  CrosshairMode,
+  LineStyle,
+  createChart,
+  createSeriesMarkers,
+  type IChartApi,
+  type IPriceLine,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
+import type { AiTraderCandleBar, AiTraderLevel, AiTraderSession } from '../api/types';
+import { useI18n } from '../i18n';
+import { formatDateTime, formatNumber } from '../format';
+import { useTheme } from '../theme';
+import { Card } from './ui';
+import {
+  collectSessionChartLevels,
   enrichLevels,
-  pickChartLevels,
   shortLevelSource,
-  type EnrichedLevel,
+  type ChartLevelLine,
 } from './aiTraderLevelUtils';
 
 interface Props {
   session: AiTraderSession;
 }
 
-const CHART_W = 720;
-const CHART_H = 280;
-const PAD_LEFT = 52;
-const PAD_RIGHT = 88;
-
-function levelStroke(lv: EnrichedLevel): string {
-  if (lv.kind === 'support') return '#22c55e';
-  if (lv.kind === 'resistance') return '#ef4444';
-  return '#94a3b8';
+function toUnix(t: string): UTCTimestamp {
+  return Math.floor(new Date(t).getTime() / 1000) as UTCTimestamp;
 }
 
-function levelDash(source: string): string {
-  if (source.startsWith('hourly')) return '5 4';
-  if (source.startsWith('daily')) return '10 4';
-  return '4 2';
+function levelLineStyle(lv: ChartLevelLine): {
+  color: string;
+  lineWidth: 1 | 2 | 3 | 4;
+  lineStyle: LineStyle;
+  title: string;
+} {
+  const tag = shortLevelSource(lv.level.source);
+  const kind = lv.level.kind === 'support' ? 'S' : lv.level.kind === 'resistance' ? 'R' : '·';
+  const title = `${kind} ${tag}`;
+  if (lv.tier === 'preferred') {
+    return { color: '#38bdf8', lineWidth: 3, lineStyle: LineStyle.Solid, title: `★ ${title}` };
+  }
+  if (lv.tier === 'strategy') {
+    return { color: '#a78bfa', lineWidth: 3, lineStyle: LineStyle.Solid, title: `◎ ${title}` };
+  }
+  const isDaily = lv.level.source.startsWith('daily');
+  const isSupport = lv.level.kind === 'support';
+  const color = isSupport ? '#22c55e' : lv.level.kind === 'resistance' ? '#ef4444' : '#94a3b8';
+  return {
+    color,
+    lineWidth: isDaily ? 2 : 1,
+    lineStyle: isDaily ? LineStyle.Solid : LineStyle.Dashed,
+    title,
+  };
 }
 
 export function AiTraderLevelsChart({ session }: Props) {
   const { t, lang } = useI18n();
+  const { chart: chartTheme } = useTheme();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const priceLinesRef = useRef<IPriceLine[]>([]);
+  const fitOnceRef = useRef(true);
+  const [hover, setHover] = useState('');
+
   const bars = session.market_context?.chart_bars ?? [];
-  const rawLevels = session.market_context?.levels ?? session.level_playbook?.levels ?? [];
+  const rawLevels = useMemo(() => {
+    const merged: AiTraderLevel[] = [];
+    const seen = new Set<string>();
+    const add = (list?: AiTraderLevel[]) => {
+      for (const lv of list ?? []) {
+        const k = `${lv.kind}-${lv.price}-${lv.source}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(lv);
+      }
+    };
+    add(session.level_playbook?.levels);
+    add(session.market_context?.levels);
+    add(session.session_strategy?.key_levels);
+    add(session.active_policy?.preferred_levels);
+    return merged;
+  }, [
+    session.level_playbook?.levels,
+    session.market_context?.levels,
+    session.session_strategy?.key_levels,
+    session.active_policy?.preferred_levels,
+  ]);
+
   const refPrice =
     session.phase_progress?.buffer_stats?.last_price ??
     session.market_context?.tape_stats?.last_price ??
     session.features?.mid ??
     0;
 
-  const enriched = useMemo(() => enrichLevels(rawLevels, refPrice), [rawLevels, refPrice]);
-  const preferredPrices = useMemo(() => {
-    const set = new Set<number>();
-    for (const lv of session.active_policy?.preferred_levels ?? []) {
-      if (lv.price > 0) set.add(lv.price);
-    }
-    return set;
-  }, [session.active_policy?.preferred_levels]);
+  const chartLevels = useMemo(
+    () =>
+      collectSessionChartLevels(rawLevels, refPrice, {
+        preferred: session.active_policy?.preferred_levels,
+        strategy: session.session_strategy?.key_levels,
+      }),
+    [rawLevels, refPrice, session.active_policy?.preferred_levels, session.session_strategy?.key_levels],
+  );
+
+  const enrichedLadder = useMemo(() => enrichLevels(rawLevels, refPrice), [rawLevels, refPrice]);
+
   const refreshLabel = session.last_playbook_refresh_at
-    ? new Date(session.last_playbook_refresh_at).toLocaleTimeString('ru-RU')
+    ? new Date(session.last_playbook_refresh_at).toLocaleTimeString(lang === 'ru' ? 'ru-RU' : 'en-US')
     : null;
 
-  const layout = useMemo(() => {
-    const recent = bars.slice(-45);
-    const br = barPriceRange(recent);
-    if (!br && enriched.length === 0) return null;
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: chartTheme.background },
+        textColor: chartTheme.text,
+      },
+      localization: {
+        locale: lang === 'ru' ? 'ru-RU' : 'en-US',
+        timeFormatter: (time: number | string) =>
+          typeof time === 'number' ? formatDateTime(time, lang) : String(time),
+      },
+      grid: {
+        vertLines: { color: chartTheme.grid },
+        horzLines: { color: chartTheme.grid },
+      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: chartTheme.border, autoScale: true },
+      timeScale: {
+        borderColor: chartTheme.border,
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 12,
+        barSpacing: 8,
+        tickMarkFormatter: (time: number | string) =>
+          typeof time === 'number' ? formatDateTime(time, lang) : String(time),
+      },
+      width: containerRef.current.clientWidth,
+      height: 440,
+    });
+    chartRef.current = chart;
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: chartTheme.up,
+      downColor: chartTheme.down,
+      borderUpColor: chartTheme.up,
+      borderDownColor: chartTheme.down,
+      wickUpColor: chartTheme.up,
+      wickDownColor: chartTheme.down,
+    });
+    seriesRef.current = series;
 
-    let minP = br?.min ?? refPrice * 0.998;
-    let maxP = br?.max ?? refPrice * 1.002;
-    if (refPrice > 0) {
-      minP = Math.min(minP, refPrice);
-      maxP = Math.max(maxP, refPrice);
-    }
-    const span = maxP - minP || refPrice * 0.002 || 0.01;
-    const pad = Math.max(span * 0.12, refPrice * 0.0008);
-    minP -= pad;
-    maxP += pad;
-    const range = maxP - minP;
-    const plotH = CHART_H - 24;
-    const plotW = CHART_W - PAD_LEFT - PAD_RIGHT;
-    const y = (p: number) => 12 + plotH - ((p - minP) / range) * plotH;
+    chart.subscribeCrosshairMove((param) => {
+      const point = param.seriesData.get(series);
+      if (!point || !('open' in point)) {
+        setHover('');
+        return;
+      }
+      const bar = point as { open: number; high: number; low: number; close: number };
+      setHover(
+        `O ${bar.open.toFixed(4)} · H ${bar.high.toFixed(4)} · L ${bar.low.toFixed(4)} · C ${bar.close.toFixed(4)}`,
+      );
+    });
 
-    const visible = pickChartLevels(enriched, refPrice, minP, maxP);
-    const tickCount = 5;
-    const ticks: number[] = [];
-    for (let i = 0; i < tickCount; i++) {
-      ticks.push(minP + (range * i) / (tickCount - 1));
-    }
-
-    const nearestSupport = enriched.filter((l) => l.price <= refPrice).sort((a, b) => b.price - a.price)[0];
-    const nearestResistance = enriched.filter((l) => l.price > refPrice).sort((a, b) => a.price - b.price)[0];
-
-    return {
-      minP,
-      maxP,
-      y,
-      plotW,
-      plotH,
-      recent,
-      visible,
-      ticks,
-      nearestSupport,
-      nearestResistance,
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) {
+        chart.applyOptions({ width: e.contentRect.width });
+      }
+    });
+    ro.observe(containerRef.current);
+    return () => {
+      ro.disconnect();
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      markersRef.current = null;
+      priceLinesRef.current = [];
     };
-  }, [bars, enriched, refPrice]);
+  }, [chartTheme, lang]);
 
-  if (!layout || refPrice <= 0) {
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || bars.length === 0) return;
+
+    for (const pl of priceLinesRef.current) {
+      series.removePriceLine(pl);
+    }
+    priceLinesRef.current = [];
+
+    const candles = bars.map((b: AiTraderCandleBar) => ({
+      time: toUnix(b.time),
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+    }));
+    series.setData(candles);
+
+    const firstBarT = candles.length ? (candles[0].time as number) : 0;
+    const lastBarT = candles.length ? (candles[candles.length - 1].time as number) : 0;
+    const clampBarTime = (t: number) => {
+      if (!candles.length) return t;
+      if (t < firstBarT) return firstBarT;
+      if (t > lastBarT) return lastBarT;
+      return t;
+    };
+
+    for (const cl of chartLevels) {
+      const st = levelLineStyle(cl);
+      const pl = series.createPriceLine({
+        price: cl.level.price,
+        color: st.color,
+        lineWidth: st.lineWidth,
+        lineStyle: st.lineStyle,
+        axisLabelVisible: true,
+        title: `${st.title} ${cl.level.price.toFixed(2)}`,
+      });
+      priceLinesRef.current.push(pl);
+    }
+
+    if (refPrice > 0) {
+      const pl = series.createPriceLine({
+        price: refPrice,
+        color: chartTheme.fast,
+        lineWidth: 2,
+        lineStyle: LineStyle.Solid,
+        axisLabelVisible: true,
+        title: t('currentPrice'),
+      });
+      priceLinesRef.current.push(pl);
+    }
+
+    const ls = session.live_state ?? session.paper_state;
+    if (ls?.avg_price && ls.avg_price > 0 && (ls.position_lots ?? 0) !== 0) {
+      const pl = series.createPriceLine({
+        price: ls.avg_price,
+        color: chartTheme.brokerAvg,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: `Avg ${ls.position_lots > 0 ? 'LONG' : 'SHORT'}`,
+      });
+      priceLinesRef.current.push(pl);
+    }
+
+    const sl = session.live_state?.stop_loss ?? session.paper_state?.stop_loss;
+    const tp = session.live_state?.take_profit ?? session.paper_state?.take_profit;
+    if (sl && sl > 0) {
+      priceLinesRef.current.push(
+        series.createPriceLine({
+          price: sl,
+          color: chartTheme.down,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: 'SL',
+        }),
+      );
+    }
+    if (tp && tp > 0) {
+      priceLinesRef.current.push(
+        series.createPriceLine({
+          price: tp,
+          color: chartTheme.up,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: 'TP',
+        }),
+      );
+    }
+
+    const sig = session.last_trade_signal;
+    if (sig?.level_price && sig.level_price > 0) {
+      priceLinesRef.current.push(
+        series.createPriceLine({
+          price: sig.level_price,
+          color: chartTheme.trailing,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: `LLM ${sig.side}`,
+        }),
+      );
+    }
+
+    for (const o of session.live_state?.working_orders ?? session.paper_state?.working_orders ?? []) {
+      if (!o.price || o.price <= 0 || o.status === 'cancelled') continue;
+      priceLinesRef.current.push(
+        series.createPriceLine({
+          price: o.price,
+          color: o.side === 'buy' ? chartTheme.up : chartTheme.down,
+          lineWidth: 1,
+          lineStyle: LineStyle.SparseDotted,
+          axisLabelVisible: true,
+          title: `${o.side} lim`,
+        }),
+      );
+    }
+
+    const markers: {
+      time: UTCTimestamp;
+      position: 'aboveBar' | 'belowBar' | 'inBar';
+      color: string;
+      shape: 'circle' | 'arrowUp' | 'arrowDown';
+      text?: string;
+    }[] = [];
+
+    for (const p of session.market_context?.recent_prints ?? []) {
+      if (!p.time || !p.price) continue;
+      markers.push({
+        time: clampBarTime(toUnix(p.time) as number) as UTCTimestamp,
+        position: p.direction === 'buy' ? 'belowBar' : 'aboveBar',
+        color: p.direction === 'buy' ? chartTheme.up : chartTheme.down,
+        shape: 'circle',
+        text: `${p.direction === 'buy' ? 'B' : 'S'} ${p.quantity}`,
+      });
+    }
+
+    for (const e of session.execution_log ?? []) {
+      if (!e.time || !e.price) continue;
+      markers.push({
+        time: clampBarTime(toUnix(e.time) as number) as UTCTimestamp,
+        position: 'inBar',
+        color: e.kind === 'entry' ? chartTheme.fill : chartTheme.text,
+        shape: e.side === 'buy' ? 'arrowUp' : 'arrowDown',
+        text: `${e.kind} ${e.side}`,
+      });
+    }
+
+    markers.sort((a, b) => Number(a.time) - Number(b.time));
+    if (markers.length > 0) {
+      if (markersRef.current) {
+        markersRef.current.setMarkers(markers);
+      } else {
+        markersRef.current = createSeriesMarkers(series, markers);
+      }
+    } else if (markersRef.current) {
+      markersRef.current.setMarkers([]);
+    }
+
+    requestAnimationFrame(() => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      const ts = chart.timeScale();
+      if (fitOnceRef.current) {
+        ts.fitContent();
+        fitOnceRef.current = false;
+      } else {
+        ts.scrollToRealTime();
+      }
+    });
+  }, [bars, chartLevels, refPrice, session, chartTheme, t]);
+
+  if (bars.length === 0 || refPrice <= 0) {
     return (
       <Card title={t('levelsChartTitle')} subtitle={t('levelsChartWaiting')}>
         <p className="text-sm text-[var(--muted)]">{t('levelsChartWaiting')}</p>
@@ -106,170 +366,92 @@ export function AiTraderLevelsChart({ session }: Props) {
     );
   }
 
-  const barW = Math.max(3, layout.plotW / Math.max(layout.recent.length, 1) - 1.5);
+  const nearestSupport = enrichedLadder.filter((l) => l.price <= refPrice).sort((a, b) => b.price - a.price)[0];
+  const nearestResistance = enrichedLadder.filter((l) => l.price > refPrice).sort((a, b) => a.price - b.price)[0];
 
   return (
     <Card
       title={t('levelsChartTitle')}
       subtitle={
         refreshLabel
-          ? `${t('levelsChartZoomNote')} · ${t('playbookRefreshedAt')} ${refreshLabel}`
-          : t('levelsChartZoomNote')
+          ? `${t('levelsChartTvNote')} · ${t('playbookRefreshedAt')} ${refreshLabel}`
+          : t('levelsChartTvNote')
       }
     >
-      <div className="ai-trader-levels-wrap">
-        <svg
-          className="ai-trader-levels-chart"
-          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-          preserveAspectRatio="xMidYMid meet"
+      <p className="text-xs text-[var(--muted)] mb-2 px-1">{t('levelsChartLegend')}</p>
+      <div className="relative">
+        {hover && (
+          <div className="absolute left-3 top-3 z-10 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] shadow">
+            {hover}
+          </div>
+        )}
+        <div
+          ref={containerRef}
+          className="ai-trader-tv-chart rounded-lg overflow-hidden border border-[var(--border)]"
           role="img"
           aria-label={t('levelsChartTitle')}
-        >
-          {layout.ticks.map((tick) => (
-            <g key={tick}>
-              <line
-                x1={PAD_LEFT}
-                y1={layout.y(tick)}
-                x2={PAD_LEFT + layout.plotW}
-                y2={layout.y(tick)}
-                stroke="var(--border)"
-                strokeWidth={0.5}
-                opacity={0.5}
-              />
-              <text
-                x={PAD_LEFT - 6}
-                y={layout.y(tick) + 4}
-                textAnchor="end"
-                className="ai-trader-chart-axis"
-              >
-                {formatNumber(tick, lang, 2)}
-              </text>
-            </g>
-          ))}
+        />
+      </div>
 
-          {layout.visible.map((lv) => {
-            const yy = layout.y(lv.price);
-            const preferred = preferredPrices.has(lv.price);
-            return (
-              <g key={`${lv.kind}-${lv.price}-${lv.source}`}>
-                <line
-                  x1={PAD_LEFT}
-                  y1={yy}
-                  x2={PAD_LEFT + layout.plotW}
-                  y2={yy}
-                  stroke={preferred ? 'var(--accent)' : levelStroke(lv)}
-                  strokeWidth={preferred ? 2.5 : lv.source.startsWith('daily') ? 1.5 : 1}
-                  strokeDasharray={preferred ? undefined : levelDash(lv.source)}
-                  opacity={preferred ? 1 : 0.9}
-                />
-                <text
-                  x={PAD_LEFT + layout.plotW + 4}
-                  y={yy + 4}
-                  className="ai-trader-chart-level-label"
-                  fill={levelStroke(lv)}
-                >
-                  {shortLevelSource(lv.source)} {formatNumber(lv.price, lang, 2)}
-                </text>
-              </g>
-            );
-          })}
+      <div className="ai-trader-nearest-levels mt-3">
+        {nearestSupport && (
+          <p className="text-sm">
+            <span className="text-[var(--success)] font-semibold">{t('nearestSupport')}:</span>{' '}
+            {formatNumber(nearestSupport.price, lang, 4)}{' '}
+            <span className="text-[var(--muted)]">
+              ({formatNumber(Math.abs(nearestSupport.dist_bps), lang, 1)} bps {t('levelBelow')})
+            </span>
+          </p>
+        )}
+        {nearestResistance && (
+          <p className="text-sm">
+            <span className="text-[var(--danger)] font-semibold">{t('nearestResistance')}:</span>{' '}
+            {formatNumber(nearestResistance.price, lang, 4)}{' '}
+            <span className="text-[var(--muted)]">
+              ({formatNumber(Math.abs(nearestResistance.dist_bps), lang, 1)} bps {t('levelAbove')})
+            </span>
+          </p>
+        )}
+      </div>
 
-          {layout.recent.map((b: AiTraderCandleBar, i: number) => {
-            const x = PAD_LEFT + i * (barW + 1.5);
-            const openY = layout.y(b.open);
-            const closeY = layout.y(b.close);
-            const highY = layout.y(b.high);
-            const lowY = layout.y(b.low);
-            const up = b.close >= b.open;
-            const color = up ? '#22c55e' : '#ef4444';
-            const bodyH = Math.max(2, Math.abs(closeY - openY));
-            return (
-              <g key={b.time}>
-                <line x1={x + barW / 2} y1={highY} x2={x + barW / 2} y2={lowY} stroke={color} strokeWidth={1.2} />
-                <rect
-                  x={x}
-                  y={Math.min(openY, closeY)}
-                  width={barW}
-                  height={bodyH}
-                  fill={color}
-                  opacity={0.9}
-                />
-              </g>
-            );
-          })}
-
-          <line
-            x1={PAD_LEFT}
-            y1={layout.y(refPrice)}
-            x2={PAD_LEFT + layout.plotW}
-            y2={layout.y(refPrice)}
-            stroke="var(--accent)"
-            strokeWidth={2.5}
-          />
-          <text
-            x={PAD_LEFT + layout.plotW + 4}
-            y={layout.y(refPrice) + 4}
-            className="ai-trader-chart-price-label"
-          >
-            {t('currentPrice')} {formatNumber(refPrice, lang, 2)}
-          </text>
-        </svg>
-
-        <div className="ai-trader-nearest-levels">
-          {layout.nearestSupport && (
-            <p className="text-sm">
-              <span className="text-[var(--success)] font-semibold">{t('nearestSupport')}:</span>{' '}
-              {formatNumber(layout.nearestSupport.price, lang, 4)}{' '}
-              <span className="text-[var(--muted)]">
-                ({formatNumber(Math.abs(layout.nearestSupport.dist_bps), lang, 1)} bps {t('levelBelow')})
-              </span>
-            </p>
-          )}
-          {layout.nearestResistance && (
-            <p className="text-sm">
-              <span className="text-[var(--danger)] font-semibold">{t('nearestResistance')}:</span>{' '}
-              {formatNumber(layout.nearestResistance.price, lang, 4)}{' '}
-              <span className="text-[var(--muted)]">
-                ({formatNumber(Math.abs(layout.nearestResistance.dist_bps), lang, 1)} bps {t('levelAbove')})
-              </span>
-            </p>
-          )}
-        </div>
-
-        <div className="ai-trader-levels-ladder mt-4">
-          <h4 className="text-xs font-semibold text-[var(--muted)] mb-2">{t('levelsLadderTitle')}</h4>
-          <p className="text-xs text-[var(--muted)] mb-2">{t('levelsLadderHelp')}</p>
-          <table className="ai-trader-levels-table">
-            <thead>
-              <tr>
-                <th>{t('levelKind')}</th>
-                <th>{t('levelPrice')}</th>
-                <th>{t('levelSource')}</th>
-                <th>{t('levelDistance')}</th>
+      <div className="ai-trader-levels-ladder mt-4">
+        <h4 className="text-xs font-semibold text-[var(--muted)] mb-2">{t('levelsLadderTitle')}</h4>
+        <p className="text-xs text-[var(--muted)] mb-2">{t('levelsLadderHelp')}</p>
+        <table className="ai-trader-levels-table">
+          <thead>
+            <tr>
+              <th>{t('levelKind')}</th>
+              <th>{t('levelPrice')}</th>
+              <th>{t('levelSource')}</th>
+              <th>{t('levelDistance')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {enrichedLadder.slice(0, 12).map((lv) => (
+              <tr key={`${lv.kind}-${lv.price}-${lv.source}`}>
+                <td>
+                  <span
+                    className={
+                      lv.kind === 'support'
+                        ? 'text-[var(--success)]'
+                        : lv.kind === 'resistance'
+                          ? 'text-[var(--danger)]'
+                          : 'text-[var(--muted)]'
+                    }
+                  >
+                    {lv.kind}
+                  </span>
+                </td>
+                <td className="font-mono">{formatNumber(lv.price, lang, 4)}</td>
+                <td className="text-[var(--muted)] text-xs">{shortLevelSource(lv.source)}</td>
+                <td className="font-mono text-xs">
+                  {lv.dist_bps >= 0 ? '−' : '+'}
+                  {formatNumber(Math.abs(lv.dist_bps), lang, 1)} bps
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {enriched.slice(0, 12).map((lv) => (
-                <tr key={`${lv.kind}-${lv.price}-${lv.source}`}>
-                  <td>
-                    <Badge tone={lv.kind === 'support' ? 'success' : lv.kind === 'resistance' ? 'danger' : 'neutral'}>
-                      {lv.kind}
-                    </Badge>
-                  </td>
-                  <td className="font-mono">{formatNumber(lv.price, lang, 4)}</td>
-                  <td className="text-[var(--muted)] text-xs">{shortLevelSource(lv.source)}</td>
-                  <td className="font-mono">
-                    {lv.dist_bps >= 0 ? '−' : '+'}
-                    {formatNumber(Math.abs(lv.dist_bps), lang, 1)} bps
-                    <span className="text-[var(--muted)] ml-1">
-                      ({lv.dist_bps > 2 ? t('levelBelow') : lv.dist_bps < -2 ? t('levelAbove') : '≈'})
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Card>
   );

@@ -54,3 +54,48 @@ export function barPriceRange(bars: { low: number; high: number }[]): { min: num
   }
   return { min, max };
 }
+
+export type LevelChartTier = 'preferred' | 'strategy' | 'playbook' | 'context';
+
+export interface ChartLevelLine {
+  level: EnrichedLevel;
+  tier: LevelChartTier;
+}
+
+function levelKey(price: number): string {
+  return price.toFixed(6);
+}
+
+/** Merge playbook, context, session strategy and policy levels for the chart. */
+export function collectSessionChartLevels(
+  raw: AiTraderLevel[],
+  refPrice: number,
+  opts?: {
+    preferred?: AiTraderLevel[];
+    strategy?: AiTraderLevel[];
+  },
+): ChartLevelLine[] {
+  const enriched = enrichLevels(raw, refPrice);
+  const byPrice = new Map<string, ChartLevelLine>();
+
+  const put = (lv: AiTraderLevel, tier: LevelChartTier) => {
+    if (!lv.price || lv.price <= 0) return;
+    const key = levelKey(lv.price);
+    const existing = byPrice.get(key);
+    if (existing) {
+      const rank = { preferred: 4, strategy: 3, playbook: 2, context: 1 };
+      if (rank[tier] > rank[existing.tier]) {
+        byPrice.set(key, { level: { ...lv, dist_abs: 0, dist_bps: 0, side: 'at' }, tier });
+      }
+      return;
+    }
+    const hit = enriched.find((e) => levelKey(e.price) === key);
+    byPrice.set(key, { level: hit ?? { ...lv, dist_abs: 0, dist_bps: 0, side: 'at' }, tier });
+  };
+
+  for (const lv of raw) put(lv, 'playbook');
+  for (const lv of opts?.strategy ?? []) put(lv, 'strategy');
+  for (const lv of opts?.preferred ?? []) put(lv, 'preferred');
+
+  return [...byPrice.values()].sort((a, b) => a.level.price - b.level.price);
+}

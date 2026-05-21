@@ -528,6 +528,8 @@ export interface PaperTradingState {
   position_lots: number;
   avg_price: number;
   realized_rub: number;
+  stop_loss?: number;
+  take_profit?: number;
   working_orders?: PaperOrder[];
   fills?: PaperFill[];
   updated_at: string;

@@ -410,6 +410,11 @@ body {
   gap: 0.5rem;
 }
 
+.ai-trader-tv-chart {
+  width: 100%;
+  min-height: 440px;
+}
+
 .ai-trader-levels-chart {
   width: 100%;
   min-height: 280px;
