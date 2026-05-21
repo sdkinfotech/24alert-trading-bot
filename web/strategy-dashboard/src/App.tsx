@@ -177,16 +177,20 @@ function DashboardApp() {
   const openBrokerPnl = brokerPositions.reduce((sum, p) => sum + p.expected_yield, 0);
   const mismatchCount = brokerPositions.filter((p) => Math.abs(p.quantity - (ledger?.quantities?.[p.instrument_uid] ?? 0)) > 1e-6).length;
 
-  const tabs = useMemo(() => {
-    const base = [
-      { id: 'overview' as const, label: t('overview') },
-      { id: 'chart' as const, label: t('chart') },
-      { id: 'portfolio' as const, label: t('portfolio') },
-      { id: 'history' as const, label: t('history') },
-      { id: 'guide' as const, label: t('guide') },
+  const tabs = useMemo((): { id: MainTab; label: string }[] => {
+    const base: { id: MainTab; label: string }[] = [
+      { id: 'overview', label: t('overview') },
+      { id: 'chart', label: t('chart') },
+      { id: 'portfolio', label: t('portfolio') },
+      { id: 'history', label: t('history') },
+      { id: 'guide', label: t('guide') },
     ];
     if (!aiTraderArchived) {
-      base.splice(4, 0, { id: 'ai-trader' as const, label: t('aiTrader') });
+      return [
+        ...base.slice(0, 4),
+        { id: 'ai-trader', label: t('aiTrader') },
+        ...base.slice(4),
+      ];
     }
     return base;
   }, [t, aiTraderArchived]);
