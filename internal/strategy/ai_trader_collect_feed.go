@@ -27,6 +27,7 @@ type AITraderBufferStats struct {
 	BookSamples  int     `json:"book_samples"`
 	PrintSamples int     `json:"print_samples"`
 	ChartBars    int     `json:"chart_bars"`
+	ChartBars5m  int     `json:"chart_bars_5m,omitempty"`
 	LevelCount   int     `json:"level_count"`
 	DailyLevels  int     `json:"daily_levels"`
 	HourlyLevels int     `json:"hourly_levels"`
@@ -79,6 +80,7 @@ func (r *Runner) syncAITraderBufferStatsLocked(s *AITraderSession, f *AITraderFe
 	if s.ctxState != nil {
 		s.ctxState.mu.Lock()
 		st.ChartBars = len(s.ctxState.chartBars)
+		st.ChartBars5m = len(s.ctxState.chartBars5m)
 		st.LevelCount = len(s.ctxState.levels)
 		st.DailyLevels = countLevelsByPrefix(s.ctxState.levels, "daily_")
 		st.HourlyLevels = countLevelsByPrefix(s.ctxState.levels, "hourly_")

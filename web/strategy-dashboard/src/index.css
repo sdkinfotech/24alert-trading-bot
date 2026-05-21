@@ -415,6 +415,34 @@ body {
   min-height: 440px;
 }
 
+.ai-trader-tf-toggle {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ai-trader-tf-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--muted);
+  border: none;
+  cursor: pointer;
+}
+
+.ai-trader-tf-btn:hover {
+  color: var(--text);
+  background: var(--surface-2, var(--surface));
+}
+
+.ai-trader-tf-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .ai-trader-levels-chart {
   width: 100%;
   min-height: 280px;

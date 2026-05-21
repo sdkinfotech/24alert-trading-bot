@@ -29,6 +29,8 @@ interface Props {
   session: AiTraderSession;
 }
 
+type ChartTimeframe = '1m' | '5m';
+
 function toUnix(t: string): UTCTimestamp {
   return Math.floor(new Date(t).getTime() / 1000) as UTCTimestamp;
 }
@@ -68,9 +70,13 @@ export function AiTraderLevelsChart({ session }: Props) {
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const fitOnceRef = useRef(true);
+  const chartSnapRef = useRef<{ tf: ChartTimeframe; len: number; lastTime: number } | null>(null);
   const [hover, setHover] = useState('');
+  const [timeframe, setTimeframe] = useState<ChartTimeframe>('1m');
 
-  const bars = session.market_context?.chart_bars ?? [];
+  const bars1m = session.market_context?.chart_bars ?? [];
+  const bars5m = session.market_context?.chart_bars_5m ?? [];
+  const liveMid = session.features?.mid ?? 0;
   const rawLevels = useMemo(() => {
     const merged: AiTraderLevel[] = [];
     const seen = new Set<string>();
@@ -110,6 +116,23 @@ export function AiTraderLevelsChart({ session }: Props) {
   );
 
   const enrichedLadder = useMemo(() => enrichLevels(rawLevels, refPrice), [rawLevels, refPrice]);
+
+  const displayBars = useMemo(() => {
+    const src = timeframe === '5m' ? bars5m : bars1m;
+    if (src.length === 0) return [];
+    const out = src.map((b) => ({ ...b }));
+    const mid = liveMid > 0 ? liveMid : refPrice;
+    if (mid > 0) {
+      const i = out.length - 1;
+      out[i] = {
+        ...out[i],
+        close: mid,
+        high: Math.max(out[i].high, mid),
+        low: Math.min(out[i].low, mid),
+      };
+    }
+    return out;
+  }, [timeframe, bars1m, bars5m, liveMid, refPrice]);
 
   const refreshLabel = session.last_playbook_refresh_at
     ? new Date(session.last_playbook_refresh_at).toLocaleTimeString(lang === 'ru' ? 'ru-RU' : 'en-US')
@@ -186,21 +209,39 @@ export function AiTraderLevelsChart({ session }: Props) {
 
   useEffect(() => {
     const series = seriesRef.current;
-    if (!series || bars.length === 0) return;
+    if (!series || displayBars.length === 0) return;
 
     for (const pl of priceLinesRef.current) {
       series.removePriceLine(pl);
     }
     priceLinesRef.current = [];
 
-    const candles = bars.map((b: AiTraderCandleBar) => ({
+    const candles = displayBars.map((b: AiTraderCandleBar) => ({
       time: toUnix(b.time),
       open: b.open,
       high: b.high,
       low: b.low,
       close: b.close,
     }));
-    series.setData(candles);
+
+    const lastTime = candles.length ? (candles[candles.length - 1].time as number) : 0;
+    const prev = chartSnapRef.current;
+    if (
+      prev &&
+      prev.tf === timeframe &&
+      prev.len === candles.length &&
+      prev.lastTime === lastTime
+    ) {
+      series.update(candles[candles.length - 1]);
+    } else if (prev && prev.tf === timeframe && prev.len + 1 === candles.length) {
+      series.update(candles[candles.length - 1]);
+    } else {
+      series.setData(candles);
+      if (!prev || prev.tf !== timeframe) {
+        fitOnceRef.current = true;
+      }
+    }
+    chartSnapRef.current = { tf: timeframe, len: candles.length, lastTime };
 
     const firstBarT = candles.length ? (candles[0].time as number) : 0;
     const lastBarT = candles.length ? (candles[candles.length - 1].time as number) : 0;
@@ -356,9 +397,9 @@ export function AiTraderLevelsChart({ session }: Props) {
         ts.scrollToRealTime();
       }
     });
-  }, [bars, chartLevels, refPrice, session, chartTheme, t]);
+  }, [displayBars, timeframe, chartLevels, refPrice, session, chartTheme, t]);
 
-  if (bars.length === 0 || refPrice <= 0) {
+  if ((bars1m.length === 0 && bars5m.length === 0) || refPrice <= 0) {
     return (
       <Card title={t('levelsChartTitle')} subtitle={t('levelsChartWaiting')}>
         <p className="text-sm text-[var(--muted)]">{t('levelsChartWaiting')}</p>
@@ -378,6 +419,40 @@ export function AiTraderLevelsChart({ session }: Props) {
           : t('levelsChartTvNote')
       }
     >
+      <div className="flex flex-wrap items-center gap-2 mb-2 px-1">
+        <span className="text-xs text-[var(--muted)]">{t('chartTimeframe')}:</span>
+        <div className="ai-trader-tf-toggle" role="group" aria-label={t('chartTimeframe')}>
+          <button
+            type="button"
+            className={timeframe === '1m' ? 'ai-trader-tf-btn active' : 'ai-trader-tf-btn'}
+            onClick={() => {
+              setTimeframe('1m');
+              fitOnceRef.current = true;
+              chartSnapRef.current = null;
+            }}
+          >
+            1m
+            {bars1m.length > 0 && (
+              <span className="text-[var(--muted)] ml-1">({bars1m.length})</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={timeframe === '5m' ? 'ai-trader-tf-btn active' : 'ai-trader-tf-btn'}
+            onClick={() => {
+              setTimeframe('5m');
+              fitOnceRef.current = true;
+              chartSnapRef.current = null;
+            }}
+          >
+            5m
+            {bars5m.length > 0 && (
+              <span className="text-[var(--muted)] ml-1">({bars5m.length})</span>
+            )}
+          </button>
+        </div>
+        <span className="text-xs text-[var(--muted)]">{t('chartHistoryWeek')}</span>
+      </div>
       <p className="text-xs text-[var(--muted)] mb-2 px-1">{t('levelsChartLegend')}</p>
       <div className="relative">
         {hover && (

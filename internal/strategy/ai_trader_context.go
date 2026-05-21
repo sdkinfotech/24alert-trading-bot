@@ -17,7 +17,6 @@ import (
 const (
 	aiTraderMaxPrints        = 200
 	aiTraderMaxBookDigests   = 15
-	aiTraderMaxChartBars     = 40
 	aiTraderTapeWindowSec    = 60
 	aiTraderDailyLevelDays   = 10
 	aiTraderFootprintMinutes = 8
@@ -163,14 +162,18 @@ func (r *Runner) warmupAITraderContext(ctx context.Context, s *AITraderSession) 
 		return
 	}
 	now := time.Now().UTC()
-	from1m := now.Add(-3 * time.Hour)
-	candles, err := r.mdSvc.GetCandles(ctx, s.InstrumentID, from1m, now, pb.CandleInterval_CANDLE_INTERVAL_1_MIN)
+	fromWeek := now.Add(-aiTraderChartHistoryWindow)
+	candles1m, err := r.fetchHistoricCandles(ctx, s.InstrumentID, fromWeek, now, pb.CandleInterval_CANDLE_INTERVAL_1_MIN)
 	if err != nil {
-		r.logger.Warn("ai trader chart warmup", "error", err)
+		r.logger.Warn("ai trader chart warmup 1m", "error", err)
 	} else {
-		for _, c := range candles {
-			s.ctxState.appendChartBar(marketCandleToBar(c))
-		}
+		s.ctxState.setChartBars1m(candlesToBars(candles1m))
+	}
+	candles5m, err5 := r.fetchHistoricCandles(ctx, s.InstrumentID, fromWeek, now, pb.CandleInterval_CANDLE_INTERVAL_5_MIN)
+	if err5 != nil {
+		r.logger.Warn("ai trader chart warmup 5m", "error", err5)
+	} else {
+		s.ctxState.setChartBars5m(candlesToBars(candles5m))
 	}
 	var dailyLv, hourlyLv []AITraderLevel
 	fromDay := now.AddDate(0, 0, -aiTraderDailyLevelDays*2)
@@ -192,8 +195,12 @@ func (r *Runner) warmupAITraderContext(ctx context.Context, s *AITraderSession) 
 	}
 	r.aiTrader.mu.Lock()
 	if cur := r.aiTrader.findLocked(s.ID); cur != nil {
+		s.ctxState.mu.Lock()
+		n1m := len(s.ctxState.chartBars)
+		n5m := len(s.ctxState.chartBars5m)
+		s.ctxState.mu.Unlock()
 		cur.appendCollectFeed("levels", fmt.Sprintf("Уровни: daily %d, hourly %d", len(dailyLv), len(hourlyLv)),
-			fmt.Sprintf("1m баров: %d", len(s.ctxState.chartBars)))
+			fmt.Sprintf("график: 1m=%d 5m=%d (история 7д)", n1m, n5m))
 		r.syncAITraderBufferStatsLocked(cur, nil)
 	}
 	r.aiTrader.mu.Unlock()
@@ -503,8 +510,8 @@ func (st *aiTraderContextState) appendChartBar(bar AITraderCandleBar) {
 		return
 	}
 	st.chartBars = append(st.chartBars, bar)
-	if len(st.chartBars) > aiTraderMaxChartBars {
-		st.chartBars = st.chartBars[len(st.chartBars)-aiTraderMaxChartBars:]
+	if len(st.chartBars) > aiTraderMaxChartBars1m {
+		st.chartBars = st.chartBars[len(st.chartBars)-aiTraderMaxChartBars1m:]
 	}
 }
 

@@ -145,7 +145,7 @@ func (st *aiTraderContextState) appendChartBar5m(bar AITraderCandleBar) {
 		return
 	}
 	st.chartBars5m = append(st.chartBars5m, bar)
-	if len(st.chartBars5m) > 48 {
-		st.chartBars5m = st.chartBars5m[len(st.chartBars5m)-48:]
+	if len(st.chartBars5m) > aiTraderMaxChartBars5m {
+		st.chartBars5m = st.chartBars5m[len(st.chartBars5m)-aiTraderMaxChartBars5m:]
 	}
 }

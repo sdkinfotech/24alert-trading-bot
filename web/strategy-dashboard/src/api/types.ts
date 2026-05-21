@@ -337,6 +337,7 @@ export interface AiTraderDOMBook {
 
 export interface AiTraderMarketContext {
   chart_bars?: AiTraderCandleBar[];
+  chart_bars_5m?: AiTraderCandleBar[];
   footprint?: AiTraderFootprintColumn[];
   dom_book?: AiTraderDOMBook;
   levels?: AiTraderLevel[];
@@ -361,6 +362,7 @@ export interface AiTraderBufferStats {
   book_samples: number;
   print_samples: number;
   chart_bars: number;
+  chart_bars_5m?: number;
   level_count: number;
   daily_levels: number;
   hourly_levels: number;
