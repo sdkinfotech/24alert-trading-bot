@@ -10,9 +10,10 @@ import (
 
 // LLM service names for metrics labels.
 const (
-	LLMServiceAdvisor   = "advisor"
-	LLMServiceAITrader  = "ai_trader"
-	LLMServiceAIChat    = "ai_chat"
+	LLMServiceAdvisor    = "advisor"
+	LLMServiceAITrader   = "ai_trader"
+	LLMServiceAIChat     = "ai_chat"
+	LLMServiceAssistant  = "assistant"
 )
 
 // LLM call outcomes (result label).

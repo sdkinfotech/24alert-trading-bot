@@ -472,6 +472,7 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		})
 	})
 	registerAIChatHandlers(mux, r, parent)
+	registerAssistantHandlers(mux, r, parent)
 
 	mux.Handle("/dashboard/", http.StripPrefix("/dashboard", DashboardHandler()))
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {

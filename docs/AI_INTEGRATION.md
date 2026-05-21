@@ -11,8 +11,13 @@ runtime mounts, and operational boundaries.
 | Component | Runtime | Model/API | Purpose | Writes config |
 |-----------|---------|-----------|---------|---------------|
 | Dashboard AI Chat | `strategy-runner` + React dashboard | OpenRouter, `AI_CHAT_MODEL` | Operator Q&A over live strategy state | No |
+| **Technical assistant** | `strategy-runner` + dashboard tab «Ассистент» | OpenRouter, `ASSISTANT_MODEL` | Multi-TF level/mirror analysis, scenarios (no trading) | No |
 | Autonomous AI Scanner | Docker service `24alert-ai-scanner` | Cursor Agent CLI, `AI_SCANNER_MODEL` | Cron scan/backtest/auto-config workflow | Only `auto-fut-*` |
-| AI Trader / Scalper | planned `advisor-svc` + dashboard control | Hybrid: deterministic engine + LLM/agent | Live orderbook/prints trader for selected futures | No config writes; orders only through risk/order-control |
+| AI Trader / Scalper | archived (`AI_TRADER_ARCHIVED`) | advisor-svc + runner | Was live scalper; see `docs/archive/ai-trader/` | No |
+
+## Technical assistant
+
+See [TECHNICAL_ASSISTANT.md](TECHNICAL_ASSISTANT.md). Endpoints: `POST/GET /assistant/analyses`, chart `GET .../chart?tf=1h`.
 
 ## Dashboard AI Chat
 

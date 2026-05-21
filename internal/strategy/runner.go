@@ -76,6 +76,8 @@ type Runner struct {
 
 	instances map[string]*instanceRuntime
 	byID      map[string]config.StrategyInstanceConfig
+
+	assistant *assistantStore
 }
 
 type instanceRuntime struct {
@@ -149,6 +151,7 @@ func NewRunner(
 		fillLosses:    make(map[string]int64),
 		instances:     make(map[string]*instanceRuntime),
 		byID:          make(map[string]config.StrategyInstanceConfig),
+		assistant:     newAssistantStore(),
 	}
 }
 

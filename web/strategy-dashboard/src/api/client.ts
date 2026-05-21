@@ -3,6 +3,9 @@ import type {
   InstanceStatus,
   FlattenResult,
   ReloadConfigResult,
+  AssistantAnalysis,
+  AssistantStartResponse,
+  AssistantChartPayload,
   PnlData,
   LedgerData,
   PortfolioSnapshot,
@@ -91,6 +94,21 @@ export const api = {
   instanceStatus: (id: string) =>
     get<InstanceStatus>(`/instances/${encodeURIComponent(id)}/status`),
   reloadConfig: () => post<ReloadConfigResult>('/config/reload', {}),
+  startAssistantAnalysis: (ticker: string) =>
+    post<AssistantStartResponse>('/assistant/analyses', { ticker }),
+  getAssistantAnalysis: (id: string) =>
+    get<AssistantAnalysis>(`/assistant/analyses/${encodeURIComponent(id)}`),
+  getAssistantChart: (id: string, tf: string) =>
+    get<AssistantChartPayload>(
+      `/assistant/analyses/${encodeURIComponent(id)}/chart?tf=${encodeURIComponent(tf)}`,
+    ),
+  deleteAssistantAnalysis: async (id: string) => {
+    const res = await fetch(`${BASE}/assistant/analyses/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const raw = await res.text();
+      throw new Error(raw || `${res.status} ${res.statusText}`);
+    }
+  },
   pnl: (id: string) => get<PnlData>(`/instances/${id}/pnl`),
   ledger: (id: string) => get<LedgerData>(`/instances/${id}/ledger`),
   portfolio: (id: string) => get<PortfolioSnapshot>(`/instances/${id}/portfolio`),

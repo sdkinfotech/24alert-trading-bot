@@ -57,6 +57,70 @@ export interface ReloadConfigResult {
   changed?: string[];
 }
 
+export interface AssistantCandleBar {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface AssistantLevel {
+  id: string;
+  price: number;
+  kind: string;
+  source: string;
+  strength: number;
+  role?: string;
+  touches: number;
+  volume_in_zone: number;
+  avg_reaction_bps: number;
+  volume_note?: string;
+  report_md?: string;
+}
+
+export interface AssistantScenario {
+  id: string;
+  title: string;
+  bias: string;
+  probability: string;
+  trigger: string;
+  invalidation: string;
+  playbook_md: string;
+}
+
+export interface AssistantChartPayload {
+  timeframe: string;
+  horizon?: string;
+  candles: AssistantCandleBar[];
+  levels: AssistantLevel[];
+}
+
+export interface AssistantAnalysis {
+  analysis_id: string;
+  ticker: string;
+  instrument_uid: string;
+  instrument_name?: string;
+  status: 'running' | 'done' | 'error';
+  progress_pct: number;
+  error?: string;
+  created_at: string;
+  completed_at?: string;
+  summary_md?: string;
+  levels?: AssistantLevel[];
+  scenarios?: AssistantScenario[];
+  charts?: Record<string, AssistantChartPayload>;
+  llm_model?: string;
+  llm_fallback?: boolean;
+}
+
+export interface AssistantStartResponse {
+  analysis_id: string;
+  status: string;
+  ticker: string;
+}
+
 export interface PnlData {
   instance_id: string;
   realized_rub: number;
