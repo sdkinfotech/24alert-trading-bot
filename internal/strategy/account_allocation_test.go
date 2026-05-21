@@ -21,7 +21,13 @@ func TestValidateClassicInstanceAccount(t *testing.T) {
 	if err := r.validateClassicInstanceAccount(config.StrategyInstanceConfig{
 		ID: "fut-brent-mini-lb", Enabled: true, AccountID: "2001673385",
 	}); err == nil {
-		t.Fatal("expected error for enabled classic on IIS")
+		t.Fatal("expected error for enabled classic on IIS while AI Trader active")
+	}
+	r.strategiesCfg.AITraderArchived = true
+	if err := r.validateClassicInstanceAccount(config.StrategyInstanceConfig{
+		ID: "fut-brent-mini-lb", Enabled: true, AccountID: "2001673385",
+	}); err != nil {
+		t.Fatalf("archived: classic on IIS should be allowed: %v", err)
 	}
 }
 

@@ -4,6 +4,7 @@ import "strings"
 
 // AITraderPublicConfig is exposed to the dashboard.
 type AITraderPublicConfig struct {
+	Archived         bool   `json:"archived"`
 	ArmedLiveEnabled bool   `json:"armed_live_enabled"`
 	StreamBook       bool   `json:"stream_book"`
 	KillSwitch       bool   `json:"kill_switch"`
@@ -13,8 +14,11 @@ type AITraderPublicConfig struct {
 }
 
 func (r *Runner) AITraderPublicConfig() AITraderPublicConfig {
+	archived := r.aiTraderArchived()
+	armed := !archived && aiTraderArmedLiveEnabled()
 	return AITraderPublicConfig{
-		ArmedLiveEnabled: aiTraderArmedLiveEnabled(),
+		Archived:         archived,
+		ArmedLiveEnabled: armed,
 		StreamBook:       aiTraderStreamBookEnabled(),
 		KillSwitch:       r.AITraderKillSwitch(),
 		MinReportTF:      aiTraderTradingMinReportTF(),

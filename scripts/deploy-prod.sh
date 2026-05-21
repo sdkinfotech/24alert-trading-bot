@@ -41,11 +41,11 @@ echo "[2/7] git pull..."
 remote "cd /opt/24alert && git fetch origin main && git checkout main && git pull origin main"
 remote "cd /opt/24alert && git rev-parse --short HEAD"
 
-echo "[3/7] Docker network + build (strategy-runner, advisor-svc)..."
+echo "[3/7] Docker network + build (strategy-runner, advisor-svc, ai-scanner)..."
 remote "cd /opt/24alert && sudo bash scripts/ensure-docker-network.sh"
 # Remove stale named containers that block compose recreate
-remote "sudo docker rm -f 24alert-strategy-runner 24alert-advisor-svc 2>/dev/null || true"
-remote "cd /opt/24alert && sudo bash scripts/compose.sh build strategy-runner advisor-svc"
+remote "sudo docker rm -f 24alert-strategy-runner 24alert-advisor-svc 24alert-ai-scanner 2>/dev/null || true"
+remote "cd /opt/24alert && sudo bash scripts/compose.sh build strategy-runner advisor-svc ai-scanner"
 
 echo "[4/7] compose up..."
 remote "cd /opt/24alert && sudo bash scripts/compose.sh up -d"
@@ -56,6 +56,7 @@ sleep 3
 remote "curl -sf http://127.0.0.1:8080/health >/dev/null && echo gateway_ok || echo gateway_FAIL"
 remote "curl -sf http://127.0.0.1:9020/health >/dev/null && echo runner_ok || echo runner_FAIL"
 remote "curl -sf http://127.0.0.1:9030/health >/dev/null && echo advisor_ok || echo advisor_FAIL"
+remote "docker ps --format '{{.Names}}' | grep -q 24alert-ai-scanner && echo ai_scanner_ok || echo ai_scanner_FAIL"
 remote "curl -s -X POST http://127.0.0.1:9020/config/reload || true"
 
 echo "[6/7] container status..."

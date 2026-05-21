@@ -223,6 +223,9 @@ func mergeAITraderLimits(in AITraderLimits) AITraderLimits {
 }
 
 func (r *Runner) StartAITraderSession(parent context.Context, req AITraderSessionRequest) (*AITraderSession, error) {
+	if r.aiTraderArchived() {
+		return nil, r.aiTraderArchiveError()
+	}
 	kind := strings.TrimSpace(strings.ToLower(req.StrategyKind))
 	if kind == "" {
 		kind = strings.TrimSpace(strings.ToLower(req.Mode))
@@ -529,6 +532,9 @@ func (r *Runner) maybePersistAITraderSession(s *AITraderSession, depth int32) {
 
 // StartAITraderTrading moves a ready session into paper level trading.
 func (r *Runner) StartAITraderTrading(sessionID string) (*AITraderSession, error) {
+	if r.aiTraderArchived() {
+		return nil, r.aiTraderArchiveError()
+	}
 	r.aiTrader.mu.Lock()
 	s := r.aiTrader.findLocked(sessionID)
 	if s == nil {

@@ -103,6 +103,8 @@ type StrategiesRunnerConfig struct {
 	AITraderAccountID string `mapstructure:"ai_trader_account_id"`
 	// ClassicAccountID is the account for enabled classic strategy instances (Автоследование).
 	ClassicAccountID string `mapstructure:"classic_account_id"`
+	// AITraderArchived disables new AI Trader sessions; classic may use ИИС (see validateClassicInstanceAccount).
+	AITraderArchived bool `mapstructure:"ai_trader_archived"`
 }
 
 // TradingScheduleConfig defines when the runner is allowed to submit orders.

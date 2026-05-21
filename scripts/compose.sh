@@ -8,6 +8,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-24alert}"
+# AI Scanner: nightly scan + pre-market + health (see deployments/ai-scanner/README.md)
+export COMPOSE_PROFILES="${COMPOSE_PROFILES:-ai-scanner}"
 
 bash "$ROOT/scripts/ensure-docker-network.sh"
 

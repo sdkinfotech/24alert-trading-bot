@@ -504,6 +504,7 @@ export interface DynamicTradingPolicy {
 }
 
 export interface AiTraderPublicConfig {
+  archived?: boolean;
   armed_live_enabled: boolean;
   stream_book: boolean;
   kill_switch: boolean;

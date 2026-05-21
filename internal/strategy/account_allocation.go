@@ -7,7 +7,7 @@ import (
 	"github.com/24alert/trading-bot/pkg/config"
 )
 
-// validateClassicInstanceAccount ensures enabled classic strategies use the autosledovanie account, not ИИС.
+// validateClassicInstanceAccount ensures enabled classic instances use allowed brokerage accounts.
 func (r *Runner) validateClassicInstanceAccount(inst config.StrategyInstanceConfig) error {
 	if !inst.Enabled {
 		return nil
@@ -15,8 +15,15 @@ func (r *Runner) validateClassicInstanceAccount(inst config.StrategyInstanceConf
 	acc := strings.TrimSpace(inst.AccountID)
 	aiAcc := strings.TrimSpace(r.strategiesCfg.AITraderAccountID)
 	classicAcc := strings.TrimSpace(r.strategiesCfg.ClassicAccountID)
+	if r.aiTraderArchived() {
+		if acc == aiAcc || acc == classicAcc {
+			return nil
+		}
+		return fmt.Errorf("instance %q: enabled classic must use ИИС (%s) or Автоследование (%s), got %s",
+			inst.ID, aiAcc, classicAcc, acc)
+	}
 	if aiAcc != "" && acc == aiAcc {
-		return fmt.Errorf("instance %q: classic strategy cannot be enabled on AI Trader account %s (ИИС)", inst.ID, aiAcc)
+		return fmt.Errorf("instance %q: classic strategy cannot be enabled on AI Trader account %s (ИИС); set strategies.ai_trader_archived=true to use SMA on ИИС", inst.ID, aiAcc)
 	}
 	if classicAcc != "" && acc != classicAcc {
 		return fmt.Errorf("instance %q: enabled classic must use classic_account_id %s (Автоследование), got %s", inst.ID, classicAcc, acc)

@@ -156,16 +156,17 @@ strategies:
     telegram:
       bot_token: ""
       chat_id: ""
-  # Account split: ИИС = AI Trader only; Автоследование = classic SMA instances.
-  ai_trader_account_id: "2001673385"   # TINKOFF_IIS «ИИС»
-  classic_account_id: "2239786114"     # «Автоследование»
+  # AI Trader archived (2026-05): live sessions off; use classic SMA + ai-scanner cron.
+  ai_trader_archived: true
+  ai_trader_account_id: "2001673385"   # TINKOFF_IIS «ИИС» — BMM6 SMA when archived
+  classic_account_id: "2239786114"     # «Автоследование» — NGM6 / MCM6
   instances:
     - id: fut-brent-mini-lb
       type: sma_crossover
-      account_id: "2001673385"   # ИИС — anchor for BMM6; classic SMA must stay disabled
+      account_id: "2001673385"   # ИИС — BMM6 Brent mini
       instruments:
         - "dc1ffa30-70a4-4a7b-807a-4f31c2951f7e"   # BMM6 BRM-6.26 Brent mini
-      enabled: false  # BMM6: only AI Trader on ИИС (armed_live from dashboard)
+      enabled: true
       params:
         interval: "1h"
         fast_period: "4"
@@ -177,7 +178,7 @@ strategies:
       account_id: "2239786114"   # Автоследование
       instruments:
         - "117a1408-431f-4ba0-a041-5bba3123d4a8"   # NGM6 NG-6.26 Gas
-      enabled: false
+      enabled: true
       params:
         interval: "1h"
         fast_period: "5"

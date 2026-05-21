@@ -266,6 +266,9 @@ func sessionFromSnapshot(snap *aiTraderSessionSnapshot) *AITraderSession {
 
 // ResumeAITraderSession restores a persisted session; reconnectOnly skips live/paper ticks until start-trading.
 func (r *Runner) ResumeAITraderSession(parent context.Context, sessionID string, reconnectOnly bool) (*AITraderSession, error) {
+	if r.aiTraderArchived() {
+		return nil, r.aiTraderArchiveError()
+	}
 	snap, err := loadAITraderSessionSnapshot(sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("persisted session not found: %w", err)

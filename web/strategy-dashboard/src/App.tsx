@@ -75,6 +75,7 @@ function DashboardApp() {
   const [stopOrders, setStopOrders] = useState<StopOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [aiTraderArchived, setAiTraderArchived] = useState(true);
 
   const loadInstances = useCallback(async () => {
     try {
@@ -123,6 +124,7 @@ function DashboardApp() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadInstances();
+      void api.aiTraderConfig().then((c) => setAiTraderArchived(Boolean(c.archived))).catch(() => setAiTraderArchived(true));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadInstances]);
@@ -137,6 +139,12 @@ function DashboardApp() {
     setTab(t);
     applyTabToURL(t);
   }, []);
+
+  useEffect(() => {
+    if (aiTraderArchived && tab === 'ai-trader') {
+      selectTab('overview');
+    }
+  }, [aiTraderArchived, tab, selectTab]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => {
@@ -169,14 +177,19 @@ function DashboardApp() {
   const openBrokerPnl = brokerPositions.reduce((sum, p) => sum + p.expected_yield, 0);
   const mismatchCount = brokerPositions.filter((p) => Math.abs(p.quantity - (ledger?.quantities?.[p.instrument_uid] ?? 0)) > 1e-6).length;
 
-  const tabs = useMemo(() => [
-    { id: 'overview' as const, label: t('overview') },
-    { id: 'chart' as const, label: t('chart') },
-    { id: 'portfolio' as const, label: t('portfolio') },
-    { id: 'history' as const, label: t('history') },
-    { id: 'ai-trader' as const, label: t('aiTrader') },
-    { id: 'guide' as const, label: t('guide') },
-  ], [t]);
+  const tabs = useMemo(() => {
+    const base = [
+      { id: 'overview' as const, label: t('overview') },
+      { id: 'chart' as const, label: t('chart') },
+      { id: 'portfolio' as const, label: t('portfolio') },
+      { id: 'history' as const, label: t('history') },
+      { id: 'guide' as const, label: t('guide') },
+    ];
+    if (!aiTraderArchived) {
+      base.splice(4, 0, { id: 'ai-trader' as const, label: t('aiTrader') });
+    }
+    return base;
+  }, [t, aiTraderArchived]);
 
   return (
     <div className="min-h-screen p-4 max-w-7xl mx-auto">

@@ -10,14 +10,15 @@
 
 | ID | Стратегия | Фьючерс | Интервал | Назначение |
 |----|-----------|---------|----------|------------|
-| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | **ИИС** `2001673385` — disabled; только AI Trader |
-| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | **Автоследование** `2239786114` — disabled |
+| `fut-brent-mini-lb` | `sma_crossover` | `BMM6` Brent mini | `1h` | **ИИС** `2001673385` — **enabled** |
+| `fut-gas-mini-sma` | `sma_crossover` | `NGM6` Natural Gas mini | `1h` | **Автоследование** `2239786114` — **enabled** |
 | `fut-mechel-lb` | `sma_crossover` | `MCM6` Mechel futures | `1h` | **Автоследование** `2239786114` — SMA `4/9` |
 
-Разделение счетов (`config.yaml`: `ai_trader_account_id` / `classic_account_id`):
+Разделение счетов (`config.yaml`: `ai_trader_archived`, `ai_trader_account_id`, `classic_account_id`):
 
-- **ИИС** `2001673385` — только AI Trader (BMM6 armed_live из вкладки AI Trader).
-- **Автоследование** `2239786114` — классические SMA-инстансы; не включать classic на ИИС.
+- **ИИС** `2001673385` — классический SMA **BMM6** (`fut-brent-mini-lb`). AI Trader **архивирован** (`strategies.ai_trader_archived: true`).
+- **Автоследование** `2239786114` — **NGM6**, **MCM6** SMA.
+- **AI Scanner** (cron): отбор инструментов и оптимизация параметров — `docker compose` с профилем `ai-scanner` (включён в `scripts/compose.sh`).
 
 `quantity=1` на всех инстансах.
 
