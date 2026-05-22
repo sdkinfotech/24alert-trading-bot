@@ -18,7 +18,7 @@ export function StatsPanel({ pnl, ledger, portfolio, daily, orders = [], executi
   const positions = ledger
     ? Object.entries(ledger.quantities).filter(([, q]) => q !== 0)
     : [];
-  const brokerPositions = portfolio?.positions.filter((p) => p.in_instance) ?? [];
+  const brokerPositions = portfolio?.positions?.filter((p) => p.in_instance) ?? [];
 
   return (
     <Card title="Stats">

@@ -112,9 +112,13 @@ function DashboardApp() {
         api.instanceStatus(selected),
       ]);
       if (ind.status === 'fulfilled') setIndicator(ind.value);
+      else setIndicator(null);
       if (p.status === 'fulfilled') setPnl(p.value);
+      else setPnl(null);
       if (l.status === 'fulfilled') setLedger(l.value);
+      else setLedger(null);
       if (pf.status === 'fulfilled') setPortfolio(pf.value);
+      else setPortfolio(null);
       if (ev.status === 'fulfilled') setEvents(ev.value ?? []);
       if (d.status === 'fulfilled') setDaily(d.value);
       if (ord.status === 'fulfilled') setOrders(ord.value ?? []);
@@ -186,7 +190,7 @@ function DashboardApp() {
   }, [loadData]);
 
   const current = instances.find((i) => i.id === selected) ?? null;
-  const brokerPositions = portfolio?.positions.filter((p) => p.in_instance) ?? [];
+  const brokerPositions = portfolio?.positions?.filter((p) => p.in_instance) ?? [];
   const openBrokerPnl = brokerPositions.reduce((sum, p) => sum + p.expected_yield, 0);
   const mismatchCount = brokerPositions.filter((p) => Math.abs(p.quantity - (ledger?.quantities?.[p.instrument_uid] ?? 0)) > 1e-6).length;
 

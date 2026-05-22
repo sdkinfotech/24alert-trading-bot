@@ -44,7 +44,7 @@ export function BotControlBar({ instance, status, portfolio, recentEvents, onAct
 
   if (!instance) return null;
 
-  const brokerPositions = portfolio?.positions.filter((p) => p.in_instance) ?? [];
+  const brokerPositions = portfolio?.positions?.filter((p) => p.in_instance) ?? [];
   const canStart = instance.enabled_in_config && !instance.running;
   const canStop = instance.running;
   const canFlatten =

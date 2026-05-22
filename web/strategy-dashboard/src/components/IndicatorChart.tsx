@@ -43,7 +43,7 @@ function isLevelBounce(data: IndicatorData): boolean {
 }
 
 function hasSMA(data: IndicatorData): boolean {
-  return data.candles.some(
+  return (data.candles ?? []).some(
     (c) => (c.fast_sma ?? 0) > 0 || (c.slow_sma ?? 0) > 0,
   );
 }
@@ -53,7 +53,7 @@ function levelBounceLevels(data: IndicatorData): { support: number[]; resistance
   let sup = [...(data.support ?? [])].filter((p) => p > 0);
   let res = [...(data.resistance ?? [])].filter((p) => p > 0);
   if (sup.length === 0 || res.length === 0) {
-    const fromCandles = data.candles.filter(
+    const fromCandles = (data.candles ?? []).filter(
       (c) => (c.support ?? 0) > 0 || (c.resistance ?? 0) > 0,
     );
     if (fromCandles.length > 0) {
@@ -176,7 +176,7 @@ export function IndicatorChart({ data, events = [], portfolio = null, chartTheme
 
     const toUnix = (t: string): UTCTimestamp => Math.floor(new Date(t).getTime() / 1000) as UTCTimestamp;
 
-    const candles = data.candles.map((c) => ({
+    const candles = (data.candles ?? []).map((c) => ({
       time: toUnix(c.time),
       open: c.open,
       high: c.high,
@@ -302,7 +302,8 @@ export function IndicatorChart({ data, events = [], portfolio = null, chartTheme
       priceLinesRef.current.push(pl);
     }
 
-    const signalMarkers = data.signals.map((s) => {
+    const signals = data.signals ?? [];
+    const signalMarkers = signals.map((s) => {
         const rawT = toUnix(s.time) as number;
         const t = clampBarTime(rawT);
         const eod = (s.reason ?? '').toLowerCase().includes('eod');
@@ -355,8 +356,8 @@ export function IndicatorChart({ data, events = [], portfolio = null, chartTheme
     });
   }, [data, events, portfolio, chartTheme]);
 
-  const buyCount = data?.signals.filter((s) => s.direction === 'buy').length ?? 0;
-  const sellCount = data?.signals.filter((s) => s.direction === 'sell').length ?? 0;
+  const buyCount = data?.signals?.filter((s) => s.direction === 'buy').length ?? 0;
+  const sellCount = data?.signals?.filter((s) => s.direction === 'sell').length ?? 0;
   const total = buyCount + sellCount;
 
   const posLabel =
@@ -368,7 +369,7 @@ export function IndicatorChart({ data, events = [], portfolio = null, chartTheme
         ? 'text-red-400'
         : 'text-gray-400';
 
-  const brokerPositions = portfolio?.positions.filter((p) => p.in_instance && p.quantity !== 0) ?? [];
+  const brokerPositions = portfolio?.positions?.filter((p) => p.in_instance && p.quantity !== 0) ?? [];
   const brokerLabel = brokerPositions.length
     ? brokerPositions.map((p) => `${p.quantity > 0 ? 'LONG' : 'SHORT'} ${p.quantity} ${p.ticker || p.instrument_uid.slice(0, 8)}`).join(', ')
     : 'FLAT';
