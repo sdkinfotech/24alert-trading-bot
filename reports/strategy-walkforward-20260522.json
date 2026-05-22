@@ -1,0 +1,171 @@
+{
+  "train_days": 60,
+  "test_days": 30,
+  "tickers": [
+    {
+      "ticker": "BMM6",
+      "walk_forward": [
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_trailing",
+          "params": {
+            "fast_period": 12,
+            "slow_period": 16,
+            "trailing_stop_pct": 0.003,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 23.9709,
+          "train_risk": 117.14,
+          "test_pnl": 11.2482,
+          "test_risk": 64.5953,
+          "test_trades": 25,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_trailing",
+          "params": {
+            "fast_period": 12,
+            "slow_period": 16,
+            "trailing_stop_pct": 0.003,
+            "initial_stop_swing_bars": 5
+          },
+          "train_pnl": 23.9709,
+          "train_risk": 117.14,
+          "test_pnl": 11.2482,
+          "test_risk": 64.5953,
+          "test_trades": 25,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_trailing",
+          "params": {
+            "fast_period": 12,
+            "slow_period": 21,
+            "trailing_stop_pct": 0.003,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 30.2767,
+          "train_risk": 139.4968,
+          "test_pnl": 1.5239,
+          "test_risk": 11.3873,
+          "test_trades": 12,
+          "holds_on_test": true
+        }
+      ]
+    },
+    {
+      "ticker": "NGM6",
+      "walk_forward": [
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_sl_tp",
+          "params": {
+            "fast_period": 9,
+            "slow_period": 26,
+            "stop_loss_pct": 0.02,
+            "take_profit_pct": 0.035,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 0.5265,
+          "train_risk": 11.4867,
+          "test_pnl": 0.5528,
+          "test_risk": 397.0837,
+          "test_trades": 8,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_sl_tp",
+          "params": {
+            "fast_period": 9,
+            "slow_period": 26,
+            "stop_loss_pct": 0.02,
+            "take_profit_pct": 0.04,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 0.6538,
+          "train_risk": 14.7787,
+          "test_pnl": 0.3675,
+          "test_risk": 104.0215,
+          "test_trades": 8,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_trailing",
+          "params": {
+            "fast_period": 6,
+            "slow_period": 23,
+            "trailing_stop_pct": 0.003,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 0.2525,
+          "train_risk": 15.795,
+          "test_pnl": 0.065,
+          "test_risk": 100.3198,
+          "test_trades": 10,
+          "holds_on_test": true
+        }
+      ]
+    },
+    {
+      "ticker": "MCM6",
+      "walk_forward": [
+        {
+          "strategy": "sma_crossover",
+          "mode": "sma_sl_tp",
+          "params": {
+            "fast_period": 7,
+            "slow_period": 17,
+            "stop_loss_pct": 0.02,
+            "take_profit_pct": 0.01,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 968.8,
+          "train_risk": 27.6653,
+          "test_pnl": 219.01,
+          "test_risk": 11.3223,
+          "test_trades": 10,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "sma_crossover",
+          "mode": "prod_baseline",
+          "params": {
+            "type": "sma_crossover",
+            "interval": "1h",
+            "fast_period": 4,
+            "slow_period": 9,
+            "trailing_stop_pct": 0.005,
+            "initial_stop_swing_bars": 0
+          },
+          "train_pnl": 37.31,
+          "train_risk": -1000000.0,
+          "test_pnl": 258.015,
+          "test_risk": 9.0431,
+          "test_trades": 34,
+          "holds_on_test": true
+        },
+        {
+          "strategy": "level_bounce",
+          "mode": "level_bounce",
+          "params": {
+            "sl_mult": 0.3,
+            "tp_mult": 1.0,
+            "cutoff_hour": 23,
+            "cutoff_min": 30,
+            "level_days": 10
+          },
+          "train_pnl": 0.0,
+          "train_risk": -1000000000.0,
+          "test_pnl": 0.0,
+          "test_risk": -1000000000.0,
+          "test_trades": 0,
+          "holds_on_test": false
+        }
+      ]
+    }
+  ]
+}

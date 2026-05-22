@@ -51,9 +51,9 @@ Warmup-сигналы не считаются боевыми и очищаютс
 
 | Instance | Ticker | Params |
 |---|---|---|
-| `fut-brent-mini-lb` | `BMM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.008`, `initial_stop_swing_bars=5` |
-| `fut-gas-mini-sma` | `NGM6` | `interval=1h`, `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005` |
-| `fut-mechel-lb` | `MCM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005` |
+| `fut-brent-mini-lb` | `BMM6` | `interval=1h`, `fast_period=12`, `slow_period=16`, `trailing_stop_pct=0.003`, `initial_stop_swing_bars=5` |
+| `fut-gas-mini-sma` | `NGM6` | `interval=1h`, `fast_period=10`, `slow_period=19`, `trailing_stop_pct=0.003` |
+| `fut-mechel-lb` | `MCM6` | `interval=1h`, `fast_period=4`, `slow_period=23`, `trailing_stop_pct=0.003` |
 
 `fut-brent-mini-lb` and `fut-mechel-lb` are legacy IDs; their current type is `sma_crossover`.
 
@@ -100,6 +100,10 @@ Dashboard history:
 
 - ручные инстансы `fut-*` не менять автоматически;
 - авто-инстансы должны иметь префикс `auto-fut-*`.
+
+## Strategy Lab (полная матрица бэктестов)
+
+Скрипты в `scripts/backtest/` + библиотека `scripts/backtestlib/` — сравнение **всех** семейств стратегий (SMA с trail/swing/SL-TP, level_bounce, ORB, EMA, Donchian) на BMM6/NGM6/MCM6. Runbook: [`docs/STRATEGY_LAB.md`](STRATEGY_LAB.md).
 
 ## Research и альтернативные стратегии
 
