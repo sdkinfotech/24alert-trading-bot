@@ -24,6 +24,7 @@ Run on `srv03-cloud` unless stated otherwise.
 - [ ] `/api/v1/stream/orderbook` is accessible only from allowlisted IPs.
 - [ ] `https://gateway.24alert.ru:8080/dashboard/` loads strategy dashboard.
 - [ ] `https://gateway.24alert.ru:8080/instances` proxies to strategy-runner.
+- [ ] `https://gateway.24alert.ru:8080/strategy-lab/catalog` returns JSON (not nginx 404).
 
 ### Gateway REST On VPS
 

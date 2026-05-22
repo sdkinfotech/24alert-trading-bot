@@ -14,6 +14,7 @@ const (
 	LLMServiceAITrader   = "ai_trader"
 	LLMServiceAIChat     = "ai_chat"
 	LLMServiceAssistant  = "assistant"
+	LLMServiceStrategyLab = "strategy_lab"
 )
 
 // LLM call outcomes (result label).

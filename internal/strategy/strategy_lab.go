@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/24alert/trading-bot/pkg/config"
 )
 
 // StrategyLabCatalog describes available backtest families for the UI.
@@ -46,24 +45,6 @@ type StrategyLabOptimizeRequest struct {
 	Ticker   string `json:"ticker"`
 	Strategy string `json:"strategy"`
 	Days     int    `json:"days"`
-}
-
-type StrategyLabApplyRequest struct {
-	InstanceID    string            `json:"instance_id"`
-	Type          string            `json:"type"`
-	AccountID     string            `json:"account_id"`
-	InstrumentUID string            `json:"instrument_uid"`
-	Ticker        string            `json:"ticker"`
-	Params        map[string]string `json:"params"`
-	Enabled       bool              `json:"enabled"`
-	Start         bool              `json:"start"`
-}
-
-type StrategyLabApplyResult struct {
-	Status   string `json:"status"`
-	InstanceID string `json:"instance_id"`
-	Reload   map[string]int `json:"reload"`
-	Started  bool   `json:"started"`
 }
 
 func strategyLabCatalog() StrategyLabCatalog {
@@ -181,9 +162,10 @@ func (r *Runner) StrategyLabOptimize(ctx context.Context, req StrategyLabOptimiz
 
 	switch st {
 	case "sma_crossover", "sma":
-		return runPythonLabAIScanner(ctx, uid, "sma", days, true, false)
+		// Periods + trailing grid so results are live-deployable (trailing_stop_pct > 0).
+		return runPythonLabAIScanner(ctx, uid, "sma", days, false, false, true)
 	case "level_bounce":
-		return runPythonLabAIScanner(ctx, uid, "level_bounce", days, true, false)
+		return runPythonLabAIScanner(ctx, uid, "level_bounce", days, true, false, false)
 	default:
 		return r.StrategyLabCompare(ctx, StrategyLabCompareRequest{
 			Ticker: req.Ticker, Days: days,
@@ -191,7 +173,7 @@ func (r *Runner) StrategyLabOptimize(ctx context.Context, req StrategyLabOptimiz
 	}
 }
 
-func runPythonLabAIScanner(ctx context.Context, uid, strategy string, days int, optimize, trailing bool) (json.RawMessage, error) {
+func runPythonLabAIScanner(ctx context.Context, uid, strategy string, days int, optimize, trailing, deployable bool) (json.RawMessage, error) {
 	root := labAppRoot()
 	py := "python3"
 	if p := os.Getenv("PYTHON_BIN"); p != "" {
@@ -206,11 +188,15 @@ func runPythonLabAIScanner(ctx context.Context, uid, strategy string, days int, 
 		"--days", fmt.Sprintf("%d", days),
 		"--json",
 	}
-	if optimize {
-		args = append(args, "--optimize")
-	}
-	if trailing {
-		args = append(args, "--optimize-trailing")
+	if deployable {
+		args = append(args, "--optimize-deployable")
+	} else {
+		if optimize {
+			args = append(args, "--optimize")
+		}
+		if trailing {
+			args = append(args, "--optimize-trailing")
+		}
 	}
 	cmd := exec.CommandContext(ctx, py, args...)
 	cmd.Dir = root
@@ -225,81 +211,4 @@ func runPythonLabAIScanner(ctx context.Context, uid, strategy string, days int, 
 		return nil, errors.New(strings.TrimSpace(stderr.String()))
 	}
 	return json.RawMessage(out), nil
-}
-
-func (r *Runner) StrategyLabApply(ctx context.Context, req StrategyLabApplyRequest) (*StrategyLabApplyResult, error) {
-	typ := strings.TrimSpace(req.Type)
-	uid := strings.TrimSpace(req.InstrumentUID)
-	if typ == "" || uid == "" {
-		return nil, fmt.Errorf("type and instrument_uid are required")
-	}
-	id := strings.TrimSpace(req.InstanceID)
-	if id == "" {
-		t := strings.TrimSpace(req.Ticker)
-		if t == "" {
-			t = "inst"
-		}
-		id = "lab-" + strings.ToLower(t) + "-" + strings.ReplaceAll(typ, "_", "-")
-	}
-	acct := strings.TrimSpace(req.AccountID)
-	if acct == "" {
-		acct = strings.TrimSpace(r.strategiesCfg.ClassicAccountID)
-	}
-	if acct == "" {
-		return nil, fmt.Errorf("account_id is required")
-	}
-	params := req.Params
-	if params == nil {
-		params = map[string]string{}
-	}
-	if _, ok := params["quantity"]; !ok {
-		params["quantity"] = "1"
-	}
-	switch typ {
-	case "sma_crossover":
-		if _, ok := params["interval"]; !ok {
-			params["interval"] = "1h"
-		}
-		if v := params["trailing_stop_pct"]; v == "" || v == "0" {
-			return nil, fmt.Errorf("sma_crossover requires trailing_stop_pct > 0 for live trading")
-		}
-	case "level_bounce":
-		if _, ok := params["interval"]; !ok {
-			params["interval"] = "15min"
-		}
-	case "orb_breakout":
-		return nil, fmt.Errorf("orb_breakout cannot be applied to live runner")
-	}
-	inst := config.StrategyInstanceConfig{
-		ID:          id,
-		Type:        typ,
-		AccountID:   acct,
-		Instruments: []string{uid},
-		Enabled:     req.Enabled,
-		Params:      params,
-	}
-	if !inst.Enabled {
-		inst.Enabled = true
-	}
-	if err := config.UpsertStrategyInstance(r.configPath, inst); err != nil {
-		return nil, err
-	}
-	added, removed, changed, err := r.ReloadConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	res := &StrategyLabApplyResult{
-		Status:     "ok",
-		InstanceID: id,
-		Reload:     map[string]int{"added": added, "removed": removed, "changed": changed},
-	}
-	if req.Start {
-		if err := r.StartInstanceByID(ctx, id); err != nil {
-			res.Started = false
-			res.Status = "applied_reload_start_failed: " + err.Error()
-		} else {
-			res.Started = true
-		}
-	}
-	return res, nil
 }

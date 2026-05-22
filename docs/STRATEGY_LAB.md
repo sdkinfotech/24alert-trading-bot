@@ -6,7 +6,7 @@
 
 | ID | Интервал | Live runner | Примечание |
 |----|----------|-------------|------------|
-| `sma_crossover` | 1h | Да | Обязателен `trailing_stop_pct > 0` |
+| `sma_crossover` | 1h | Да | Обязателен `trailing_stop_pct > 0`; кнопка «Оптимизировать» в лаборатории подбирает периоды **и** трейлинг (`--optimize-deployable`) |
 | `level_bounce` | 15m | Да | SL/TP от ATR |
 | `orb_breakout` | 15m | **Нет** | Заблокирован до protective stop |
 | `ema_1h` | 1h | Нет | Только research |
@@ -18,13 +18,38 @@ AI Trader и `grpc` в матрицу не входят.
 
 Вкладка **«Лаборатория»** (`/dashboard/#lab`):
 
-1. **Тикер** — поиск фьючерса или быстрые кнопки BMM6 / NGM6 / MCM6  
-2. **Стратегия** — SMA, Level Bounce, ORB, EMA, Donchian (пометка live / research)  
-3. **Оптимизация** — «Оптимизировать выбранную» или «Сравнить все стратегии» (1–4 мин)  
-4. **Результаты** — таблица PnL / Sharpe / просадка; клик по строке  
-5. **Запуск** — запись в `config.yaml`, reload, старт инстанса (только `live_eligible`)
+1. **Тикер** — BMM6 / NGM6 / MCM6 или поиск  
+2. **Анализ** — `POST /strategy-lab/analyze` (полная матрица ~90 дн., 1–4 мин)  
+3. **Результаты** — вердикт, сравнение с config.yaml, таблица топ-конфигов  
+4. **Запуск** — процедура rollout (см. ниже), без автостарта live из UI
 
-API: `GET /strategy-lab/catalog`, `POST /strategy-lab/compare`, `POST /strategy-lab/optimize`, `POST /strategy-lab/apply`.
+API:
+
+| Метод | Путь | Назначение |
+|--------|------|------------|
+| GET | `/strategy-lab/catalog` | Справочник стратегий |
+| POST | `/strategy-lab/analyze` | **Основной анализ** (матрица + вердикт + rollout plan) |
+| POST | `/strategy-lab/compare` | Только матрица (JSON) |
+| POST | `/strategy-lab/optimize` | Узкая оптимизация одной семьи (legacy) |
+| POST | `/strategy-lab/apply` | `phase=stage` или `phase=enable_live` |
+| POST | `/strategy-lab/interpret` | Опционально LLM поверх результатов |
+
+### Процедура выката на прод
+
+См. [`docs/PRODUCTION_TRADING_POLICY.md`](PRODUCTION_TRADING_POLICY.md).
+
+1. **Анализ** — вердикт `deploy_candidate` и осмысленное преимущество над прод (≥2 пт PnL в бэктесте, не только Sharpe).  
+2. **Stage** — `POST /strategy-lab/apply` с `"phase":"stage"`: пишет instance в `config.yaml` с **`enabled: false`**, reload runner.  
+3. **Git** — commit + push `config/config.yaml` (и код при необходимости).  
+4. **VPS** — `git pull`, `docker compose build strategy-runner`, `up -d`.  
+5. **Smoke** — `/instances`, portfolio flat, events (команды в `rollout.smoke_commands`).  
+6. **Enable live** — только после smoke: `phase=enable_live`, `confirm_live=true`, на runner **`STRATEGY_LAB_ALLOW_LIVE_START=true`**. UI по умолчанию **не** стартует instance.
+
+После таблицы на шаге «Результаты» UI вызывает `POST /strategy-lab/interpret` — LLM (OpenRouter, `STRATEGY_LAB_MODEL` или `ASSISTANT_MODEL`) пишет выводы: что лучше, выкатывать ли на прод, сравнение с текущим продом. Без ключа — шаблон по правилам.
+
+**Nginx:** на `gateway.24alert.ru` нужен `location /strategy-lab` → `:9020` (см. `deployments/nginx-strategy-lab-location.snippet`, `deployments/patch-nginx-strategy-lab.sh`). Без этого вкладка «Лаборатория» покажет `404 Not Found nginx` и список стратегий будет пустым.
+
+**Docker:** в образе strategy-runner нужен полный `python3` (не `python3-minimal`) — иначе бэктест падает с `ModuleNotFoundError: No module named 'json'`. См. `deployments/Dockerfile`.
 
 ## Быстрый старт (prod VPS)
 

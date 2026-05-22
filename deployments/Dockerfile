@@ -15,7 +15,8 @@ ARG SERVICE_NAME=gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/service ./cmd/${SERVICE_NAME}
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl netcat-openbsd wget python3-minimal && rm -rf /var/lib/apt/lists/*
+# python3 (not python3-minimal): Strategy Lab backtests need stdlib json, urllib, etc.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl netcat-openbsd wget python3 && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL -o /usr/local/share/ca-certificates/russian-trusted-root.crt \
     https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt && \
     curl -fsSL -o /usr/local/share/ca-certificates/russian-trusted-sub.crt \

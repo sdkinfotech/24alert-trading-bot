@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
+  StrategyLabAnalyzeResponse,
   StrategyLabCatalog,
   StrategyLabRunRow,
-  StrategyLabMatrixResponse,
   StrategyLabStrategyMeta,
+  StrategyLabVerdict,
 } from '../api/types';
 import { InstrumentSearchPicker, type SelectedInstrument } from './InstrumentSearchPicker';
 import { Badge, Card, EmptyState } from './ui';
@@ -33,124 +34,132 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
   const [instrument, setInstrument] = useState<SelectedInstrument | null>(null);
   const [strategy, setStrategy] = useState<StrategyLabStrategyMeta | null>(null);
   const [days, setDays] = useState(90);
-  const [optimizeResult, setOptimizeResult] = useState<StrategyLabRunRow[]>([]);
-  const [matrix, setMatrix] = useState<StrategyLabMatrixResponse | null>(null);
+  const [analysis, setAnalysis] = useState<StrategyLabAnalyzeResponse | null>(null);
   const [selected, setSelected] = useState<StrategyLabRunRow | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
+  const [confirmLive, setConfirmLive] = useState(false);
 
-  useEffect(() => {
-    void api.strategyLabCatalog().then(setCatalog).catch((e) => setError(String(e)));
+  const loadCatalog = useCallback(() => {
+    setCatalogLoading(true);
+    setError(null);
+    return api
+      .strategyLabCatalog()
+      .then(setCatalog)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setCatalogLoading(false));
   }, []);
 
-  const instResult = useMemo(() => {
-    if (!matrix?.instruments?.length || !instrument?.ticker) return null;
-    return matrix.instruments.find((i) => i.ticker === instrument.ticker) ?? matrix.instruments[0];
-  }, [matrix, instrument?.ticker]);
+  useEffect(() => {
+    void loadCatalog();
+  }, [loadCatalog]);
 
-  const compareRows = useMemo(() => {
-    if (!instResult) return [];
-    const rows: StrategyLabRunRow[] = [];
-    if (instResult.production) rows.push({ ...instResult.production, mode: 'prod' });
-    for (const r of instResult.top10_overall ?? []) rows.push(r);
-    const seen = new Set<string>();
-    return rows.filter((r) => {
-      const k = rowKey(r);
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    }).slice(0, 15);
-  }, [instResult]);
+  const resultRows = useMemo(() => analysis?.top_rows ?? [], [analysis]);
 
-  const runOptimize = useCallback(async () => {
-    if (!instrument || !strategy) return;
-    setBusy('optimize');
+  const deployRow = useMemo(() => {
+    if (selected) return selected;
+    return analysis?.candidate ?? null;
+  }, [selected, analysis]);
+
+  const runAnalyze = useCallback(async () => {
+    if (!instrument) return;
+    setBusy('analyze');
     setError(null);
+    setApplyMsg(null);
+    setAnalysis(null);
     try {
-      const raw = await api.strategyLabOptimize({
+      const res = await api.strategyLabAnalyze({
         uid: instrument.uid,
         ticker: instrument.ticker,
-        strategy: strategy.id,
         days,
+        lang,
       });
-      const rows: StrategyLabRunRow[] = [];
-      if ('best' in raw && raw.best) rows.push(raw.best);
-      if ('top10' in raw && raw.top10) rows.push(...raw.top10);
-      const inst = (raw as StrategyLabMatrixResponse).instruments?.[0];
-      if (inst?.top10_overall) rows.push(...inst.top10_overall);
-      if (inst?.best_deployable) rows.unshift(inst.best_deployable);
-      setOptimizeResult(rows.slice(0, 12));
-      if (rows[0]) setSelected(rows[0]);
+      setAnalysis(res);
+      setSelected(res.candidate ?? res.top_rows[0] ?? null);
       setStep(4);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy('');
     }
-  }, [instrument, strategy, days]);
+  }, [instrument, days, lang]);
 
-  const runCompare = useCallback(async () => {
-    if (!instrument) return;
-    setBusy('compare');
-    setError(null);
-    try {
-      const res = await api.strategyLabCompare({ ticker: instrument.ticker, uid: instrument.uid, days });
-      setMatrix(res);
-      const inst = res.instruments?.[0];
-      const pick = inst?.best_deployable ?? inst?.top10_overall?.[0] ?? null;
-      if (pick) setSelected(pick);
-      setStep(4);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy('');
-    }
-  }, [instrument, days]);
-
-  const deploy = useCallback(async () => {
-    if (!instrument || !selected) return;
-    if (!selected.live_eligible) {
-      setError(t('labDeployBlocked'));
+  const stageConfig = useCallback(async () => {
+    if (!instrument || !deployRow) return;
+    const typ = deployRow.strategy;
+    if (!deployRow.live_eligible) {
+      setError(t('labDeployBlockedResearch'));
       return;
     }
-    const typ = selected.strategy;
-    if (typ === 'orb_breakout' || typ === 'ema_1h' || typ === 'donchian_15m') {
-      setError(t('labDeployBlocked'));
-      return;
-    }
-    setBusy('apply');
+    setBusy('stage');
     setError(null);
     setApplyMsg(null);
     try {
-      const params: Record<string, string> = { ...selected.params, quantity: '1' };
-      if (typ === 'sma_crossover') {
+      const params: Record<string, string> = { ...deployRow.params, quantity: '1' };
+      if (typ === 'sma_crossover' || typ === 'sma') {
         params.interval = '1h';
-        if (!params.trailing_stop_pct || Number(params.trailing_stop_pct) <= 0) {
-          setError(t('labTrailRequired'));
-          return;
-        }
       }
       if (typ === 'level_bounce') {
         params.interval = '15min';
       }
       const res = await api.strategyLabApply({
+        phase: 'stage',
         type: typ,
+        instance_id: analysis?.config_prod?.instance_id,
+        account_id: analysis?.config_prod?.account_id,
         instrument_uid: instrument.uid,
         ticker: instrument.ticker,
         params,
-        enabled: true,
-        start: true,
+        analysis_verdict: analysis?.verdict,
       });
-      setApplyMsg(`${t('labDeployOk')}: ${res.instance_id}`);
+      setApplyMsg(`${t('labStageOk')}: ${res.instance_id} (${res.status})`);
       onDeployed?.();
-      setStep(5);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy('');
     }
-  }, [instrument, selected, t, onDeployed]);
+  }, [instrument, deployRow, analysis, t, onDeployed]);
+
+  const enableLive = useCallback(async () => {
+    if (!instrument || !deployRow || !analysis) return;
+    if (!confirmLive) {
+      setError(t('labConfirmLiveRequired'));
+      return;
+    }
+    setBusy('enable');
+    setError(null);
+    try {
+      const params: Record<string, string> = { ...deployRow.params, quantity: '1' };
+      const typ = deployRow.strategy;
+      if (typ === 'sma_crossover' || typ === 'sma') params.interval = '1h';
+      if (typ === 'level_bounce') params.interval = '15min';
+      const res = await api.strategyLabApply({
+        phase: 'enable_live',
+        confirm_live: true,
+        analysis_verdict: analysis.verdict,
+        type: typ,
+        instance_id: analysis.config_prod?.instance_id,
+        account_id: analysis.config_prod?.account_id,
+        instrument_uid: instrument.uid,
+        ticker: instrument.ticker,
+        params,
+        start: false,
+      });
+      if (res.blocked_reasons?.length) {
+        setError(res.blocked_reasons.join('; '));
+        return;
+      }
+      setApplyMsg(`${t('labEnableOk')}: ${res.instance_id} — ${res.status}`);
+      onDeployed?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy('');
+    }
+  }, [instrument, deployRow, analysis, confirmLive, t, onDeployed]);
 
   const steps = [
     t('labStep1'),
@@ -180,8 +189,11 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
       </Card>
 
       {error && (
-        <div className="rounded-lg border border-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 text-sm text-[var(--danger)]">
-          {error}
+        <div className="rounded-lg border border-[var(--danger)] bg-[var(--danger)]/10 px-4 py-2 text-sm text-[var(--danger)] flex flex-wrap items-center gap-2">
+          <span>{error}</span>
+          <button type="button" className="ui-button ui-button-secondary text-xs" onClick={() => void loadCatalog()}>
+            {t('labRetry')}
+          </button>
         </div>
       )}
       {applyMsg && (
@@ -236,6 +248,10 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
           <p className="text-xs text-[var(--muted)] mb-3">
             {instrument?.ticker} · {t('labDays')} {days}
           </p>
+          {catalogLoading && <p className="text-sm text-[var(--muted)]">{t('labLoading')}</p>}
+          {!catalogLoading && !catalog?.strategies?.length && !error && (
+            <EmptyState>{t('labCatalogEmpty')}</EmptyState>
+          )}
           <div className="grid gap-2 sm:grid-cols-2">
             {catalog?.strategies?.map((s) => (
               <button
@@ -272,30 +288,24 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
       {step === 3 && (
         <Card>
           <h3 className="font-medium mb-2">{t('labStep3')}</h3>
-          <p className="text-sm text-[var(--muted)] mb-4">{t('labStep3Hint')}</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="ui-button ui-button-primary"
-              disabled={!!busy}
-              onClick={() => void runOptimize()}
-            >
-              {busy === 'optimize' ? t('labRunning') : t('labRunOptimize')}
-            </button>
-            <button
-              type="button"
-              className="ui-button ui-button-secondary"
-              disabled={!!busy}
-              onClick={() => void runCompare()}
-            >
-              {busy === 'compare' ? t('labRunning') : t('labRunCompareAll')}
-            </button>
-          </div>
-          {optimizeResult.length > 0 && (
-            <div className="mt-4 overflow-x-auto">
-              <ResultsTable rows={optimizeResult} selected={selected} onSelect={setSelected} t={t} lang={lang} />
-            </div>
-          )}
+          <p className="text-sm text-[var(--muted)] mb-4">{t('labStep3AnalyzeHint')}</p>
+          <label className="text-xs text-[var(--muted)] block mb-1">{t('labDays')}</label>
+          <input
+            type="number"
+            className="ui-input w-24 mb-4"
+            min={14}
+            max={180}
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value) || 90)}
+          />
+          <button
+            type="button"
+            className="ui-button ui-button-primary"
+            disabled={!!busy || !instrument}
+            onClick={() => void runAnalyze()}
+          >
+            {busy === 'analyze' ? t('labRunning') : t('labRunAnalyze')}
+          </button>
         </Card>
       )}
 
@@ -303,66 +313,115 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
         <Card>
           <h3 className="font-medium mb-2">{t('labStep4')}</h3>
           <p className="text-xs text-[var(--muted)] mb-2">{t('labPnlNote')}</p>
-          {instResult?.production && (
-            <p className="text-sm mb-3">
-              {t('labProdBaseline')}: PnL {formatNumber(instResult.production.pnl, lang)} ·{' '}
-              {instResult.production.trades} {t('labTrades')}
-            </p>
-          )}
-          {compareRows.length === 0 ? (
+          {!analysis ? (
             <EmptyState>{t('labNoResults')}</EmptyState>
           ) : (
-            <ResultsTable rows={compareRows} selected={selected} onSelect={setSelected} t={t} lang={lang} />
-          )}
-          {selected && (
-            <div className="mt-4 p-3 rounded-lg bg-[var(--surface2)] text-sm">
-              <div className="font-medium">{selected.strategy} / {selected.mode}</div>
-              <div className="text-[var(--muted)]">{paramsStr(selected.params)}</div>
-              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                <span>PnL: <strong>{formatNumber(selected.pnl, lang)}</strong></span>
-                <span>Sharpe: <strong>{formatNumber(selected.sharpe, lang)}</strong></span>
-                <span>DD: <strong>{formatNumber(selected.max_drawdown, lang)}</strong></span>
-                <span>{t('labTrades')}: <strong>{selected.trades}</strong></span>
+            <>
+              <LabAnalysisBlock analysis={analysis} t={t} />
+              <div className="overflow-x-auto mt-4">
+                <ResultsTable rows={resultRows} selected={selected} onSelect={setSelected} t={t} lang={lang} />
               </div>
-            </div>
+              {selected && (
+                <div className="mt-4 p-3 rounded-lg bg-[var(--surface2)] text-sm">
+                  <div className="font-medium">{selected.strategy} / {selected.mode}</div>
+                  <div className="text-[var(--muted)]">{paramsStr(selected.params)}</div>
+                </div>
+              )}
+              <button
+                type="button"
+                className="ui-button ui-button-primary mt-4"
+                disabled={!analysis.rollout.can_stage_config}
+                onClick={() => setStep(5)}
+              >
+                {t('labNext')}
+              </button>
+            </>
           )}
-          <button
-            type="button"
-            className="ui-button ui-button-primary mt-4"
-            disabled={!selected}
-            onClick={() => setStep(5)}
-          >
-            {t('labNext')}
-          </button>
         </Card>
       )}
 
       {step === 5 && (
         <Card>
           <h3 className="font-medium mb-2">{t('labStep5')}</h3>
-          {!selected ? (
+          {!analysis || !deployRow ? (
             <EmptyState>{t('labPickFirst')}</EmptyState>
           ) : (
             <>
-              <p className="text-sm mb-3">
-                <strong>{instrument?.ticker}</strong> · {selected.strategy} · {paramsStr(selected.params)}
+              <LabRolloutChecklist analysis={analysis} />
+              <p className="text-sm mt-4 mb-2">
+                <strong>{instrument?.ticker}</strong> · {deployRow.strategy} · {paramsStr(deployRow.params)}
               </p>
-              {!selected.live_eligible && (
-                <p className="text-sm text-[var(--warning)] mb-3">{t('labDeployBlocked')}</p>
-              )}
               <button
                 type="button"
-                className="ui-button ui-button-primary"
-                disabled={!!busy || !selected.live_eligible}
-                onClick={() => void deploy()}
+                className="ui-button ui-button-primary mr-2"
+                disabled={!!busy || !analysis.rollout.can_stage_config}
+                onClick={() => void stageConfig()}
               >
-                {busy === 'apply' ? t('labRunning') : t('labDeploy')}
+                {busy === 'stage' ? t('labRunning') : t('labStageConfig')}
               </button>
+              {analysis.rollout.can_enable_live && (
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={confirmLive}
+                      onChange={(e) => setConfirmLive(e.target.checked)}
+                    />
+                    {t('labConfirmLiveLabel')}
+                  </label>
+                  <p className="text-xs text-[var(--muted)] mt-1">{t('labEnableLiveHint')}</p>
+                  <button
+                    type="button"
+                    className="ui-button ui-button-secondary mt-2"
+                    disabled={!!busy || !confirmLive}
+                    onClick={() => void enableLive()}
+                  >
+                    {busy === 'enable' ? t('labRunning') : t('labEnableLive')}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </Card>
       )}
     </div>
+  );
+}
+
+function LabAnalysisBlock({ analysis, t }: { analysis: StrategyLabAnalyzeResponse; t: (k: string) => string }) {
+  const rec = analysis.verdict as StrategyLabVerdict;
+  const tone: 'success' | 'warning' | 'neutral' =
+    rec === 'deploy_candidate' ? 'success' : rec === 'research_only' ? 'warning' : 'neutral';
+  return (
+    <div className="space-y-3 text-sm border-b border-[var(--border)] pb-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={tone}>{t(`labVerdict_${rec}`)}</Badge>
+        <span className="text-[var(--muted)]">{analysis.verdict_reason}</span>
+      </div>
+      <div className="whitespace-pre-wrap leading-relaxed">{analysis.summary_md}</div>
+      {analysis.vs_production_md && (
+        <div className="whitespace-pre-wrap text-[var(--muted)]">{analysis.vs_production_md}</div>
+      )}
+      {analysis.warnings_md && (
+        <div className="rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/30 px-3 py-2 whitespace-pre-wrap">
+          {analysis.warnings_md}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabRolloutChecklist({ analysis }: { analysis: StrategyLabAnalyzeResponse }) {
+  return (
+    <ol className="list-decimal list-inside space-y-3 text-sm">
+      {analysis.rollout.steps.map((s) => (
+        <li key={s.id}>
+          <span className="font-medium">{s.title}</span>
+          {s.automated && <Badge tone="neutral">API</Badge>}
+          <div className="text-[var(--muted)] whitespace-pre-wrap mt-1 ml-4">{s.detail_md}</div>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -384,6 +443,7 @@ function ResultsTable({
       <thead>
         <tr>
           <th>{t('labColStrategy')}</th>
+          <th>{t('labColParams')}</th>
           <th>PnL</th>
           <th>Sharpe</th>
           <th>DD</th>
@@ -398,7 +458,8 @@ function ResultsTable({
             className={`cursor-pointer ${selected && rowKey(selected) === rowKey(r) ? 'bg-[var(--accent)]/15' : ''}`}
             onClick={() => onSelect(r)}
           >
-            <td>{r.strategy}/{r.mode ?? '—'}</td>
+            <td>{r.mode === 'prod' || r.mode === 'prod_baseline' ? t('labProdBaseline') : `${r.strategy}/${r.mode ?? '—'}`}</td>
+            <td className="max-w-[14rem] truncate" title={paramsStr(r.params)}>{paramsStr(r.params)}</td>
             <td>{formatNumber(r.pnl, lang)}</td>
             <td>{formatNumber(r.sharpe, lang)}</td>
             <td>{formatNumber(r.max_drawdown, lang)}</td>

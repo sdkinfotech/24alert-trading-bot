@@ -908,15 +908,86 @@ export interface StrategyLabMatrixResponse {
   instruments: StrategyLabInstrumentResult[];
 }
 
+export interface StrategyLabOptimization {
+  kind?: string;
+  fixed_fast?: number;
+  fixed_slow?: number;
+  trailing_grid_pct?: number[];
+  step1_best_risk_score?: number;
+  note_ru?: string;
+  note_en?: string;
+}
+
 export interface StrategyLabOptimizeResponse {
   strategy?: string;
+  mode?: string;
   best?: StrategyLabRunRow;
+  best_deployable?: StrategyLabRunRow;
   top10?: StrategyLabRunRow[];
+  production?: StrategyLabRunRow;
+  optimization?: StrategyLabOptimization;
+}
+
+export interface StrategyLabConfigProd {
+  instance_id: string;
+  type: string;
+  account_id: string;
+  enabled: boolean;
+  params: Record<string, string>;
+}
+
+export interface StrategyLabRolloutStep {
+  id: string;
+  title: string;
+  detail_md: string;
+  automated: boolean;
+  api_action?: string;
+}
+
+export interface StrategyLabRolloutPlan {
+  can_stage_config: boolean;
+  can_enable_live: boolean;
+  blocked_reasons?: string[];
+  steps: StrategyLabRolloutStep[];
+  smoke_commands?: string[];
+}
+
+export type StrategyLabVerdict = 'keep_prod' | 'deploy_candidate' | 'research_only' | 'insufficient';
+
+export interface StrategyLabAnalyzeResponse {
+  ticker: string;
+  uid: string;
+  days: number;
+  verdict: StrategyLabVerdict;
+  verdict_reason: string;
+  summary_md: string;
+  vs_production_md?: string;
+  warnings_md?: string;
+  candidate?: StrategyLabRunRow;
+  production?: StrategyLabRunRow;
+  config_prod?: StrategyLabConfigProd;
+  top_rows: StrategyLabRunRow[];
+  rollout: StrategyLabRolloutPlan;
 }
 
 export interface StrategyLabApplyResult {
   status: string;
+  phase?: string;
   instance_id: string;
   reload: { added: number; removed: number; changed: number };
   started: boolean;
+  rollout?: StrategyLabRolloutPlan;
+  blocked_reasons?: string[];
+}
+
+export type StrategyLabRecommendation = 'apply' | 'keep_prod' | 'research_only' | 'wait';
+
+export interface StrategyLabInterpretResponse {
+  summary_md: string;
+  vs_production_md?: string;
+  recommendation: StrategyLabRecommendation;
+  apply_hint_md?: string;
+  warnings_md?: string;
+  llm_model?: string;
+  llm_fallback?: boolean;
 }

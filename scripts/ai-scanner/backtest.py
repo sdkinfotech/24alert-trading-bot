@@ -12,10 +12,13 @@ _SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_SCRIPTS))
 
 from backtestlib.data import get_candles  # noqa: E402
+from backtestlib.instruments import CORE_INSTRUMENTS  # noqa: E402
 from backtestlib.metrics import calc_pnl, risk_score  # noqa: E402
 from backtestlib.schedule import schedule_info  # noqa: E402
 from backtestlib.strategies.sma import run_sma  # noqa: E402
 from backtestlib.strategies.level_bounce import run_level_bounce  # noqa: E402
+
+TRAILING_GRID_PCT = [x / 1000.0 for x in range(3, 16)]
 
 
 def optimize_sma(candles, trailing_pct=0.0, swing_bars=0):
@@ -44,8 +47,7 @@ def optimize_sma(candles, trailing_pct=0.0, swing_bars=0):
 def optimize_sma_trailing(candles, fast_n, slow_n, swing_bars=0):
     best = None
     results = []
-    for pct_milli in range(3, 16):
-        pct = pct_milli / 1000.0
+    for pct in TRAILING_GRID_PCT:
         trades = run_sma(candles, fast_n, slow_n, pct, swing_bars)
         stats = calc_pnl(trades)
         entry = {
@@ -61,6 +63,91 @@ def optimize_sma_trailing(candles, fast_n, slow_n, swing_bars=0):
         if best is None or entry["risk_score"] > best["risk_score"]:
             best = entry
     return best, results
+
+
+def _tag_sma_row(entry, *, live_eligible, block_reason="", strategy="sma_crossover"):
+    entry = dict(entry)
+    entry["strategy"] = strategy
+    entry["live_eligible"] = live_eligible
+    if block_reason:
+        entry["live_block_reason"] = block_reason
+    return entry
+
+
+def _tag_sma_rows(rows, live_eligible, reason=""):
+    for e in rows:
+        e["strategy"] = "sma_crossover"
+        e["live_eligible"] = live_eligible
+        if not live_eligible:
+            e["live_block_reason"] = reason or "trailing_stop_pct required for live SMA"
+    return rows
+
+
+def prod_baseline_row(candles, prod_params):
+    """Backtest current production SMA params for comparison."""
+    if not prod_params:
+        return None
+    fast = int(prod_params["fast_period"])
+    slow = int(prod_params["slow_period"])
+    trail = float(prod_params.get("trailing_stop_pct", 0) or 0)
+    swing = int(prod_params.get("initial_stop_swing_bars", 0) or 0)
+    trades = run_sma(candles, fast, slow, trail, swing)
+    stats = calc_pnl(trades)
+    row = {
+        "strategy": "sma_crossover",
+        "mode": "prod",
+        "params": {
+            "fast_period": fast,
+            "slow_period": slow,
+            "trailing_stop_pct": trail,
+            "initial_stop_swing_bars": swing,
+            "interval": prod_params.get("interval", "1h"),
+        },
+        **stats,
+        "risk_score": round(risk_score(stats), 4),
+        "live_eligible": trail > 0,
+    }
+    return row
+
+
+def optimize_sma_deployable(candles, swing_bars=0, prod_params=None):
+    """Step 1: best fast/slow without trailing; step 2: trailing grid on that pair."""
+    best_cross, _all_cross = optimize_sma(candles, 0.0, swing_bars)
+    if not best_cross:
+        return None, None, [], None, None
+    fast = int(best_cross["params"]["fast_period"])
+    slow = int(best_cross["params"]["slow_period"])
+    best_trail, all_trail = optimize_sma_trailing(candles, fast, slow, swing_bars)
+    _tag_sma_rows(all_trail, True)
+    deployable = sorted(all_trail, key=lambda r: r.get("risk_score", -1e9), reverse=True)
+    top = deployable[:12]
+    best_deployable = top[0] if top else None
+    optimization = {
+        "kind": "sma_two_step",
+        "fixed_fast": fast,
+        "fixed_slow": slow,
+        "trailing_grid_pct": TRAILING_GRID_PCT,
+        "step1_best_risk_score": best_cross.get("risk_score"),
+        "note_ru": (
+            f"Сначала подобраны fast={fast} / slow={slow} без трейлинга (~{len(range(3, 21)) * 50} комбинаций), "
+            f"затем перебран trailing 0.3%–1.5% ({len(TRAILING_GRID_PCT)} вариантов). "
+            "Строки в таблице — не разные стратегии, а одна пара SMA с разным trailing."
+        ),
+        "note_en": (
+            f"Step 1 picked fast={fast} / slow={slow} with no trailing; "
+            f"step 2 swept trailing 0.3%–1.5% ({len(TRAILING_GRID_PCT)} values). "
+            "Table rows are the same SMA pair, not different strategies."
+        ),
+    }
+    production = prod_baseline_row(candles, prod_params)
+    return best_deployable, best_deployable, top, optimization, production
+
+
+def prod_params_for_uid(uid):
+    for inst in CORE_INSTRUMENTS:
+        if inst.get("uid") == uid:
+            return inst.get("prod")
+    return None
 
 
 def optimize_sma_sl_tp(candles, fast_n, slow_n, swing_bars=0):
@@ -125,6 +212,11 @@ def main():
     parser.add_argument("--trailing-pct", type=float, default=0.0)
     parser.add_argument("--swing-bars", type=int, default=0)
     parser.add_argument("--optimize-trailing", action="store_true")
+    parser.add_argument(
+        "--optimize-deployable",
+        action="store_true",
+        help="SMA: optimize periods then trailing (live-ready)",
+    )
     parser.add_argument("--atr-mult", type=float, default=0.4)
     parser.add_argument("--sl-mult", type=float, default=0.5)
     parser.add_argument("--tp-mult", type=float, default=1.5)
@@ -144,8 +236,22 @@ def main():
             output = {"strategy": "sma_crossover", "uid": args.uid, "candles": len(candles),
                       "schedule": schedule_info(), "mode": "optimize_trailing",
                       "best": best, "top10": sorted(all_results, key=lambda r: r["sharpe"], reverse=True)[:10]}
+        elif args.optimize_deployable:
+            prod = prod_params_for_uid(args.uid)
+            best_dep, best_any, combined, optimization, production = optimize_sma_deployable(
+                candles, args.swing_bars, prod,
+            )
+            output = {
+                "strategy": "sma_crossover", "uid": args.uid, "candles": len(candles),
+                "schedule": schedule_info(), "mode": "optimize_deployable",
+                "best_deployable": best_dep, "best": best_any,
+                "top10": combined,
+                "optimization": optimization,
+                "production": production,
+            }
         elif args.optimize:
             best, all_results = optimize_sma(candles, args.trailing_pct, args.swing_bars)
+            _tag_sma_rows(all_results, False)
             output = {"strategy": "sma_crossover", "uid": args.uid, "candles": len(candles),
                       "schedule": schedule_info(), "best": best,
                       "top10": sorted(all_results, key=lambda r: r["pnl"], reverse=True)[:10]}
@@ -169,6 +275,12 @@ def main():
             sys.exit(1)
         if args.optimize:
             best, all_results = optimize_level_bounce(candles_15m, candles_daily)
+            for e in all_results:
+                e["strategy"] = "level_bounce"
+                e["live_eligible"] = True
+            if best:
+                best["strategy"] = "level_bounce"
+                best["live_eligible"] = True
             output = {"strategy": "level_bounce", "uid": args.uid,
                       "candles_15m": len(candles_15m), "candles_daily": len(candles_daily),
                       "schedule": schedule_info(), "best": best,

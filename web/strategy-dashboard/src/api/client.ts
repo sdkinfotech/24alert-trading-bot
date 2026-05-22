@@ -197,6 +197,12 @@ export const api = {
   advisorFinalize: (sessionId: string) =>
     post<{ status: string }>(`/advisor/sessions/${encodeURIComponent(sessionId)}/finalize`, {}),
   strategyLabCatalog: () => get<import('./types').StrategyLabCatalog>('/strategy-lab/catalog'),
+  strategyLabAnalyze: (body: { ticker: string; uid?: string; days?: number; lang?: string }) =>
+    postWithTimeout<import('./types').StrategyLabAnalyzeResponse>(
+      '/strategy-lab/analyze',
+      body,
+      240_000,
+    ),
   strategyLabCompare: (body: { ticker: string; uid?: string; days?: number }) =>
     postWithTimeout<import('./types').StrategyLabMatrixResponse>('/strategy-lab/compare', body, 240_000),
   strategyLabOptimize: (body: { uid: string; ticker: string; strategy: string; days?: number }) =>
@@ -204,6 +210,9 @@ export const api = {
       import('./types').StrategyLabOptimizeResponse | import('./types').StrategyLabMatrixResponse
     >('/strategy-lab/optimize', body, 180_000),
   strategyLabApply: (body: {
+    phase?: 'stage' | 'enable_live';
+    confirm_live?: boolean;
+    analysis_verdict?: string;
     instance_id?: string;
     type: string;
     account_id?: string;
@@ -213,4 +222,23 @@ export const api = {
     enabled?: boolean;
     start?: boolean;
   }) => post<import('./types').StrategyLabApplyResult>('/strategy-lab/apply', body),
+  strategyLabInterpret: (body: {
+    optimization?: import('./types').StrategyLabOptimization;
+    ticker: string;
+    days?: number;
+    lang?: string;
+    strategy?: string;
+    rows: import('./types').StrategyLabRunRow[];
+    selected?: import('./types').StrategyLabRunRow | null;
+    production?: import('./types').StrategyLabRunRow | null;
+  }) =>
+    postWithTimeout<import('./types').StrategyLabInterpretResponse>(
+      '/strategy-lab/interpret',
+      {
+        ...body,
+        selected: body.selected ?? undefined,
+        production: body.production ?? undefined,
+      },
+      100_000,
+    ),
 };
