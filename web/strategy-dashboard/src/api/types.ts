@@ -954,18 +954,47 @@ export interface StrategyLabRolloutPlan {
 
 export type StrategyLabVerdict = 'keep_prod' | 'deploy_candidate' | 'research_only' | 'insufficient';
 
+export type StrategyLabFamilyGrade =
+  | 'excellent'
+  | 'good'
+  | 'mixed'
+  | 'poor'
+  | 'research'
+  | 'insufficient'
+  | 'prod';
+
+export interface StrategyLabFamilyLeader {
+  strategy_id: string;
+  label: string;
+  mode?: string;
+  params_summary: string;
+  pnl: number;
+  delta_vs_prod?: number;
+  max_drawdown: number;
+  trades: number;
+  grade: StrategyLabFamilyGrade;
+  grade_label: string;
+  verdict_line: string;
+  live_eligible: boolean;
+  is_production?: boolean;
+  row: StrategyLabRunRow;
+}
+
 export interface StrategyLabAnalyzeResponse {
   ticker: string;
   uid: string;
   days: number;
   verdict: StrategyLabVerdict;
   verdict_reason: string;
+  recommendation: StrategyLabRecommendation;
   summary_md: string;
   vs_production_md?: string;
+  action_md?: string;
   warnings_md?: string;
   candidate?: StrategyLabRunRow;
   production?: StrategyLabRunRow;
   config_prod?: StrategyLabConfigProd;
+  family_leaders: StrategyLabFamilyLeader[];
   top_rows: StrategyLabRunRow[];
   rollout: StrategyLabRolloutPlan;
 }

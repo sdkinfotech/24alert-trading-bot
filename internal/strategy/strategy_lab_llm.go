@@ -492,6 +492,9 @@ func labSummaryMD(req StrategyLabInterpretRequest, kind string, best, sel Strate
 	if kind == "sma_trailing_sweep" {
 		return labSummaryTrailingSweep(req, best, sel, lang)
 	}
+	if kind == "matrix_compare" {
+		return labSummaryMatrixFamilies(req, best, sel, lang)
+	}
 	if lang == "en" {
 		return fmt.Sprintf("**%s** — ~%d days backtest.\n\nBest row: **%s** / %s — PnL **%.2f**, %d trades, params: %s.\n\nSelected: PnL **%.2f**, %d trades, params: %s.",
 			req.Ticker, req.Days, best.Strategy, best.Mode, best.PnL, best.Trades, paramsSummary(best.Params),
@@ -500,6 +503,27 @@ func labSummaryMD(req StrategyLabInterpretRequest, kind string, best, sel Strate
 	return fmt.Sprintf("**%s** — бэктест ~%d дн.\n\nЛучшая строка: **%s** / %s — PnL **%.2f** пт., %d сделок, параметры: %s.\n\nВыбрано: PnL **%.2f**, %d сделок, параметры: %s.",
 		req.Ticker, req.Days, best.Strategy, best.Mode, best.PnL, best.Trades, paramsSummary(best.Params),
 		sel.PnL, sel.Trades, paramsSummary(sel.Params))
+}
+
+func labSummaryMatrixFamilies(req StrategyLabInterpretRequest, best, sel StrategyLabRunRow, lang string) string {
+	if lang == "en" {
+		return fmt.Sprintf(
+			"## %s — multi-family compare (~%d days)\n\n"+
+				"The table lists **one best config per strategy family** (SMA, Level Bounce, ORB, EMA, Donchian), not a trailing grid.\n\n"+
+				"**Best in sample:** %s — PnL **%.2f** pts, %d trades.\n**Selected:** %s — PnL **%.2f**.",
+			req.Ticker, req.Days,
+			labStrategyLabel(best.Strategy, lang), best.PnL, best.Trades,
+			labStrategyLabel(sel.Strategy, lang), sel.PnL,
+		)
+	}
+	return fmt.Sprintf(
+		"## %s — сравнение семейств (~%d дн.)\n\n"+
+			"В таблице — **по одному лучшему варианту на тип стратегии** (SMA, Level Bounce, ORB, EMA, Donchian), а не сетка trailing.\n\n"+
+			"**Лучший в выборке:** %s — PnL **%.2f** пт., %d сделок.\n**Выбрано:** %s — PnL **%.2f** пт.",
+		req.Ticker, req.Days,
+		labStrategyLabel(best.Strategy, lang), best.PnL, best.Trades,
+		labStrategyLabel(sel.Strategy, lang), sel.PnL,
+	)
 }
 
 func labSummaryTrailingSweep(req StrategyLabInterpretRequest, best, sel StrategyLabRunRow, lang string) string {

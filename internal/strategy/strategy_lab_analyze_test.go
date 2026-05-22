@@ -78,6 +78,15 @@ func TestBuildLabAnalysisSummary(t *testing.T) {
 	if out.Candidate == nil {
 		t.Fatal("expected candidate")
 	}
+	if len(out.FamilyLeaders) == 0 {
+		t.Fatal("expected family_leaders")
+	}
+	if out.Recommendation == "" {
+		t.Fatal("expected recommendation")
+	}
+	if !strings.Contains(out.SummaryMD, "семейств") && !strings.Contains(out.SummaryMD, "Family") {
+		t.Fatalf("expected family narrative in summary: %s", out.SummaryMD[:min(120, len(out.SummaryMD))])
+	}
 }
 
 func TestLabApplyEnableLiveBlocked(t *testing.T) {
