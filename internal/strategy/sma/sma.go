@@ -3,6 +3,7 @@ package sma
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -36,10 +37,12 @@ type IndicatorSnapshot struct {
 	FastN              int           `json:"fast_period"`
 	SlowN              int           `json:"slow_period"`
 	Position           int64         `json:"position"`
-	TrailingStopPct    float64       `json:"trailing_stop_pct,omitempty"`
-	TrailingBestPrice  float64       `json:"trailing_best_price,omitempty"`
-	TrailingStopPrice  float64       `json:"trailing_stop_price,omitempty"`
-	TrailingStopActive bool          `json:"trailing_stop_active,omitempty"`
+	TrailingStopPct      float64 `json:"trailing_stop_pct,omitempty"`
+	TrailingBestPrice    float64 `json:"trailing_best_price,omitempty"`
+	TrailingStopPrice    float64 `json:"trailing_stop_price,omitempty"`
+	TrailingStopActive   bool    `json:"trailing_stop_active,omitempty"`
+	StructuralStopPrice  float64 `json:"structural_stop_price,omitempty"`
+	InitialStopSwingBars int     `json:"initial_stop_swing_bars,omitempty"`
 	Candles            []CandlePoint `json:"candles"`
 	Signals            []SignalPoint `json:"signals"`
 }
@@ -51,13 +54,15 @@ type Crossover struct {
 	fastN           int
 	slowN           int
 	qty             int64
-	trailingStopPct float64
-	closes          []float64
-	pos             int64 // +1 long, -1 short, 0 flat — confirmed by broker fill
-	pendingEntry    int64 // +1 or -1 while entry/reverse order is in flight, 0 when idle
-	pendingExit     bool  // true while protective exit order is in flight
-	trailingBest    float64
-	stopped         bool
+	trailingStopPct       float64
+	initialStopSwingBars  int
+	structuralStop        float64 // swing high/low at entry for broker stop
+	closes                []float64
+	pos                   int64 // +1 long, -1 short, 0 flat — confirmed by broker fill
+	pendingEntry          int64 // +1 or -1 while entry/reverse order is in flight, 0 when idle
+	pendingExit           bool  // true while protective exit order is in flight
+	trailingBest          float64
+	stopped               bool
 
 	history []CandlePoint
 	signals []SignalPoint
@@ -99,11 +104,16 @@ func (c *Crossover) Configure(params map[string]string) error {
 	if c.trailingStopPct < 0 || c.trailingStopPct >= 0.5 {
 		return fmt.Errorf("trailing_stop_pct must be >= 0 and < 0.5")
 	}
+	c.initialStopSwingBars = intFrom(params, "initial_stop_swing_bars", 5)
+	if c.initialStopSwingBars < 0 {
+		c.initialStopSwingBars = 0
+	}
 	c.closes = c.closes[:0]
 	c.pos = 0
 	c.pendingEntry = 0
 	c.pendingExit = false
 	c.trailingBest = 0
+	c.structuralStop = 0
 	return nil
 }
 
@@ -151,6 +161,7 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		c.recordSignal(k.Time, "buy", "sma golden cross", k.Close)
 		c.pendingEntry = 1
 		c.trailingBest = 0
+		c.structuralStop = 0
 	} else if prevFast >= prevSlow && fast < slow && c.pos >= 0 {
 		sig := strategy.Signal{
 			InstrumentUID: k.InstrumentUID,
@@ -164,8 +175,53 @@ func (c *Crossover) OnCandle(k strategy.Candle) []strategy.Signal {
 		c.recordSignal(k.Time, "sell", "sma death cross", k.Close)
 		c.pendingEntry = -1
 		c.trailingBest = 0
+		c.structuralStop = 0
 	}
 	return out
+}
+
+// swingStructuralStop returns stop at max high (short) or min low (long) over last N completed bars.
+func (c *Crossover) swingStructuralStop(pos int64) float64 {
+	if c.initialStopSwingBars <= 0 || len(c.history) == 0 || pos == 0 {
+		return 0
+	}
+	start := len(c.history) - c.initialStopSwingBars
+	if start < 0 {
+		start = 0
+	}
+	if pos < 0 {
+		maxH := 0.0
+		for i := start; i < len(c.history); i++ {
+			if c.history[i].High > maxH {
+				maxH = c.history[i].High
+			}
+		}
+		return maxH
+	}
+	minL := math.MaxFloat64
+	for i := start; i < len(c.history); i++ {
+		if c.history[i].Low < minL {
+			minL = c.history[i].Low
+		}
+	}
+	if minL == math.MaxFloat64 {
+		return 0
+	}
+	return minL
+}
+
+// ProtectiveStopPrice implements strategy.ProtectiveStopProvider.
+func (c *Crossover) ProtectiveStopPrice(_ string, quantity, avgPrice float64) (float64, bool) {
+	if c.structuralStop <= 0 {
+		return 0, false
+	}
+	if quantity < 0 && c.structuralStop > avgPrice {
+		return c.structuralStop, true
+	}
+	if quantity > 0 && avgPrice > 0 && c.structuralStop < avgPrice {
+		return c.structuralStop, true
+	}
+	return 0, false
 }
 
 // OnLiveCandle updates and triggers only the protective trailing stop on an
@@ -286,13 +342,15 @@ func (c *Crossover) IndicatorData() interface{} {
 	sigs := make([]SignalPoint, len(c.signals))
 	copy(sigs, c.signals)
 	return IndicatorSnapshot{
-		FastN:              c.fastN,
-		SlowN:              c.slowN,
-		Position:           c.pos,
-		TrailingStopPct:    c.trailingStopPct,
-		TrailingBestPrice:  c.trailingBest,
-		TrailingStopPrice:  c.trailingStopPrice(),
-		TrailingStopActive: c.trailingStopPct > 0 && c.pos != 0 && c.trailingBest > 0,
+		FastN:                c.fastN,
+		SlowN:                c.slowN,
+		Position:             c.pos,
+		TrailingStopPct:      c.trailingStopPct,
+		TrailingBestPrice:    c.trailingBest,
+		TrailingStopPrice:    c.trailingStopPrice(),
+		TrailingStopActive:   c.trailingStopPct > 0 && c.pos != 0 && c.trailingBest > 0,
+		StructuralStopPrice:    c.structuralStop,
+		InitialStopSwingBars: c.initialStopSwingBars,
 		Candles:            candles,
 		Signals:            sigs,
 	}
@@ -317,11 +375,13 @@ func (c *Crossover) OnExecution(ev strategy.ExecutionEvent) {
 			c.pos = 0
 			c.pendingExit = false
 			c.trailingBest = 0
+			c.structuralStop = 0
 			return
 		}
 		if c.pendingEntry != 0 {
 			c.pos = c.pendingEntry
 			c.pendingEntry = 0
+			c.structuralStop = c.swingStructuralStop(c.pos)
 			if ev.AvgPrice > 0 {
 				c.trailingBest = ev.AvgPrice
 			} else {
@@ -350,6 +410,7 @@ func (c *Crossover) ResetTradingStateAfterWarmup() {
 	c.pendingEntry = 0
 	c.pendingExit = false
 	c.trailingBest = 0
+	c.structuralStop = 0
 	// Warmup-replayed crossover signals are not real dispatched signals.
 	c.signals = nil
 }
@@ -368,6 +429,10 @@ func (c *Crossover) SyncBrokerPosition(_ string, quantity float64, averagePrice 
 	default:
 		c.pos = 0
 		c.trailingBest = 0
+		c.structuralStop = 0
+	}
+	if c.pos != 0 && c.structuralStop == 0 {
+		c.structuralStop = c.swingStructuralStop(c.pos)
 	}
 }
 

@@ -3,6 +3,7 @@ package sma
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/24alert/trading-bot/internal/strategy"
 )
@@ -354,5 +355,38 @@ func TestCrossover_LiveTrailingStop_ShortExitsOnCurrentPrice(t *testing.T) {
 	}
 	if !c.pendingExit {
 		t.Fatal("live trailing exit must set pendingExit")
+	}
+}
+
+func TestCrossover_SwingStructuralStopShort(t *testing.T) {
+	c := New()
+	if err := c.Configure(map[string]string{
+		"fast_period":             "2",
+		"slow_period":             "3",
+		"quantity":                "1",
+		"trailing_stop_pct":       "0.008",
+		"initial_stop_swing_bars": "3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
+	for i, h := range []float64{108.0, 107.5, 106.0} {
+		c.history = append(c.history, CandlePoint{
+			Time: base.Add(time.Duration(i) * time.Hour), High: h, Low: h - 1, Close: h - 0.5,
+		})
+	}
+	c.pos = -1
+	c.structuralStop = c.swingStructuralStop(-1)
+	if math.Abs(c.structuralStop-108.0) > 1e-9 {
+		t.Fatalf("structural stop want 108 (prev high), got %.4f", c.structuralStop)
+	}
+	stop, ok := c.ProtectiveStopPrice("uid", -1, 106.07)
+	if !ok || math.Abs(stop-108.0) > 1e-9 {
+		t.Fatalf("broker stop want 108, got %.4f ok=%v", stop, ok)
+	}
+	c.trailingBest = 106.0
+	wantTrail := 106.0 * 1.008
+	if got := c.trailingStopPrice(); math.Abs(got-wantTrail) > 1e-9 {
+		t.Fatalf("trailing at 0.8%% want %.4f got %.4f", wantTrail, got)
 	}
 }

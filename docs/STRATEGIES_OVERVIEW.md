@@ -51,14 +51,14 @@ Warmup-сигналы не считаются боевыми и очищаютс
 
 | Instance | Ticker | Params |
 |---|---|---|
-| `fut-brent-mini-lb` | `BMM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005` |
+| `fut-brent-mini-lb` | `BMM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.008`, `initial_stop_swing_bars=5` |
 | `fut-gas-mini-sma` | `NGM6` | `interval=1h`, `fast_period=5`, `slow_period=17`, `trailing_stop_pct=0.005` |
 | `fut-mechel-lb` | `MCM6` | `interval=1h`, `fast_period=4`, `slow_period=9`, `trailing_stop_pct=0.005` |
 
 `fut-brent-mini-lb` and `fut-mechel-lb` are legacy IDs; their current type is `sma_crossover`.
 
 `trailing_stop_pct` is an optional protective exit for SMA positions. For `BMM6`,
-`0.005` means a 0.5% trailing stop from the best broker-synced/following price.
+`0.008` on BMM6 = 0.8% trailing from the best price in the trade direction. Broker stop after fill: max(swing high/low over last `initial_stop_swing_bars` completed 1h bars, entry±pct).
 If it triggers, SMA sends a market exit and flattens the position instead of reversing.
 
 После safety hold `trailing_stop_pct` является обязательным для `sma_crossover`, но сам по себе не считается достаточным real-money guard: runner должен быть жив, а broker-side stop / flatten watchdog ещё должны быть реализованы.

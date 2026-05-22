@@ -121,7 +121,11 @@ export function BotControlBar({ instance, status, portfolio, recentEvents, onAct
           </Badge>
           {!instance.enabled_in_config && <Badge tone="neutral">{t('controlDisabledInConfig')}</Badge>}
           {sessionBadge}
-          {status?.feed_stale_hint && <Badge tone="danger">{t('controlFeedStale')}</Badge>}
+          {status?.feed_stale_hint && (
+            <span title={t('controlFeedStaleHelp')}>
+              <Badge tone="danger">{t('controlFeedStale')}</Badge>
+            </span>
+          )}
           {status?.ledger_mismatch && <Badge tone="danger">{t('positionSourcesMismatch')}</Badge>}
           {status?.open_position && status.protective_stops === 0 && (
             <Badge tone="danger">{t('protectiveStopMissing')}</Badge>

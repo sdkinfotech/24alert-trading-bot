@@ -171,7 +171,8 @@ strategies:
         interval: "1h"
         fast_period: "4"
         slow_period: "9"
-        trailing_stop_pct: "0.005"
+        trailing_stop_pct: "0.008"
+        initial_stop_swing_bars: "5"
         quantity: "1"
     - id: fut-gas-mini-sma
       type: sma_crossover

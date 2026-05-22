@@ -35,3 +35,9 @@ type BrokerPositionSyncer interface {
 type LiveCandleHandler interface {
 	OnLiveCandle(candle Candle) []Signal
 }
+
+// ProtectiveStopProvider is optional: supplies broker stop-loss price after entry.
+// When set, runner prefers this over entry±pct when it is wider (e.g. swing high for shorts).
+type ProtectiveStopProvider interface {
+	ProtectiveStopPrice(instrumentUID string, quantity, avgPrice float64) (stopPrice float64, ok bool)
+}

@@ -221,6 +221,21 @@ func (r *Runner) ensureProtectiveStop(ctx context.Context, instanceID, accountID
 		dir = pb.StopOrderDirection_STOP_ORDER_DIRECTION_BUY
 		stopPrice = base * (1 + pct)
 	}
+	r.mu.Lock()
+	rt := r.instances[instanceID]
+	r.mu.Unlock()
+	if rt != nil {
+		if prov, ok := rt.strat.(ProtectiveStopProvider); ok {
+			if structural, ok2 := prov.ProtectiveStopPrice(instrumentUID, quantity, base); ok2 {
+				if quantity < 0 && structural > stopPrice {
+					stopPrice = structural
+				}
+				if quantity > 0 && structural > 0 && structural < stopPrice {
+					stopPrice = structural
+				}
+			}
+		}
+	}
 	lots := int64(math.Ceil(math.Abs(quantity)))
 	if lots <= 0 {
 		return
