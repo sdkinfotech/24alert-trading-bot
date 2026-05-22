@@ -14,6 +14,18 @@
 
 AI Trader и `grpc` в матрицу не входят.
 
+## Веб-интерфейс (дашборд)
+
+Вкладка **«Лаборатория»** (`/dashboard/#lab`):
+
+1. **Тикер** — поиск фьючерса или быстрые кнопки BMM6 / NGM6 / MCM6  
+2. **Стратегия** — SMA, Level Bounce, ORB, EMA, Donchian (пометка live / research)  
+3. **Оптимизация** — «Оптимизировать выбранную» или «Сравнить все стратегии» (1–4 мин)  
+4. **Результаты** — таблица PnL / Sharpe / просадка; клик по строке  
+5. **Запуск** — запись в `config.yaml`, reload, старт инстанса (только `live_eligible`)
+
+API: `GET /strategy-lab/catalog`, `POST /strategy-lab/compare`, `POST /strategy-lab/optimize`, `POST /strategy-lab/apply`.
+
 ## Быстрый старт (prod VPS)
 
 ```bash

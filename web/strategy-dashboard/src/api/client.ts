@@ -35,13 +35,20 @@ async function get<T>(path: string): Promise<T> {
   return parseResponse<T>(res);
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   return parseResponse<T>(res);
+}
+
+function postWithTimeout<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  return post<T>(path, body, ctrl.signal).finally(() => window.clearTimeout(timer));
 }
 
 async function postNoContent(path: string): Promise<void> {
@@ -189,4 +196,21 @@ export const api = {
     get<AdvisorStrategyResponse>(`/advisor/sessions/${encodeURIComponent(sessionId)}/strategy`),
   advisorFinalize: (sessionId: string) =>
     post<{ status: string }>(`/advisor/sessions/${encodeURIComponent(sessionId)}/finalize`, {}),
+  strategyLabCatalog: () => get<import('./types').StrategyLabCatalog>('/strategy-lab/catalog'),
+  strategyLabCompare: (body: { ticker: string; uid?: string; days?: number }) =>
+    postWithTimeout<import('./types').StrategyLabMatrixResponse>('/strategy-lab/compare', body, 240_000),
+  strategyLabOptimize: (body: { uid: string; ticker: string; strategy: string; days?: number }) =>
+    postWithTimeout<
+      import('./types').StrategyLabOptimizeResponse | import('./types').StrategyLabMatrixResponse
+    >('/strategy-lab/optimize', body, 180_000),
+  strategyLabApply: (body: {
+    instance_id?: string;
+    type: string;
+    account_id?: string;
+    instrument_uid: string;
+    ticker: string;
+    params: Record<string, string>;
+    enabled?: boolean;
+    start?: boolean;
+  }) => post<import('./types').StrategyLabApplyResult>('/strategy-lab/apply', body),
 };

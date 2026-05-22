@@ -15,6 +15,7 @@ import type {
 } from './api/types';
 import { BotControlBar } from './components/BotControlBar';
 import { AssistantPanel } from './components/AssistantPanel';
+import { StrategyLabPanel } from './components/StrategyLabPanel';
 import { IndicatorChart } from './components/IndicatorChart';
 import { EventLog } from './components/EventLog';
 import { StatsPanel } from './components/StatsPanel';
@@ -31,7 +32,7 @@ import { formatDateTime, formatMoney, formatNumber } from './format';
 const REFRESH_VISIBLE_MS = 5_000;
 const REFRESH_HIDDEN_MS = 30_000;
 
-type MainTab = 'overview' | 'chart' | 'portfolio' | 'history' | 'assistant' | 'ai-trader' | 'guide';
+type MainTab = 'overview' | 'chart' | 'portfolio' | 'history' | 'assistant' | 'lab' | 'ai-trader' | 'guide';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -39,7 +40,7 @@ function errorMessage(error: unknown): string {
 
 function tabFromHash(): MainTab {
   const h = window.location.hash.slice(1).toLowerCase();
-  if (['chart', 'portfolio', 'history', 'assistant', 'ai-trader', 'guide', 'overview'].includes(h)) return h as MainTab;
+  if (['chart', 'portfolio', 'history', 'assistant', 'lab', 'ai-trader', 'guide', 'overview'].includes(h)) return h as MainTab;
   if (h === 'about' || h === 'справка') return 'guide';
   return 'overview';
 }
@@ -196,6 +197,7 @@ function DashboardApp() {
       { id: 'portfolio', label: t('portfolio') },
       { id: 'history', label: t('history') },
       { id: 'assistant', label: t('assistant') },
+      { id: 'lab', label: t('lab') },
       { id: 'guide', label: t('guide') },
     ];
     if (!aiTraderArchived) {
@@ -217,6 +219,8 @@ function DashboardApp() {
           <p className="text-xs text-[var(--muted)]">
             {tab === 'ai-trader' ? (
               <span className="font-semibold text-[var(--warning)]">{t('aiTraderSeparate')}</span>
+            ) : tab === 'lab' ? (
+              <span className="font-semibold text-[var(--warning)]">{t('labSubtitle')}</span>
             ) : (
               <>
                 {current?.tickers ? <span className="font-semibold text-[var(--warning)]">{current.tickers} · </span> : null}
@@ -235,7 +239,7 @@ function DashboardApp() {
               {t('theme')}: {mode === 'dark' ? t('dark') : t('light')}
             </button>
           </div>
-          {tab !== 'ai-trader' && instances.length > 0 && (
+          {tab !== 'ai-trader' && tab !== 'lab' && tab !== 'assistant' && instances.length > 0 && (
             <InstanceSelector instances={instances} selected={selected} onSelect={setSelected} />
           )}
         </div>
@@ -303,6 +307,10 @@ function DashboardApp() {
       )}
 
       {tab === 'assistant' && <AssistantPanel />}
+
+      {tab === 'lab' && (
+        <StrategyLabPanel onDeployed={() => void loadInstances()} />
+      )}
 
       {tab === 'ai-trader' && <AiTraderPanel instances={instances} />}
 

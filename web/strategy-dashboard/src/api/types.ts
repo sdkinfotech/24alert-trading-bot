@@ -851,3 +851,72 @@ export interface AdvisorStrategyResponse {
   synthesis: AdvisorSynthesis | null;
   reports: AdvisorAnalysisReport[];
 }
+
+export interface StrategyLabStrategyMeta {
+  id: string;
+  label: string;
+  interval: string;
+  live_eligible: boolean;
+  live_block_note?: string;
+  param_hints: string[];
+}
+
+export interface StrategyLabTickerMeta {
+  ticker: string;
+  uid: string;
+}
+
+export interface StrategyLabCatalog {
+  strategies: StrategyLabStrategyMeta[];
+  core_tickers: StrategyLabTickerMeta[];
+}
+
+export interface StrategyLabRunRow {
+  strategy: string;
+  mode?: string;
+  interval?: string;
+  params: Record<string, string>;
+  pnl: number;
+  trades: number;
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  max_drawdown: number;
+  sharpe: number;
+  profit_factor: number;
+  risk_score?: number;
+  quality?: string;
+  live_eligible?: boolean;
+  live_block_reason?: string;
+}
+
+export interface StrategyLabInstrumentResult {
+  ticker: string;
+  uid?: string;
+  production?: StrategyLabRunRow;
+  best_deployable?: StrategyLabRunRow;
+  best_research?: StrategyLabRunRow;
+  top10_deployable?: StrategyLabRunRow[];
+  top10_research?: StrategyLabRunRow[];
+  top10_overall?: StrategyLabRunRow[];
+  error?: string;
+}
+
+export interface StrategyLabMatrixResponse {
+  generated_at?: string;
+  days?: number;
+  instruments: StrategyLabInstrumentResult[];
+}
+
+export interface StrategyLabOptimizeResponse {
+  strategy?: string;
+  best?: StrategyLabRunRow;
+  top10?: StrategyLabRunRow[];
+}
+
+export interface StrategyLabApplyResult {
+  status: string;
+  instance_id: string;
+  reload: { added: number; removed: number; changed: number };
+  started: boolean;
+}

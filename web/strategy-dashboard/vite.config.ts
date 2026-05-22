@@ -15,6 +15,7 @@ export default defineConfig({
       '/config': 'http://127.0.0.1:9020',
       '/ai-chat': 'http://127.0.0.1:9020',
       '/ai-trader': 'http://127.0.0.1:9020',
+      '/strategy-lab': 'http://127.0.0.1:9020',
       '/advisor': 'http://127.0.0.1:9030',
     },
   },

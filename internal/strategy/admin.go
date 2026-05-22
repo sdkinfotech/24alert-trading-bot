@@ -268,6 +268,58 @@ func NewManagementHandler(parent context.Context, r *Runner) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
 	})
+	mux.HandleFunc("GET /strategy-lab/catalog", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(strategyLabCatalog())
+	})
+	mux.HandleFunc("POST /strategy-lab/compare", func(w http.ResponseWriter, req *http.Request) {
+		var body StrategyLabCompareRequest
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(req.Context(), 4*time.Minute)
+		defer cancel()
+		out, err := r.StrategyLabCompare(ctx, body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(out)
+	})
+	mux.HandleFunc("POST /strategy-lab/optimize", func(w http.ResponseWriter, req *http.Request) {
+		var body StrategyLabOptimizeRequest
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(req.Context(), 3*time.Minute)
+		defer cancel()
+		out, err := r.StrategyLabOptimize(ctx, body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(out)
+	})
+	mux.HandleFunc("POST /strategy-lab/apply", func(w http.ResponseWriter, req *http.Request) {
+		var body StrategyLabApplyRequest
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ctx, cancel := context.WithTimeout(req.Context(), 45*time.Second)
+		defer cancel()
+		res, err := r.StrategyLabApply(ctx, body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(res)
+	})
 	mux.HandleFunc("GET /instruments/catalog", func(w http.ResponseWriter, req *http.Request) {
 		q := req.URL.Query().Get("q")
 		kind := req.URL.Query().Get("kind")
