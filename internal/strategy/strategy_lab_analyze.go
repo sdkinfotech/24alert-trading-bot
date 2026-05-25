@@ -96,6 +96,7 @@ type labMatrixInstrument struct {
 	BestResearch    *StrategyLabRunRow `json:"best_research"`
 	Top10Overall    []StrategyLabRunRow `json:"top10_overall"`
 	Top10Deployable []StrategyLabRunRow `json:"top10_deployable"`
+	FamilyBest      []StrategyLabRunRow `json:"family_best"`
 }
 
 const (
@@ -305,35 +306,41 @@ var labStrategyOrder = []string{
 }
 
 func collectLabFamilyLeaders(inst *labMatrixInstrument, prod *StrategyLabRunRow, lang string) []StrategyLabFamilyLeader {
-	pool := make([]StrategyLabRunRow, 0, 64)
-	pool = append(pool, inst.Top10Overall...)
-	pool = append(pool, inst.Top10Deployable...)
-	if inst.BestDeployable != nil {
-		pool = append(pool, *inst.BestDeployable)
-	}
-	if inst.BestResearch != nil {
-		pool = append(pool, *inst.BestResearch)
-	}
-
-	bestByStrategy := make(map[string]StrategyLabRunRow)
-	for _, r := range pool {
-		if r.Mode == "prod" || r.Mode == "prod_baseline" {
-			continue
-		}
-		key := r.Strategy
-		prev, ok := bestByStrategy[key]
-		if !ok || labRowScore(r) > labRowScore(prev) {
-			bestByStrategy[key] = r
-		}
-	}
-
 	var out []StrategyLabFamilyLeader
 	if prod != nil {
 		out = append(out, rowToFamilyLeader(*prod, prod, lang, true))
 	}
-	for _, sid := range labStrategyOrder {
-		r, ok := bestByStrategy[sid]
-		if !ok {
+	rows := inst.FamilyBest
+	if len(rows) == 0 {
+		// Fallback for older matrix JSON without family_best.
+		pool := make([]StrategyLabRunRow, 0, 64)
+		pool = append(pool, inst.Top10Overall...)
+		pool = append(pool, inst.Top10Deployable...)
+		if inst.BestDeployable != nil {
+			pool = append(pool, *inst.BestDeployable)
+		}
+		if inst.BestResearch != nil {
+			pool = append(pool, *inst.BestResearch)
+		}
+		bestByStrategy := make(map[string]StrategyLabRunRow)
+		for _, r := range pool {
+			if r.Mode == "prod" || r.Mode == "prod_baseline" {
+				continue
+			}
+			key := r.Strategy
+			prev, ok := bestByStrategy[key]
+			if !ok || labRowScore(r) > labRowScore(prev) {
+				bestByStrategy[key] = r
+			}
+		}
+		for _, sid := range labStrategyOrder {
+			if r, ok := bestByStrategy[sid]; ok {
+				rows = append(rows, r)
+			}
+		}
+	}
+	for _, r := range rows {
+		if r.Mode == "prod_baseline" {
 			continue
 		}
 		out = append(out, rowToFamilyLeader(r, prod, lang, false))
@@ -531,19 +538,28 @@ func labMatrixNarrativeMD(
 	}
 
 	if lang == "en" {
-		b.WriteString("| Family | Best config | PnL (pts) | vs prod | Trades | Verdict |\n")
-		b.WriteString("|--------|-------------|-----------|---------|--------|--------|\n")
+		b.WriteString("See the **family table** below (one row per strategy type). Highlights:\n\n")
 	} else {
-		b.WriteString("| Семейство | Лучший вариант | PnL (пт.) | к прод | Сделок | Оценка |\n")
-		b.WriteString("|-----------|----------------|-----------|--------|--------|--------|\n")
+		b.WriteString("Смотрите **таблицу семейств** ниже (одна строка на тип стратегии). Кратко:\n\n")
 	}
 	for _, f := range families {
-		delta := "—"
-		if f.DeltaVsProd != nil {
-			delta = fmt.Sprintf("%+.1f", *f.DeltaVsProd)
+		if f.IsProduction {
+			continue
 		}
-		b.WriteString(fmt.Sprintf("| %s | %s | %.1f | %s | %d | **%s** |\n",
-			f.Label, f.ParamsSummary, f.PnL, delta, f.Trades, f.GradeLabel))
+		delta := ""
+		if f.DeltaVsProd != nil {
+			delta = fmt.Sprintf(" (Δ к прод %+.1f пт.)", *f.DeltaVsProd)
+			if lang == "en" {
+				delta = fmt.Sprintf(" (Δ vs prod %+.1f pts)", *f.DeltaVsProd)
+			}
+		}
+		if lang == "en" {
+			b.WriteString(fmt.Sprintf("- **%s** — %s — PnL **%.1f** pts, %d trades — **%s**%s\n  _%s_\n",
+				f.Label, f.ParamsSummary, f.PnL, f.Trades, f.GradeLabel, delta, f.VerdictLine))
+		} else {
+			b.WriteString(fmt.Sprintf("- **%s** — %s — PnL **%.1f** пт., %d сделок — **%s**%s\n  _%s_\n",
+				f.Label, f.ParamsSummary, f.PnL, f.Trades, f.GradeLabel, delta, f.VerdictLine))
+		}
 	}
 	b.WriteString("\n")
 

@@ -71,6 +71,18 @@ def main():
         best_deploy = deployable[0] if deployable else None
         best_research = research[0] if research else None
 
+        family_order = [
+            "sma_crossover", "level_bounce", "orb_breakout", "ema_1h", "donchian_15m",
+        ]
+        family_best_map = {}
+        for r in ranked:
+            if r.get("mode") == "prod_baseline":
+                continue
+            sid = r.get("strategy")
+            if sid not in family_best_map or r["risk_score"] > family_best_map[sid]["risk_score"]:
+                family_best_map[sid] = r
+        family_best = [family_best_map[s] for s in family_order if s in family_best_map]
+
         out["instruments"].append({
             "ticker": inst["ticker"],
             "uid": uid,
@@ -86,6 +98,7 @@ def main():
             "top10_deployable": deployable[:10],
             "top10_research": research[:10],
             "top10_overall": ranked[:10],
+            "family_best": family_best,
         })
         print(f"  done: {len(runs)} runs, best deploy risk={best_deploy['risk_score'] if best_deploy else 'n/a'}",
               file=sys.stderr)

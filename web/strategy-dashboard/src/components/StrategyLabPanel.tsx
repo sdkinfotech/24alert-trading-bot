@@ -14,8 +14,6 @@ import { useI18n } from '../i18n';
 import type { Lang } from '../i18n';
 import { formatNumber } from '../format';
 
-type Step = 1 | 2 | 3 | 4;
-
 function paramsStr(p: Record<string, string> | undefined): string {
   if (!p) return '—';
   return Object.entries(p)
@@ -44,12 +42,69 @@ function gradeTone(g: StrategyLabFamilyGrade): 'success' | 'warning' | 'danger' 
   }
 }
 
+function verdictTone(v: StrategyLabVerdict): 'success' | 'warning' | 'danger' | 'info' | 'neutral' {
+  if (v === 'deploy_candidate') return 'success';
+  if (v === 'research_only') return 'warning';
+  if (v === 'insufficient') return 'danger';
+  return 'info';
+}
+
+/** Minimal markdown: headers and paragraphs only (no broken pipe tables). */
+function SimpleMarkdown({ text }: { text: string }) {
+  const blocks = text.split(/\n\n+/);
+  return (
+    <div className="space-y-3 text-sm leading-relaxed">
+      {blocks.map((block, i) => {
+        const line = block.trim();
+        if (!line) return null;
+        if (line.startsWith('### ')) {
+          return (
+            <h4 key={i} className="font-semibold text-[var(--text)] mt-2">
+              {line.replace(/^###\s+/, '')}
+            </h4>
+          );
+        }
+        if (line.startsWith('## ')) {
+          return (
+            <h3 key={i} className="text-base font-semibold text-[var(--text)]">
+              {line.replace(/^##\s+/, '')}
+            </h3>
+          );
+        }
+        const html = line
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/_([^_]+)_/g, '<em class="text-[var(--muted)]">$1</em>');
+        if (line.startsWith('- ')) {
+          return (
+            <ul key={i} className="list-disc list-inside space-y-1 text-[var(--text)]">
+              {line.split('\n').map((li, j) => (
+                <li
+                  key={j}
+                  dangerouslySetInnerHTML={{
+                    __html: li.replace(/^- /, '').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'),
+                  }}
+                />
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p
+            key={i}
+            className="text-[var(--text)]"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
   const { t, lang } = useI18n();
-  const [step, setStep] = useState<Step>(1);
   const [catalog, setCatalog] = useState<StrategyLabCatalog | null>(null);
   const [instrument, setInstrument] = useState<SelectedInstrument | null>(null);
-  const [days, setDays] = useState(90);
+  const [days, setDays] = useState(30);
   const [analysis, setAnalysis] = useState<StrategyLabAnalyzeResponse | null>(null);
   const [selected, setSelected] = useState<StrategyLabRunRow | null>(null);
   const [busy, setBusy] = useState('');
@@ -57,6 +112,7 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [applyMsg, setApplyMsg] = useState<string | null>(null);
   const [confirmLive, setConfirmLive] = useState(false);
+  const [showDeploy, setShowDeploy] = useState(false);
 
   const loadCatalog = useCallback(() => {
     setCatalogLoading(true);
@@ -72,6 +128,8 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
     void loadCatalog();
   }, [loadCatalog]);
 
+  const families = analysis?.family_leaders ?? [];
+
   const deployRow = useMemo(() => {
     if (selected) return selected;
     return analysis?.candidate ?? null;
@@ -83,6 +141,7 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
     setError(null);
     setApplyMsg(null);
     setAnalysis(null);
+    setShowDeploy(false);
     try {
       const res = await api.strategyLabAnalyze({
         uid: instrument.uid,
@@ -91,8 +150,7 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
         lang,
       });
       setAnalysis(res);
-      setSelected(res.candidate ?? res.top_rows[0] ?? null);
-      setStep(3);
+      setSelected(res.candidate ?? res.top_rows?.[0] ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -102,7 +160,6 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
 
   const stageConfig = useCallback(async () => {
     if (!instrument || !deployRow) return;
-    const typ = deployRow.strategy;
     if (!deployRow.live_eligible) {
       setError(t('labDeployBlockedResearch'));
       return;
@@ -112,12 +169,9 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
     setApplyMsg(null);
     try {
       const params: Record<string, string> = { ...deployRow.params, quantity: '1' };
-      if (typ === 'sma_crossover' || typ === 'sma') {
-        params.interval = '1h';
-      }
-      if (typ === 'level_bounce') {
-        params.interval = '15min';
-      }
+      const typ = deployRow.strategy;
+      if (typ === 'sma_crossover' || typ === 'sma') params.interval = '1h';
+      if (typ === 'level_bounce') params.interval = '15min';
       const res = await api.strategyLabApply({
         phase: 'stage',
         type: typ,
@@ -175,25 +229,20 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
     }
   }, [instrument, deployRow, analysis, confirmLive, t, onDeployed]);
 
-  const steps = [t('labStep1'), t('labStep2Analyze'), t('labStep4'), t('labStep5')];
+  const recLabel =
+    analysis?.recommendation === 'apply'
+      ? t('labRec_apply')
+      : analysis?.recommendation === 'research_only'
+        ? t('labRec_research_only')
+        : analysis?.recommendation === 'wait'
+          ? t('labRec_wait')
+          : t('labRec_keep_prod');
 
   return (
     <div className="space-y-6">
       <Card>
         <h2 className="text-lg font-semibold text-[var(--text)]">{t('labTitle')}</h2>
         <p className="text-sm text-[var(--muted)] mt-1">{t('labSubtitleNew')}</p>
-        <div className="flex flex-wrap gap-2 mt-4">
-          {steps.map((label, i) => (
-            <button
-              key={label}
-              type="button"
-              className={`ui-button text-xs ${step === i + 1 ? 'ui-button-primary' : 'ui-button-secondary'}`}
-              onClick={() => setStep((i + 1) as Step)}
-            >
-              {i + 1}. {label}
-            </button>
-          ))}
-        </div>
       </Card>
 
       {error && (
@@ -210,205 +259,157 @@ export function StrategyLabPanel({ onDeployed }: { onDeployed?: () => void }) {
         </div>
       )}
 
-      {step === 1 && (
-        <Card>
-          <h3 className="font-medium mb-2">{t('labStep1')}</h3>
-          <InstrumentSearchPicker value={instrument} onChange={setInstrument} />
-          <div className="flex flex-wrap gap-2 mt-3">
-            {catalog?.core_tickers?.map((c) => (
-              <button
-                key={c.uid}
-                type="button"
-                className="ui-button ui-button-secondary text-xs"
-                onClick={() =>
-                  setInstrument({ uid: c.uid, ticker: c.ticker, name: c.ticker, kind: 'future' })
-                }
-              >
-                {c.ticker}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-[var(--muted)] mt-3">{t('labFamiliesHint')}</p>
-          {!catalogLoading && catalog?.strategies?.length ? (
-            <ul className="text-xs text-[var(--muted)] mt-2 list-disc list-inside space-y-0.5">
-              {catalog.strategies.map((s) => (
-                <li key={s.id}>
-                  {s.label}
-                  {s.live_eligible ? '' : ` (${t('labResearchOnly')})`}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <div className="mt-4 flex gap-2 items-center">
-            <label className="text-sm text-[var(--muted)]">{t('labDays')}</label>
+      <Card>
+        <h3 className="font-medium mb-3">{t('labStep1')}</h3>
+        <InstrumentSearchPicker value={instrument} onChange={setInstrument} />
+        <div className="flex flex-wrap gap-2 mt-3">
+          {catalog?.core_tickers?.map((c) => (
+            <button
+              key={c.uid}
+              type="button"
+              className="ui-button ui-button-secondary text-xs"
+              onClick={() =>
+                setInstrument({ uid: c.uid, ticker: c.ticker, name: c.ticker, kind: 'future' })
+              }
+            >
+              {c.ticker}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="text-sm text-[var(--muted)] block mb-1">{t('labDays')}</label>
             <input
               type="number"
               className="ui-input w-24"
               min={14}
               max={120}
               value={days}
-              onChange={(e) => setDays(Number(e.target.value) || 90)}
+              onChange={(e) => setDays(Number(e.target.value) || 30)}
             />
+            <p className="text-xs text-[var(--muted)] mt-1">{t('labDaysHint')}</p>
           </div>
-          <button
-            type="button"
-            className="ui-button ui-button-primary mt-4"
-            disabled={!instrument}
-            onClick={() => setStep(2)}
-          >
-            {t('labNext')}
-          </button>
-        </Card>
-      )}
-
-      {step === 2 && (
-        <Card>
-          <h3 className="font-medium mb-2">{t('labStep2Analyze')}</h3>
-          <p className="text-sm text-[var(--muted)] mb-4">
-            {instrument?.ticker} · {t('labDays')} {days}
-          </p>
-          <p className="text-sm leading-relaxed mb-4">{t('labStep3AnalyzeHint')}</p>
           <button
             type="button"
             className="ui-button ui-button-primary"
             disabled={!!busy || !instrument}
             onClick={() => void runAnalyze()}
           >
-            {busy === 'analyze' ? t('labRunning') : t('labRunAnalyze')}
+            {busy === 'analyze' ? t('labRunningLong') : t('labRunAnalyze')}
           </button>
+        </div>
+        {catalogLoading && <p className="text-xs text-[var(--muted)] mt-2">{t('labLoading')}</p>}
+      </Card>
+
+      {busy === 'analyze' && (
+        <Card>
+          <p className="text-sm text-[var(--muted)] animate-pulse">{t('labRunningLong')}</p>
         </Card>
       )}
 
-      {step === 3 && (
-        <Card>
-          <h3 className="font-medium mb-2">{t('labStep4')}</h3>
-          <p className="text-xs text-[var(--muted)] mb-2">{t('labPnlNote')}</p>
-          {!analysis ? (
-            <EmptyState>{t('labNoResults')}</EmptyState>
-          ) : (
-            <>
-              <LabAnalysisBlock analysis={analysis} t={t} />
-              <FamilyLeadersTable
-                families={analysis.family_leaders ?? []}
-                selected={selected}
-                onSelect={(r) => setSelected(r)}
-                t={t}
-                lang={lang}
-              />
-              {selected && (
-                <div className="mt-4 p-3 rounded-lg bg-[var(--surface2)] text-sm border border-[var(--border)]">
-                  <div className="text-xs text-[var(--muted)] mb-1">{t('labSelectedForDeploy')}</div>
-                  <div className="font-medium">{selected.strategy} / {selected.mode}</div>
-                  <div className="text-[var(--muted)]">{paramsStr(selected.params)}</div>
+      {analysis && !busy && (
+        <>
+          <Card>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <Badge tone={verdictTone(analysis.verdict)}>{t(`labVerdict_${analysis.verdict}`)}</Badge>
+              <Badge tone={analysis.recommendation === 'apply' ? 'success' : 'neutral'}>{recLabel}</Badge>
+              <span className="text-xs text-[var(--muted)]">
+                {analysis.ticker} · {analysis.days} {t('labDays').toLowerCase()}
+              </span>
+            </div>
+            <p className="text-base font-medium text-[var(--text)] mb-4">{analysis.verdict_reason}</p>
+
+            <FamilyLeadersTable
+              families={families}
+              selected={selected}
+              onSelect={setSelected}
+              t={t}
+              lang={lang}
+            />
+
+            {selected && (
+              <div className="mt-4 p-3 rounded-lg bg-[var(--surface2)] border border-[var(--border)] text-sm">
+                <div className="text-xs text-[var(--muted)]">{t('labSelectedForDeploy')}</div>
+                <div className="font-medium mt-1">
+                  {selected.strategy} · {paramsStr(selected.params)}
                 </div>
-              )}
-              <button
-                type="button"
-                className="ui-button ui-button-primary mt-4"
-                disabled={!analysis.rollout.can_stage_config}
-                onClick={() => setStep(4)}
-              >
-                {t('labNext')}
-              </button>
-            </>
-          )}
-        </Card>
-      )}
+              </div>
+            )}
 
-      {step === 4 && (
-        <Card>
-          <h3 className="font-medium mb-2">{t('labStep5')}</h3>
-          {!analysis || !deployRow ? (
-            <EmptyState>{t('labPickFirst')}</EmptyState>
-          ) : (
-            <>
-              <LabRolloutChecklist analysis={analysis} />
-              <p className="text-sm mt-4 mb-2">
-                <strong>{instrument?.ticker}</strong> · {deployRow.strategy} · {paramsStr(deployRow.params)}
-              </p>
-              <button
-                type="button"
-                className="ui-button ui-button-primary mr-2"
-                disabled={!!busy || !analysis.rollout.can_stage_config}
-                onClick={() => void stageConfig()}
-              >
-                {busy === 'stage' ? t('labRunning') : t('labStageConfig')}
-              </button>
-              {analysis.rollout.can_enable_live && (
-                <div className="mt-4 border-t border-[var(--border)] pt-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={confirmLive}
-                      onChange={(e) => setConfirmLive(e.target.checked)}
-                    />
-                    {t('labConfirmLiveLabel')}
-                  </label>
-                  <p className="text-xs text-[var(--muted)] mt-1">{t('labEnableLiveHint')}</p>
+            <details className="mt-4">
+              <summary className="cursor-pointer text-sm text-[var(--muted)] hover:text-[var(--text)]">
+                {t('labDetailsToggle')}
+              </summary>
+              <div className="mt-3 space-y-4 border-t border-[var(--border)] pt-4">
+                <SimpleMarkdown text={analysis.summary_md} />
+                {analysis.vs_production_md && (
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase text-[var(--muted)] mb-2">
+                      {t('labInterpretVsProd')}
+                    </h4>
+                    <SimpleMarkdown text={analysis.vs_production_md} />
+                  </div>
+                )}
+                {analysis.action_md && <SimpleMarkdown text={analysis.action_md} />}
+                {analysis.warnings_md && (
+                  <div className="rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/30 p-3">
+                    <SimpleMarkdown text={analysis.warnings_md} />
+                  </div>
+                )}
+              </div>
+            </details>
+          </Card>
+
+          <Card>
+            <button
+              type="button"
+              className="text-sm font-medium text-[var(--accent)]"
+              onClick={() => setShowDeploy((v) => !v)}
+            >
+              {showDeploy ? '▼' : '▶'} {t('labStep5')}
+            </button>
+            {showDeploy && (
+              <div className="mt-4">
+                <LabRolloutChecklist analysis={analysis} />
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="ui-button ui-button-secondary mt-2"
-                    disabled={!!busy || !confirmLive}
-                    onClick={() => void enableLive()}
+                    className="ui-button ui-button-primary"
+                    disabled={!!busy || !analysis.rollout.can_stage_config || !deployRow}
+                    onClick={() => void stageConfig()}
                   >
-                    {busy === 'enable' ? t('labRunning') : t('labEnableLive')}
+                    {busy === 'stage' ? t('labRunning') : t('labStageConfig')}
                   </button>
                 </div>
-              )}
-            </>
-          )}
-        </Card>
+                {analysis.rollout.can_enable_live && (
+                  <div className="mt-4 border-t border-[var(--border)] pt-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={confirmLive}
+                        onChange={(e) => setConfirmLive(e.target.checked)}
+                      />
+                      {t('labConfirmLiveLabel')}
+                    </label>
+                    <button
+                      type="button"
+                      className="ui-button ui-button-secondary mt-2"
+                      disabled={!!busy || !confirmLive}
+                      onClick={() => void enableLive()}
+                    >
+                      {busy === 'enable' ? t('labRunning') : t('labEnableLive')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </>
       )}
-    </div>
-  );
-}
 
-function LabAnalysisBlock({ analysis, t }: { analysis: StrategyLabAnalyzeResponse; t: (k: string) => string }) {
-  const rec = analysis.verdict as StrategyLabVerdict;
-  const tone: 'success' | 'warning' | 'neutral' =
-    rec === 'deploy_candidate' ? 'success' : rec === 'research_only' ? 'warning' : 'neutral';
-  const recLabel =
-    analysis.recommendation === 'apply'
-      ? t('labRec_apply')
-      : analysis.recommendation === 'research_only'
-        ? t('labRec_research_only')
-        : analysis.recommendation === 'wait'
-          ? t('labRec_wait')
-          : t('labRec_keep_prod');
-  return (
-    <div className="space-y-4 text-sm">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface2)] p-4">
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <Badge tone={tone}>{t(`labVerdict_${rec}`)}</Badge>
-          <Badge tone={analysis.recommendation === 'apply' ? 'success' : 'neutral'}>{recLabel}</Badge>
-        </div>
-        <p className="text-[var(--text)] leading-relaxed font-medium">{analysis.verdict_reason}</p>
-      </div>
-      <MarkdownBlock text={analysis.summary_md} />
-      {analysis.vs_production_md && (
-        <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] mb-2">
-            {t('labInterpretVsProd')}
-          </h4>
-          <MarkdownBlock text={analysis.vs_production_md} className="text-[var(--muted)]" />
-        </div>
+      {!analysis && !busy && (
+        <EmptyState>{t('labStartHint')}</EmptyState>
       )}
-      {analysis.action_md && <MarkdownBlock text={analysis.action_md} />}
-      {analysis.warnings_md && (
-        <div className="rounded-lg bg-[var(--warning)]/10 border border-[var(--warning)]/30 px-3 py-2">
-          <MarkdownBlock text={analysis.warnings_md} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MarkdownBlock({ text, className = '' }: { text: string; className?: string }) {
-  return (
-    <div
-      className={`whitespace-pre-wrap leading-relaxed prose-invert max-w-none ${className}`}
-    >
-      {text}
     </div>
   );
 }
@@ -426,13 +427,15 @@ function FamilyLeadersTable({
   t: (k: string) => string;
   lang: Lang;
 }) {
-  if (!families.length) return null;
+  if (!families.length) {
+    return <p className="text-sm text-[var(--warning)]">{t('labNoFamilies')}</p>;
+  }
   return (
-    <div className="mt-6">
+    <div>
       <h4 className="font-medium mb-1">{t('labFamilyTableTitle')}</h4>
       <p className="text-xs text-[var(--muted)] mb-3">{t('labFamilyTableHint')}</p>
-      <div className="overflow-x-auto">
-        <table className="ui-table text-xs w-full">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+        <table className="ui-table text-sm w-full">
           <thead>
             <tr>
               <th>{t('labColFamily')}</th>
@@ -449,15 +452,20 @@ function FamilyLeadersTable({
               const isSel = selected && rowKey(selected) === rk;
               return (
                 <tr
-                  key={f.strategy_id + (f.is_production ? '-prod' : '')}
-                  className={`cursor-pointer align-top ${isSel ? 'bg-[var(--accent)]/15' : ''}`}
-                  onClick={() => onSelect(f.row)}
+                  key={`${f.strategy_id}-${f.is_production ? 'prod' : 'best'}`}
+                  className={`cursor-pointer align-top ${f.is_production ? 'bg-[var(--surface-muted)]' : ''} ${isSel ? 'ring-1 ring-[var(--accent)]' : ''}`}
+                  onClick={() => !f.is_production && onSelect(f.row)}
                   title={f.verdict_line}
                 >
-                  <td className="font-medium">{f.label}</td>
-                  <td className="max-w-[12rem]">{f.params_summary}</td>
-                  <td>{formatNumber(f.pnl, lang)}</td>
-                  <td>
+                  <td className="font-medium whitespace-nowrap">
+                    {f.label}
+                    {f.is_production && (
+                      <span className="ml-1 text-xs text-[var(--muted)]">({t('labProdBaseline')})</span>
+                    )}
+                  </td>
+                  <td className="max-w-[14rem] text-[var(--muted)]">{f.params_summary}</td>
+                  <td className="whitespace-nowrap">{formatNumber(f.pnl, lang)}</td>
+                  <td className="whitespace-nowrap">
                     {f.delta_vs_prod != null ? (
                       <span className={f.delta_vs_prod >= 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}>
                         {f.delta_vs_prod >= 0 ? '+' : ''}
@@ -477,19 +485,17 @@ function FamilyLeadersTable({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-[var(--muted)] mt-2">{t('labFamilyRowHint')}</p>
+      <p className="text-xs text-[var(--muted)] mt-2">{t('labPnlNote')}</p>
     </div>
   );
 }
 
 function LabRolloutChecklist({ analysis }: { analysis: StrategyLabAnalyzeResponse }) {
   return (
-    <ol className="list-decimal list-inside space-y-3 text-sm">
+    <ol className="list-decimal list-inside space-y-2 text-sm text-[var(--muted)]">
       {analysis.rollout.steps.map((s) => (
         <li key={s.id}>
-          <span className="font-medium">{s.title}</span>
-          {s.automated && <Badge tone="neutral">API</Badge>}
-          <div className="text-[var(--muted)] whitespace-pre-wrap mt-1 ml-4">{s.detail_md}</div>
+          <span className="font-medium text-[var(--text)]">{s.title}</span>
         </li>
       ))}
     </ol>

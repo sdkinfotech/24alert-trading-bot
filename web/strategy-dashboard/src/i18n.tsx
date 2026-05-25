@@ -39,6 +39,11 @@ const ru: Dict = {
   labStep3AnalyzeHint:
     'Полная матрица бэктеста (~90 дн.): SMA, Level Bounce, ORB, EMA, Donchian + сравнение с config.yaml. 1–4 мин.',
   labRunAnalyze: 'Запустить анализ',
+  labRunningLong: 'Считаем матрицу бэктеста… обычно 1–3 мин (30 дн.) или до 4 мин (90 дн.)',
+  labDaysHint: '30 дн. — быстрее; 90 дн. — надёжнее',
+  labStartHint: 'Выберите тикер и нажмите «Запустить анализ»',
+  labDetailsToggle: 'Подробный текст и предупреждения',
+  labNoFamilies: 'Семейства не найдены — проверьте логи runner / бэктест',
   labRunOptimize: 'Оптимизировать выбранную',
   labRunCompareAll: 'Сравнить все стратегии',
   labStageConfig: 'Записать в config (enabled=false)',
@@ -434,6 +439,11 @@ const en: Dict = {
   labStep3AnalyzeHint:
     'Full backtest matrix (~90d): SMA, Level Bounce, ORB, EMA, Donchian vs config.yaml. Takes 1–4 min.',
   labRunAnalyze: 'Run analysis',
+  labRunningLong: 'Running backtest matrix… usually 1–3 min (30d) or up to 4 min (90d)',
+  labDaysHint: '30d — faster; 90d — more reliable',
+  labStartHint: 'Pick a ticker and click Run analysis',
+  labDetailsToggle: 'Detailed narrative and warnings',
+  labNoFamilies: 'No strategy families in response — check runner / backtest logs',
   labRunOptimize: 'Optimize selected',
   labRunCompareAll: 'Compare all strategies',
   labStageConfig: 'Write config (enabled=false)',
